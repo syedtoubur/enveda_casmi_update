@@ -95,8 +95,8 @@ class Generator(Protocol):
     # (smiles, logp); SelfiesDfsGenerator now; analog decoration later (P7)
 
 class Tracker:                                  # plan §4.1–4.2
-    def __init__(self, formula: str): ...
-    def legal_mask(self) -> torch.BoolTensor    # over the vocabulary
+    def __init__(self, table: TokenTable, formula: dict | None): ...   # {element: count} incl. H
+    def legal_mask(self) -> np.ndarray          # bool over the vocabulary (torch-free; the search converts)
     def push(self, token_id: int) -> "Tracker"  # returns the new state (persistent, cheap copy)
     def eos_legal(self) -> bool
 

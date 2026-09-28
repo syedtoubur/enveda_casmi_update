@@ -11,3 +11,4 @@ python build/test_stage_d_colab.py | tail -1
 python build/test_simple_sim_gate.py | tail -1
 python build/test_simple_sim_grid.py | tail -1
 python build/test_simple_sim.py      | tail -1
+python build/test_novel_p0.py      | tail -1
