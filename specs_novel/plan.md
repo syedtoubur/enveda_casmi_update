@@ -1,171 +1,410 @@
-# CASMI 2026: Novel De Novo Structure Generation & Multi-Tier Verification (Plan & Constitution)
+# specs_novel — plan and constitution
 
-*Specification Version 1.0 — 2026-09-27. Project: `specs_novel`. Grounded in measured benchmarks from `summary.md`, `specs_ms_simulator/`, and `specs_simple_ms_simulator/`.*
+*Version 3.1, 2026-09-28.*
 
----
+v3.1 applies the P0-planning source audit (amendments A1–A9; details in §2 and §4 and in roadmap P0).
+It changes no architecture decision. The DreaMS load path becomes a one-off conversion to a plain
+`dreams_embed.pt`; stereo is stripped before SELFIES encoding; the mask rules cover skipped atoms
+and effective bond orders; a DBE-prune violation disables the prune instead of failing G0.4.
 
-## 1. Project Mission & Target Scope
+v3.0 replaces v2.1, which was built on MADGEN (§0). The generator is now a **SELFIES decoder**
+built from these parts:
 
-The ultimate objective in the Enveda CASMI 2026 competition is to predict the top-25 candidate molecular structures as SMILES strings from tandem mass spectrometry (LC-MS/MS) data, evaluated by **MRR@25 on InChIKey14** after RDKit 2026.03.3 tautomer canonicalization.
+- It is trained on top of frozen **DreaMS** spectrum embeddings.
+- It uses the **MassSpecGym** (`MSGYM_novel/`) tokenizer, formula encoding and metrics.
+- At test time, a **constrained DFS** searches its token space.
 
-### The Problem: The Class 3 Zero-Ceiling Wall
-Existing pipelines in the workspace (`enveda-casmi-2026-tier1-patched.ipynb` scoring **0.337 LB** and `casmi_simple_sim_submission.ipynb` scoring **0.289 LB**) operate purely via candidate retrieval against a closed candidate pool (COCONUT 2.0 ∪ train structures = 712,199 molecules):
-- **Class 1 (Library Match)**: The query molecule has reference spectra in `train.parquet`. Solved with high accuracy by spectral entropy similarity (`lv`).
-- **Class 2 (Known Unmeasured Structure)**: The query molecule exists in COCONUT or PubChem but has no public spectra. Solved by mass-window retrieval (±8.5 ppm) + ranking (FPNet / ICEBERG / MetFrag).
-- **Class 3 (Novel Chemical Entity)**: The query molecule is an uncharacterized natural product or novel chemical derivative **not present in any public chemical database**. 
-
-> [!CRITICAL]
-> **Any purely retrieval-based pipeline has a mathematical score ceiling of 0.000 on Class 3 queries.** 
-> If Class 3 constitutes 15–25% of the hidden test set, a retrieval-only model forfeits up to 0.150–0.250 of potential MRR.
-
-### Core Mission of `specs_novel`
-Build an end-to-end, multi-stage hybrid inference system that:
-1. **Separates** obvious Class 1 queries (`lv >= 0.85`) from ambiguous queries to preserve GPU runtime.
-2. **Generates** de novo SMILES token-by-token using an autoregressive neural decoder conditioned on the query MS/MS spectrum.
-3. **Prunes** the search tree dynamically using **Constrained Beam Search with Dynamic Prefix Mass Pruning** and DFS completion, enforcing strict physical precursor mass bounds (pre-centered at +1.45 ppm) and chemical valency validity.
-4. **Verifies & Ranks** both retrieved database candidates (Class 2) and novel generated candidates (Class 3) in a unified arena using **ICEBERG neural forward simulation** (`msg_all`) and MetFrag-lite.
+The module attaches to **Approach B**, the simple ICEBERG baseline (LB 0.289). Every number in this
+file is either measured, with its source, or marked **to measure**. File:line references point into
+`MSGYM_novel/` (pluskal-lab/MassSpecGym @ `f259fe3`) and `DreamS/` (pluskal-lab/DreaMS @ `dbec3a0`).
+Background: `Starting Point/summary.md`.
 
 ---
 
-## 2. High-Level System Architecture
+## 0. History: why MADGEN was dropped (2026-09-28)
+
+Reading the source of v2.1 (`MADGEN/`) showed that MADGEN is the wrong fit. The reasons are below;
+the v2.1 text is in git history.
+
+| MADGEN property | why it rules MADGEN out here |
+|---|---|
+| Input = a ring scaffold **plus** the true heavy-atom set | For Class 3 we would have to predict both. The published "predicted scaffold" numbers leak: the truth sits in the retrieval list, and the vote uses the true formula. |
+| No scaffold means the molecule is dropped | It cannot generate **acyclic** structures (lipids, linear peptides, fatty acids). |
+| Trained on at most 71 heavy atoms | Test masses reach 1,159 Da. |
+| Its only input is 50 peaks | It has no adduct, CE or precursor input. |
+| `sample.py` needs the true SMILES; the pinned stack is Python 3.9 | A full port would have been needed. |
+
+`madgen_files_intro.txt` is kept as a record. Elsewhere MADGEN appears only as a published reference number (§1.2) and in the v2.1 → v3.0 comparison (§2.3).
+
+---
+
+## 1. Mission
+
+### 1.1 The wall
+
+Every pipeline so far retrieves from a closed candidate pool: COCONUT 2.0 ∪ train structures,
+712,199 rows (summary §1). Two kinds of molecule therefore score 0 whatever the ranking:
+
+- **Class 3.** The structure is not in PubChem at all (competition data page).
+- **Class 2 outside COCONUT.** The structure is in PubChem but not in our pool.
+
+`specs_novel` adds a **generator** that proposes structures outside the pool. A generated structure
+scores if its InChIKey14 matches the truth's, whichever class the truth belongs to.
+
+Expanding the pool with MassSpecGym's 1M/4M PubChem-derived molecule sets could reach out-of-pool
+Class 2. It **cannot** reach Class 3, whose structures are by definition not in PubChem. It is
+therefore a **separate side-track** with its own one-flag probe, and not part of this spec.
+
+### 1.2 What it can be worth (stated before any measurement)
 
 ```
-                                  Query LC-MS/MS Spectrum
-                              (m/z, intensity, precursor m/z, CE, adduct)
-                                             |
-                                             v
-                           [ Precursor Centering: -1.45 ppm ]
-                                             |
-                                             v
-                             +-------------------------------+
-                             |    CLASS 1 SPECTRAL GATING    |
-                             |   Entropy Sim against train   |
-                             +-------------------------------+
-                                             |
-                      +----------------------+----------------------+
-                      | (lv >= 0.85: Definite Class 1)       | (lv < 0.85: Ambiguous / Class 2 / Class 3)
-                      v                                      v
-          +-----------------------+              +-----------------------+-----------------------+
-          | DIRECT LIBRARY EMIT   |              | DUAL-TRACK CANDIDATE GENERATION & RETRIEVAL   |
-          | - Rerank top library  |              +-----------------------+-----------------------+
-          |   matches by lv       |                          |                                   |
-          | - Dedupe InChIKey14   |                          v                                   v
-          | - Fill top-25 slots   |              [ TRACK A: Class 2 Retrieval ]      [ TRACK B: Class 3 De Novo ]
-          +-----------------------+              - Window: ±8.5 ppm on Pool          - Spectral Encoder
-                      |                          - ~40-150 database candidates       - Token-by-token Autoregressive Decoder
-                      |                                      |                       - Dynamic Prefix Mass Pruning
-                      |                                      |                       - DFS Valid Completion & Sanitization
-                      |                                      |                       - ~20-50 valid novel candidates
-                      |                                      +-----------------+-----------------+
-                      |                                                        |
-                      |                                                        v
-                      |                                        [ UNIFIED CANDIDATE MERGER ]
-                      |                                        - Combine Track A + Track B candidates
-                      |                                        - RDKit InChIKey14 deduplication
-                      |                                                        |
-                      |                                                        v
-                      |                                    [ NEURAL FORWARD VERIFICATION ]
-                      |                                    - Batched ICEBERG simulation at exact CE
-                      |                                    - Spectral entropy similarity (sv)
-                      |                                    - MetFrag-lite explain score (fr)
-                      |                                                        |
-                      |                                                        v
-                      |                                          [ UNIFIED ARENA RERANKING ]
-                      |                                          - Rank all candidates by (sv, fr, ppm)
-                      |                                          - Select top-25 SMILES
-                      |                                                        |
-                      +----------------------+---------------------------------+
-                                             |
-                                             v
-                                  [ Top-25 SMILES Output ]
-                               (MRR@25 on InChIKey14 Evaluated)
+ΔLB ≈ f(C3) · MRR_novel(C3)  +  f(C2_out) · MRR_novel(C2_out)  −  displacement(C1, C2_in)
 ```
 
----
+- **`f(·)`:** the class fractions of the hidden test. They are hidden and **unknown**.
+- **`MRR_novel`:** measured offline on the pseudo-Class-3 cohort (roadmap P4). **The prior is
+  low.** Published exact-match rates on MassSpecGym (`MSGYM_novel/results/de_novo*.csv`):
 
-## 3. Component Specifications
+  | method | formula given | top-1 exact | top-10 exact |
+  |---|---|---|---|
+  | MassSpecGym SMILES / SELFIES transformer | no or yes | 0.00 | 0.00 |
+  | Random chemical generation (formula-constrained) | yes | 0.00 | 0.00 |
+  | MADGEN | yes | 0.0131 | 0.0154 |
+  | DiffMS (best listed) | yes | 0.0230 | 0.0425 |
 
-### 3.1 Class 1 Separator & Routing Gate
-- **Purpose**: Prevent unnecessary generative decoding for queries that have near-identical experimental twins in `train.parquet`, saving GPU compute for hard queries.
-- **Threshold**: Conservative cutoff **`lv >= 0.85`** (spectral entropy similarity).
-- **Physical Rationale**:
-  - The Phase 0 ICEBERG baseline used `lv >= 0.75` for Tier 1. However, setting `lv >= 0.85` ensures that borderline queries (isomers with slightly divergent spectra, or partial scaffold matches) are not prematurely locked into library retrieval and are allowed to explore novel candidate generation.
-- **Execution**: Fast Numba entropy kernel against the pre-indexed reference library `train.parquet` in a ±8.5 ppm neutral mass window.
-- **Bypass Decision**:
-  - If `max(lv) >= 0.85`: emit library matches sorted by `lv`, pad if needed from candidate pool, and skip De Novo Track B completely.
-  - If `max(lv) < 0.85`: proceed to parallel candidate acquisition (Track A + Track B).
+  MassSpecGym's test fold is MCES-disjoint from training, so it is harder than a random split. That
+  still makes a few percent at top-25 the realistic ceiling even with the **true** formula. Our test
+  is 100% timsTOF (summary §1), which no public model was trained on.
+- **`displacement`:** the MRR lost when novel candidates push a correct pool answer down the list.
+  It is measured on the C2-displace cohort (P4) and kept small by the v1 slot policy (§3.9).
 
-### 3.2 De Novo Autoregressive Generation Engine (Track B)
-- **Model Topology**: Encoder-Decoder Transformer architecture.
-  - **Spectral Encoder**: Consumes query peak list `(m/z, intensity)` (up to 128 peaks), precursor m/z, adduct type, and collision energy. Maps spectral features to dense representation vectors $H_{\text{spec}} \in \mathbb{R}^{N_{\text{peaks}} \times d_{\text{model}}}$ ($d_{\text{model}} = 512$).
-  - **SMILES Decoder**: Autoregressive Causal Transformer Decoder with cross-attention to $H_{\text{spec}}$. Generates SMILES tokens one by one over a compact, robust molecular token vocabulary (atoms, aromatic symbols, bonds, branches, ring numbers).
-- **Training Strategy**:
-  - Pretrained / fine-tuned on the 2.54M spectra and 275k unique chemical structures from `train.parquet`.
-  - Conditioned on collision energy (eV) and adduct token to learn energy-dependent structural fragmentation signatures.
+The expected gain is small and uncertain. So every phase has a gate written down before its
+measurement, and the project stops at the first gate that fails.
 
-### 3.3 Constrained Beam Search with Dynamic Prefix Mass Pruning
-Unconstrained decoding on SMILES easily falls into hallucinated invalid strings or molecules with wildly incorrect molecular masses. We formulate decoding as a **bounded tree search**:
+### 1.3 Decisions already taken
 
-1. **Prefix Mass Lower-Bound Invariant**:
-   - For every SMILES prefix $S_{1:t}$, compute the lower bound of the neutral mass of any valid completion:
-     $$M_{\min}(S_{1:t}) = \sum_{a \in \text{atoms}(S_{1:t})} \text{mass}(a)$$
-   - Let $M_{\text{target}}$ be the query neutral mass (centered: $m / (1 + 1.45 \times 10^{-6})$).
-   - If $M_{\min}(S_{1:t}) > M_{\text{target}} + \Delta_{\text{tol}}$ (where $\Delta_{\text{tol}} = 8.5\text{ ppm} + 0.005\text{ Da}$), the branch is **guaranteed to exceed the precursor mass** and is immediately **pruned**.
-
-2. **Branching & Beam Expansion**:
-   - At step $t$, expand each active beam into top-$K$ candidate tokens based on the decoder's log-softmax output $\log P(w_t | w_{<t}, H_{\text{spec}})$.
-   - Filter out tokens that violate basic chemical grammar (e.g. consecutive double bonds on incompatible atoms, unmatched closing parentheses without open parentheses).
-
-3. **DFS Completion on High-Scoring Subtrees**:
-   - When a beam hits an open ring or incomplete valence near the target mass window ($M_{\text{target}} \pm \Delta_{\text{tol}}$), trigger a local Depth-First Search (DFS) bounded by depth $\le 10$ tokens to find valid ring closures (`1`...`9`) and the `<EOS>` end token.
-   - For every completed string $S$:
-     - Check exact neutral mass: $|M(S) - M_{\text{target}}| / M_{\text{target}} \le 8.5 \times 10^{-6}$.
-     - Check RDKit sanitization: `Chem.MolFromSmiles(S, sanitize=True)` must succeed without valence violations.
-     - Hash to `InChIKey14`. If valid, add to the novel candidate buffer.
-
-4. **Output Cap**: Collect top $N_{\text{novel}} \in [20, 50]$ valid, unique InChIKey14 novel structures per query.
-
-### 3.4 Unified Forward Simulation Arena (The Scorer)
-Both retrieved database candidates (Track A) and novel generated candidates (Track B) must compete fairly on physical evidence:
-
-- **Forward Simulator**: ICEBERG (`coleygroup/ms-pred`, MIT licence), checkpoint **`msg_all`**.
-- **Simulation Invariant**:
-  - The simulation precursor is the exact theoretical m/z of the candidate under the query's adduct.
-  - The simulation collision energy is the exact query CE in eV.
-  - For multi-CE merged spectra, simulate each constituent CE and take $\max(sv)$.
-- **Scoring Kernel**:
-  - Predicted spectrum $\hat{S}$ vs query spectrum $Q$ scored using high-precision Numba Spectral Entropy Similarity:
-    $$sv = \text{entropy\_similarity}(Q, \hat{S})$$
-  - Auxiliary explain score $fr$ from MetFrag-lite (explained peak ratio).
-- **Ranking Formula**:
-  - For all candidates in the unified pool, compute composite score:
-    $$\text{score} = sv + 0.10 \times fr - 0.01 \times |\text{ppm\_error}|$$
-  - Sort descending by $\text{score}$. Deduplicate by `InChIKey14` (keeping the highest scoring SMILES for that key). Emit top 25.
-
----
-
-## 4. Anti-Leakage Contracts & Operational Rules
-
-1. **No External Weights with Restrictive / Commercial Licenses**:
-   - Forbidden: NIST'20/23/26 weights, CFM-ID commercial versions.
-   - Allowed: Pretrained models under MIT, Apache-2.0, or CC-BY (ICEBERG `msg_all`, MassSpecGym, Hugging Face open weights).
-2. **Scaffold-Disjoint Evaluation Protocol**:
-   - When validating the de novo generator offline, the validation queries MUST belong to held-out Murcko scaffolds that never appeared in the training set of the generator or FPNet.
-3. **InChIKey14 Deduplication Invariant**:
-   - The submission file allows up to 25 SMILES per molecule.
-   - Duplicate InChIKey14 entries in a prediction list waste rank positions and directly degrade MRR. Every candidate list MUST be deduplicated by `InChIKey14` prior to output.
-4. **Deterministic Fallback & Fail-Safe Watchdog**:
-   - If the generative DFS search hits a timeout (> 45 seconds on a single query), abort generation and fall back exclusively to Track A (database retrieval) sorted by MetFrag-lite / ppm.
-   - The notebook MUST finish within 7.5 hours on Kaggle hidden re-runs.
-
----
-
-## 5. Failure Modes & Mitigations
-
-| Failure Mode | Impact | Mitigation Strategy |
+| decision | choice | why |
 |---|---|---|
-| **1. Generative Hallucination** | Generates synthetically impossible or chemically invalid SMILES. | Immediate RDKit sanitization test (`Chem.MolFromSmiles(..., sanitize=True)`) + Dynamic valence check during DFS. |
-| **2. Search Explosion in DFS** | High branching factor causes DFS to stall and exceed notebook time limit. | Dynamic Prefix Mass Pruning: prune any path whose minimum constituent mass exceeds precursor mass + 8.5 ppm; cap DFS depth at 10 and timeout per query at 45s. |
-| **3. Simulator Mismatch on Novel Structures** | ICEBERG predicts poorly on unusual ring topologies. | Fall back to MetFrag-lite bond-disconnection score ($fr$) and precursor ppm accuracy as regularizers. |
-| **4. Redundant Candidate Emission** | Emitting tautomers / stereoisomers that collapse to the same InChIKey14. | Hash canonical RDKit mol to InChIKey14 immediately; store in a set and reject duplicates on insertion. |
-| **5. Class 1 False Negative** | Routing a genuine library molecule to the generative engine because `lv < 0.85`. | Track A (database retrieval) is ALWAYS active in parallel when `lv < 0.85`; novel candidates compete in the same fair arena with database candidates. |
+| Class 1 and Class 2 answers come from | **Approach B** (`build/simple_sim_submit.py`, LB 0.289) | ICEBERG is already wired in and verifies generated candidates. The one-flag control is clean (summary §5.6). |
+| Generator | **Our own SELFIES decoder**, conditioned on DreaMS embeddings | A token-by-token decoder allows the formula-constrained DFS the user designed. It has no scaffold or ring requirement and no 71-atom limit. |
+| Spectrum encoder | **DreaMS `embedding_model.ckpt`, frozen** (Drive `casmi_2026/DreamS_Embedding_Model`) | Pretrained self-supervised on GeMS. The train corpus embeddings are already cached (`_dreams_out/emb`, `casmi_dreams_colab.ipynb`), so training needs no DreaMS forward pass. |
+| Decoder (chemical-language) pretraining | **Skipped** | DreaMS pretrains the encoder only (§2.2). Pretraining the decoder on MassSpecGym's 4M molecules is the **single pre-registered rescue** if P3 fails. |
+| Tokens | **Word-level SELFIES** (`SelfiesTokenizer`) | Every string decodes to a molecule, and one atom token means one element, so count masks are exact (§4). |
+| Memory | **One token per spectrum** (DreaMS vector + adduct + CE) **plus a formula token** | Handles 1–16 spectra per molecule and adds the adduct and CE conditioning that MassSpecGym's model lacks. |
+| Formula at test | **Top-k from our formula stage** | Training uses the true formula. At test, the formula both conditions the decoder and supplies the DFS masks. |
+| Stereo and isotopes (A9) | **Stripped** before SELFIES encoding (`RemoveStereochemistry`, isotope labels to 0) | ik14 ignores both, so they cannot score. Stripping shrinks the vocabulary and keeps one atom token = one element. The round-trip is judged on ik14. |
+| DreaMS on Kaggle (A2) | **Vendored and converted** | The real package loads the head once on Colab and saves `dreams_embed.pt` (plain `state_dict` + args dict). Kaggle runs the torch-only `build/dreams_infer.py`: no pip, no pickled `dreams.*` classes, no `ssl_model.ckpt`. |
+
+---
+
+## 2. What the two repositories provide (source-verified)
+
+### 2.1 MSGYM_novel (MassSpecGym): a framework, not a generator
+
+| fact | evidence |
+|---|---|
+| **No de novo weights** are shipped. The repo is benchmark infrastructure: data loaders, transforms, baselines and metrics. | tree listing; README "Train and evaluate your model" |
+| `SmilesTransformer` is an `nn.Transformer` encoder over `(n_peaks, 2)` peak tokens, with a linear `src_encoder`. The precursor is prepended as a peak of intensity 1.1. | `models/de_novo/smiles_tranformer.py:50-60`; `data/transforms.py:60-97` (`SpecTokenizer`) |
+| The formula is a 118-element count vector (H included) passed through an MLP and **added** to every encoder state. | `smiles_tranformer.py:104,171`; `data/transforms.py:270-298` (`MolToFormulaVector`) |
+| Decoding is **greedy or multinomial only**. There is no beam, no masks and no constraint hook, so our search loop is our own (§4). | `smiles_tranformer.py:143-200` |
+| The stock model **cannot take a DreaMS vector**: `forward` reads `batch["spec"]` peaks and derives its padding mask from `spec.sum(-1) == 0`. | `smiles_tranformer.py:78,86,137-138` |
+| `SelfiesTokenizer` is a WordLevel vocabulary over SELFIES symbols with `<pad> <s> </s> <unk>`. With no `selfies_train` argument it **downloads** MassSpecGym from Hugging Face, so offline use must pass the alphabet. | `models/tokenizers.py:58-94`; `definitions.py:12-15` |
+| (A4) `selfies_train` must be a **non-empty list of SELFIES** strings: `None` **or an empty list** triggers the HF download (`if not selfies_train`). A list is used as-is, so the alphabet comes **only** from that list; the union with `get_semantic_robust_alphabet()` must be made by us. `max_len` must be an int, because the base class calls `enable_truncation(max_len)`. | `models/tokenizers.py:73-81`, `:12-36` |
+| `RandomDeNovo` builds random connected graphs that fit the formula, with valence assignment. It uses the **true** formula at test. It is our null baseline (P3). | `models/de_novo/random.py:181-240,1203-1204` |
+| `DeNovoMassSpecGymModel` computes top-k exact match, MCES and Tanimoto. We subclass it to reuse the metrics. | `models/de_novo/base.py` |
+| `setup.py` pins torch 2.3.0, numpy 1.24.4 and rdkit 2023.9.4, and requires Python ≥ 3.11. numpy 1.24 has **no Python 3.12 wheel**, so the package is installed `--no-deps` for training and **not at all** on Kaggle. | `setup.py:20-37,52` |
+| (A5) Importing `massspecgym.data.transforms` runs `data/__init__.py`, which imports `datasets` and `data_module`: matchms, torch_geometric and pytorch_lightning come with it. `massspecgym.utils` imports pulp and picks an ILP solver **at import** (`pulp.listSolvers(onlyAvailable=True)[0]`, an `IndexError` if none). `simulation_utils/misc_utils.py` imports `distutils`, which Python 3.12 has only through the setuptools shim. | `data/__init__.py:1-2`; `utils.py:354`; `simulation_utils/misc_utils.py:3` |
+| Code licence: MIT. The dataset on HF (`roman-bushuiev/MassSpecGym`) is MIT (memory: simulator-checkpoint-licence). | `LICENCE` |
+
+### 2.2 DreaMS: a pretrained spectrum encoder
+
+| fact | evidence |
+|---|---|
+| DreaMS is a transformer **encoder** over peaks plus a prepended precursor token. It is pretrained self-supervised (masked peaks and retention order) on GeMS. The embedding is the precursor token's output. | `dreams/models/dreams/dreams.py:138-185`; README |
+| `embedding_model.ckpt` is a `ContrastiveHead` (a linear 1024→1024 layer on the precursor token) fine-tuned for spectral similarity. | `models/heads/heads.py:728-740`; `api.py:103-112` |
+| **What that means for us:** DreaMS replaces *encoder* pretraining. It knows nothing about SMILES or SELFIES grammar, so **decoder** pretraining is a separate matter (§1.3). | by construction |
+| Loading a fine-tuning head also loads `ssl_model.ckpt` as the backbone and downloads it if missing. That is internet at load time, so **P0 must provide or bypass it**. | `api.py:83-100` |
+| (A1) Checkpoints download from **Hugging Face** `roman-bushuiev/DreaMS`. The Zenodo URL is commented out; Zenodo 10997887 is the archive only. | `utils/misc.py:48,64-72` |
+| (A2) The head checkpoint's hparams hold only the head arguments. The **backbone architecture `args` live only in `ssl_model.ckpt`** (`DreaMS.__init__` calls `save_hyperparameters()`), so the head alone cannot rebuild the network. Both checkpoints pickle `dreams.*` objects (`DataFormatA`, `SpectrumPreprocessor`) and a `PosixPath`. Hence the one-off Colab conversion to `dreams_embed.pt` (§1.3). | `models/dreams/dreams.py:23-29`; `models/heads/heads.py:43-63`; `api.py:30-31` |
+| Importing `dreams.api`, `heads.py` or `utils/data.py` pulls in wandb, pyopenms, umap, igraph, pynndescent, pandarallel, matchms and ase. Inference itself needs only `DreaMS.__init__`/`forward`, `models/dreams/layers.py`, `FourierFeatures`, `FeedForward` and the `DataFormatA` constants (`max_mz = 1000`, `max_tbxic_stdev = 1e-4`). `msml` is not imported by any `.py` under `dreams/`. | `dreams.py:1-18`; `utils/io.py:6-35`; `utils/data.py:1-46`; `setup.py:51` |
+| Preprocessing: the 100 most intense peaks, m/z ascending, relative intensity, and a prepended precursor at 1.1. `normalize_mzs` is never set, so m/z above 1000 passes through unclipped (outside the pretraining range). | `utils/data.py:72-150`; `utils/spectra.py:165-174`; `casmi_dreams_colab.ipynb` cell 0 table |
+| **Cached corpus:** the embeddings for `train.parquet` are on Drive at `_dreams_out/emb/emb_*.npy` (1024-d float32), with `corpus_meta.parquet`. The corpus is filtered as follows: test adducts only; enveda-180 capped at 150k and each other library at 400k (`random_state=0`); 0.2% intensity floor; peaks above precursor + 2 Da dropped. **CE is not stored**, so P0 re-derives it by replaying the deterministic filter. (A6) The cache was embedded with an **unpinned DreaMS HEAD** (`git clone --depth 1`, no commit recorded), so P0 checks the vendored model against the cache as well as Kaggle against Colab. | `casmi_dreams_colab.ipynb` cells 1, 3, 7, 8 |
+| `setup.py` pins numpy 1.25.0 (no Python 3.12 wheel) and a git dependency (`msml`). DreaMS has **never been deployed on Kaggle**; summary.md has no DreaMS entry. Offline install is a P0 gate. | `DreamS/setup.py:27-52` |
+| Code and weights: MIT (Zenodo 10997887). The weights are public, so they meet the "freely and publicly available" rule. What the contrastive head was fine-tuned on (MoNA and/or NIST20 pairs) is **to record in P0** from the checkpoint hparams, as a leakage note. (A3) The provisional answer from the training recipe is **MoNA, `[M+H]+` only, Murcko split** (`MoNA_A_Murcko_split_neighbours_[M+H]+_0.05Da.pkl`). A commented-out line mentions a NIST20+MoNA similarity table, so P0 confirms from the checkpoint. | README badges; `DreamS/setup.py:23`; `training/fine_tune.sh:45-71`; `training/train.py:223` |
+
+### 2.3 v2.1 → v3.0: what changed
+
+| topic | v2.1 (MADGEN) | v3.0 |
+|---|---|---|
+| Generation unit | whole graph per (formula, scaffold) | token by token, with a constrained DFS (§4) |
+| Scaffold stage | required; recall was the kill point | **removed**; there is no scaffold input |
+| Acyclic truths | unreachable | reachable |
+| Size limit | 71 heavy atoms | `MAX_LEN` SELFIES tokens (P0 sets it from the corpus) |
+| Spectrum input | first 50 peaks only | every spectrum of the molecule, via DreaMS, with its adduct and CE |
+| Weights | a pretrained checkpoint | **we train** the decoder (Colab, P3) |
+| Training exclusion | fixed by MassSpecGym | **ours to choose**: the pseudo-C3 structures and their scaffolds are held out |
+| Main risk | scaffold recall | the exact-match rate of a from-scratch decoder (§1.2) |
+
+---
+
+## 3. Architecture
+
+```
+test molecule (1–16 spectra, 10 adducts, CE in eV)
+ │
+ ├─ Approach B pass 1, unchanged: centred neutral mass → pool window → lv, fr, ppm
+ │
+ ├─ ROUTER (§3.2) ── max lv ≥ τ_gen ─────────────────────────────► base list only
+ ▼
+ FORMULA STAGE (§3.3)     enumerate → filter → score → top FORMULA_TOPK
+ ▼
+ DreaMS EMBED (§3.4)      each spectrum → 1024-d (frozen embedding_model.ckpt)       ┐
+ ▼                                                                                    │ GPU 1
+ MEMORY (§3.5)            [proj(emb_i) + adduct_i + ce_i]_i  ⊕  [formula token]       │ worker
+ ▼                                                                                    │
+ CONSTRAINED DFS (§4)     SELFIES decoder, count masks, EOS gating, node budget        ┘
+ ▼                        once per formula
+ CONSTRAINT FILTER (§3.6) sanitize · single component · full formula incl. H · ik14 dedupe · in-pool flag
+ ▼
+ VERIFICATION (§3.7)      ICEBERG sv (GPU 0, existing worker) + MetFrag-lite fr
+ ▼
+ SLOT POLICY (§3.8)       merge the novel list into the base list
+ ▼
+ top 25, ik14-deduped
+```
+
+### 3.1 Base
+
+`build/simple_sim_submit.py` runs as-is. For each molecule it produces:
+
+- the candidate window;
+- `lv`, `sv`, `fr` and `ppm`;
+- the base order from `rank_two_tier(lv, sv, fr, ppm, τ = 0.75)`.
+
+With `CFG.USE_NOVEL = False` the notebook must reproduce 0.289 (roadmap P6).
+
+### 3.2 Router: a runtime trade-off, not a correctness gate
+
+Generation only **adds** candidates, so a wrong "no generation" decision loses nothing that is already
+in the base list. The rules are:
+
+- Skip generation when `max lv ≥ τ_gen`. `τ_gen` starts at 0.75, the base's τ, and is tuned only by
+  LB probe (P6).
+- Negative-mode and rare adducts are **not** routed out. The decoder has an adduct input, and P4
+  measures the hit rate per adduct. `GEN_ADDUCTS` restricts generation only if P4 shows an adduct is
+  pure cost.
+- Process molecules in ascending `max lv`, so the watchdog cuts the most library-like ones first.
+
+`lv` does not depend on FPNet, so the `val_scripts` memorisation problem (summary §4.6) does not
+apply. Pool-miss blindness does (memory: val-blind-to-pool-misses).
+
+### 3.3 Formula stage
+
+1. **Target mass.** Take the neutral mass as Approach B does: `simsim_common.neutral_mass1`, the
+   median over spectra, centred by −1.45 ppm.
+2. **Enumerate** formulas over C, H, N, O, P, S, F, Cl, Br, I within ±`PPM_WIN` (8.5 ppm).
+3. **Filter.** Keep formulas whose RDBE is ≥ 0 and an integer and that satisfy the SENIOR rules.
+   Element-ratio ranges are set in P2 from the training labels.
+4. **Score.** Two terms, weighted as set in P2:
+   - *subformula explanation*: the intensity fraction of fragments explainable within `TOL`;
+   - *window prior*: how often the formula occurs among pool and library structures within
+     ±`PPM_WIN`.
+5. **Keep** the top `FORMULA_TOPK`. Also drop any formula whose elements are missing from the
+   decoder's SELFIES vocabulary.
+
+The formula has three uses:
+
+- the formula memory token (§3.5);
+- the count masks (§4);
+- the full-formula leaf check (§3.6).
+
+### 3.4 DreaMS embedding
+
+- **Preprocessing.** Each spectrum of a routed molecule uses exactly the preprocessing behind the
+  cache: `_dreams_peaks` from `casmi_dreams_colab.ipynb`, with the same floor, the same +2 Da cut and
+  100 peaks.
+- **Parity.** Any mismatch between the Kaggle and Colab preprocessing is silent quality loss. P0
+  compares embeddings of the same spectra on both sides and requires cosine ≥ 0.999.
+- **Placement.** DreaMS runs inside the novel worker on GPU 1. At test scale (1,213 visible spectra)
+  it is cheap, but it is still **to measure**.
+
+### 3.5 Memory
+
+For each spectrum *i* of the molecule:
+
+```
+m_i = W_e · emb_i  +  E_adduct[adduct_i]  +  E_ce[bin(ce_i)]
+```
+
+- `W_e` is a linear projection from 1024 to `D_MODEL`.
+- `ce_i` is the mean of `collision_energy_ev`, binned, with an "unknown" bin for missing values.
+
+One more token carries the formula:
+
+```
+m_f = MLP(formula_counts)
+```
+
+The formula MLP is the idea behind MassSpecGym's `MolToFormulaVector`. Here it is a separate token
+instead of being added to every state.
+
+The decoder (`nn.TransformerDecoder`, pre-norm) cross-attends over `{m_1 … m_k, m_f}` with no
+positional encoding, because the spectra are a set. Only `W_e`, the embeddings, the formula MLP and
+the decoder are trained; DreaMS stays frozen.
+
+### 3.6 Constraint filter
+
+A decoded structure is kept only if **all** of these hold:
+
+1. the SELFIES decodes and `Chem.MolFromSmiles` sanitises it;
+2. it is a single component (no `.`);
+3. its **full** formula, including H, equals the target formula, so the mass is within `PPM_WIN`;
+4. its ik14, after the metric's RDKit 2026.03.3 canonicalisation, is not already in the list.
+   Repeats are counted (`freq`) before they are dropped.
+
+Each survivor is then marked by pool membership:
+
+- `in_pool`: already a base candidate, so it is dropped.
+- otherwise: a genuine **novel** candidate.
+
+The funnel counts are reported in P4: decoded, valid, single, formula, novel.
+
+### 3.7 Verification
+
+Novel candidates enter the **same** ICEBERG request path as pool candidates:
+
+- the functions `build_requests`, `run_worker` and `spectrum_sv`;
+- the query's adduct, the exact CE, the theoretical precursor and `MERGE_RULE = "max"`.
+
+MetFrag-lite `fr` is computed exactly as for pool candidates. The decoder's own `logp` orders novel
+candidates **among themselves** only.
+
+Two limits carry over:
+
+- fidelity is not discrimination (summary lesson 5);
+- ICEBERG covers 6 of the 10 test adducts (summary §5.2).
+
+### 3.8 Slot policy (versioned; each version is one LB probe)
+
+| version | rule | risk |
+|---|---|---|
+| **v1 — tail** | Keep the base list's first `25 − K_NOVEL` entries. Fill the last `K_NOVEL` slots with novel candidates ordered by `sv` desc, then `logp` desc, then `fr` desc. | Only base answers below rank `25 − K_NOVEL` can be displaced. |
+| v2 — arena | Within tier 2, a novel candidate goes above a pool candidate only if its `sv` exceeds that candidate's by δ. Tier 1 is never displaced. | Larger upside and larger displacement. δ comes from P4 and is confirmed only by the LB. |
+
+---
+
+## 4. Constrained DFS over SELFIES tokens
+
+The user's design is kept: generate token by token, gate the end token, apply hard constraints
+throughout, then verify. SELFIES makes it exact.
+
+### 4.1 State per search node
+
+For each node the search keeps:
+
+- the token prefix;
+- the decoder's KV cache;
+- the cumulative `logp`;
+- the **remaining heavy-atom counts** `r[e] = formula[e] − used[e]`;
+- the **unsaturation used** `u` (rings plus π-bond increments);
+- the **SELFIES grammar state**: current-atom valence, and how many upcoming tokens are index
+  tokens because of a `[Branch*]` or `[Ring*]`.
+- (A7) whether the next atom symbol would actually be **placed**. SELFIES skips an atom symbol when
+  the derivation state has no free valence, and it lowers a requested bond order to what the
+  valences allow. Counts and unsaturation follow the atoms placed and the **effective** bond orders,
+  not the symbols read.
+
+### 4.2 Hard masks, applied to the logits before any expansion
+
+| rule | effect |
+|---|---|
+| An atom token of element `e` is legal only if `r[e] > 0` **and** it is read as an atom in the current grammar state **and** it would be placed (A7) | The heavy-atom formula can never be exceeded. Index tokens do not consume counts. A symbol SELFIES would skip is masked: canonical truth encodings never contain one, so the rule is sound and prunes dead tokens. |
+| `</s>` is legal only if `r[e] = 0` for every `e` | The end token is reached only with the exact heavy-atom formula. |
+| Length ≤ `MAX_LEN` | Bounded depth |
+| Look-ahead: `Σ_e r[e] ≤ MAX_LEN − len` | Prunes prefixes that can no longer place their remaining atoms |
+| **DBE prune (conditional):** `u ≤ DBE(formula)` | This is only **sound** when the formula has no S or P, because hypervalent S=O and P=O add π bonds without changing the formula's DBE. For formulas with S or P, the check moves to the leaf. (A8) Charged atoms (`[N+1]`, `[O-1]`, quaternary N) can also break the rings + π = DBE identity. |
+
+**Soundness is tested, not assumed.** P0 decodes every true molecule in the corpus token by token
+under its own formula. Any mask that would ever remove a truth's next token is a bug. The gate is
+**0 violations** for the count, end-token and length rules.
+
+(A8, pre-registered) The DBE prune is an optional speed-up. If the soundness run finds any DBE
+violation, `DBE_PRUNE` is set to False and the check stays at the leaf only. That does **not** fail
+G0.4. Count, end-token or length violations do.
+
+**The grammar caveat is why the tracker is tested.** SELFIES reads the tokens after `[Branch*]` and
+`[Ring*]` as indices, and it quietly lowers bond orders when valence runs out. The *reference* tracker
+decodes the prefix with `selfies.decoder` and counts atoms and unsaturation with RDKit. The *fast*
+incremental tracker used in search must match the reference on 10k molecules (P0 gate: 100%).
+
+### 4.3 Search
+
+Best-first search over cumulative `logp`, run per (molecule, formula):
+
+1. Pop the best node.
+2. Expand its top-`BRANCH` legal tokens.
+3. When `</s>` becomes legal, complete the node (**DFS completion**) and emit a leaf.
+4. Stop at `NODE_BUDGET` expansions, or when `MAX_LEAVES` leaves have been emitted.
+
+Plain beam search with the same masks is the fallback if best-first is too slow on a T4. P4 compares
+the two at an equal time budget. Leaves then go through §3.6 and §3.7.
+
+Hydrogens stay implicit throughout. SELFIES fills valences, so the H count is fixed only at the leaf,
+which is why the §3.6 full-formula check does real work.
+
+---
+
+## 5. Contracts
+
+1. **Licences.** MassSpecGym code and data: MIT. DreaMS code and weights: MIT (Zenodo 10997887).
+   ICEBERG `msg_all`: MIT (memory: simulator-checkpoint-licence). Only freely and publicly available
+   weights are used.
+2. **Pinned artefacts.** Record the SHA1 of `embedding_model.ckpt`, `decoder.pt`, `selfies_vocab.json`
+   and the ICEBERG checkpoints, and assert each at load.
+3. **Exclusion sets.** Three learned components see structures:
+
+   | component | what it was trained on | exclusion |
+   |---|---|---|
+   | Decoder (ours) | our training split | the pseudo-C3 structures **and their Murcko scaffolds** are held out (P1) |
+   | ICEBERG `msg_all` | all folds of MassSpecGym | `msg_ik14` from `MassSpecGym1.5.tsv`: pseudo-C3 truths ∉ `msg_ik14` |
+   | DreaMS contrastive head | spectral-similarity pairs (P0 records the source) | Reported as a caveat. It learned spectrum similarity, not structure identity. |
+
+   Every offline number that claims to measure generalisation is computed on truths that satisfy
+   all three, **and** are removed from the pool and the library (summary lesson 3).
+4. **One change per LB submission, with a control** (summary lesson 1). The twins differ only in
+   `CFG.USE_NOVEL`, and a test enforces this.
+5. **One source of truth for the model.** `build/novel_decoder.py` defines the model, the vocabulary
+   mapping and the tracker. Colab training and Kaggle inference both import it; neither
+   reimplements it.
+6. **Notebooks are generated.** They come from `build/mk_*.py`, and `simple_sim_submit` is embedded
+   verbatim.
+7. **Fail safe.**
+   - The run mode defaults to a full run.
+   - The watchdog drops generation before simulation.
+   - A worker failure reverts the molecule to its base list.
+8. **Output.** ik14 dedupe, at most 25 entries, no nulls.
+9. **Evaluation.** Offline numbers are relative guides and the LB is the arbiter. `val_scripts`
+   cannot see Class 3; only pseudo-C3 can, and only as an upper bound (timsTOF shift, §6).
+
+---
+
+## 6. Failure modes
+
+| failure | effect | detection | mitigation |
+|---|---|---|---|
+| Exact-match rate near zero | No MRR gain (the published prior, §1.2) | P4 with the oracle formula | Kill at P4. Rescue order: 4M decoder pretraining (once), then per-peak memory (P7). |
+| Formula miss | The truth is unreachable by construction | P2 top-k recall | Raise `FORMULA_TOPK`; add the window prior |
+| DreaMS will not install offline | No embeddings on Kaggle | P0 install smoke on the Kaggle Python | `--no-deps` against Kaggle's preinstalled torch and Lightning, or vendor the model code and load the `state_dict` directly. `ssl_model.ckpt` is shipped or bypassed. |
+| Preprocessing mismatch between cache and Kaggle | Silent quality loss | P0 cosine parity | One shared `_dreams_peaks` in `build/` |
+| CE missing from the cache | No CE conditioning, or misaligned rows | P0 row-replay assertion (ik14 and precursor, row by row) | Re-embed the corpus with CE stored (Colab, **to measure** time) |
+| m/z above 1000 | DreaMS is out of range | Flag `oob_mass` | Keep, and report MRR split by the flag |
+| timsTOF domain shift | Neither DreaMS nor the decoder has much timsTOF | Pseudo-C3 on enveda-np-examples vs other libraries | Report both; the non-timsTOF number is an upper bound |
+| Negative-mode or rare adducts | Few training examples | P4 per-adduct hit rate | `GEN_ADDUCTS` restriction only on evidence |
+| SELFIES longer than `MAX_LEN` | Large molecules unreachable | P0 length distribution | Set `MAX_LEN` at the corpus p99.9; report the excluded share |
+| Unsound mask | The truth is pruned silently | P0 soundness test (0 violations) | The DBE prune applies only to formulas without S or P |
+| Tracker disagrees with SELFIES | Wrong counts, lost truths | P0 parity test | Fall back to the reference tracker (slower) |
+| Displacement | Correct pool answers lose rank | P4 C2-displace cohort | v1 tail policy; small `K_NOVEL` |
+| Runtime | Overruns 9 h | P4 per-molecule time; P5 projection | `NODE_BUDGET`, `FORMULA_TOPK`; GPU 1; ascending `max lv`; watchdog |
+| Generated structure already in the pool | Wastes a slot | `in_pool` flag | Drop it |
+| Worker crash or OOM | Lost molecules | Return code | Revert to the base list |
+| Leakage in offline numbers | Pseudo-C3 MRR inflated | Assertions in the cohort builder | Contract §5.3 |

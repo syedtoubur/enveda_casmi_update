@@ -1,161 +1,335 @@
-# Roadmap & Phased Execution Plan: `specs_novel`
+# specs_novel — roadmap
 
-*Specification Version 1.0 — 2026-09-27. Follows strict gatekeeper protocols: each phase has objective criteria and automated verification tests before progressing.*
+*Version 3.1, 2026-09-28 (P0 rewritten after the source audit; amendments A1–A9 are in plan.md). The generator is a SELFIES decoder on frozen DreaMS embeddings, searched
+with a constrained DFS (plan §0 and §4); MADGEN is dropped. The architecture is in `plan.md`; the
+environment and interfaces are in `tech_stack.md`.*
 
----
+**Protocol.**
 
-## Phase Overview & Progress Matrix
+1. Each gate's thresholds go into `gate_report.md` **before** the measurement runs. The thresholds
+   below are provisional until then.
+2. A failed gate stops the project, and the next phase does not start. At that point the options are:
+   - redesign the phase;
+   - use its **single** pre-registered rescue, where one is listed;
+   - end specs_novel.
+3. Every recorded number cites the notebook or cell that produced it.
 
-| Phase | Milestone Name | Primary Artifact / Output | Pass Criteria (Gate) | Status |
-|---|---|---|---|---|
-| **Phase 0** | **Class 1 Separator & Routing Calibration** | `test_separator.py`, `separator_calibration.json` | Separator precision $\ge 98.5\%$ on C1 holdout, latency $< 0.1\text{s}$/query | **PLANNED** |
-| **Phase 1** | **De Novo Spectral Generator Fine-Tuning** | `novel_generator.pt`, `vocab.json` | Valid SMILES rate $\ge 85\%$ on unseen spectra; scaffold-disjoint | **PLANNED** |
-| **Phase 2** | **Constrained Beam Search & DFS Engine** | `constrained_search.py`, `test_search.py` | 100% generated molecules within $\pm 8.5\text{ ppm}$; $\ge 20$ valid mols/query in $< 20\text{s}$ | **PLANNED** |
-| **Phase 3** | **Unified Forward Simulation Arena (ICEBERG)** | `unified_arena.py`, `arena_benchmark.py` | ICEBERG + MetFrag successfully scores $N_{\text{total}} \approx 100$ candidates in $< 4\text{s}$ | **PLANNED** |
-| **Phase 4** | **Kaggle Deployment & Controlled Ablation** | `casmi_novel_submission.ipynb`, `casmi_novel_control.ipynb` | Clean 1-flag ablation submission on Kaggle; runtime $\le 7.5\text{h}$; LB measured | **PLANNED** |
-
----
-
-## Detailed Phase Breakdown
-
-### Phase 0: Class 1 Separator & Routing Calibration
-
-#### Objective
-Establish and validate the decision boundary that segregates Class 1 (direct library search) from Class 2/3 (database retrieval + de novo generation). We must verify that `lv >= 0.85` has near-zero false positives (it must never mistakenly route a novel or Class-2 query to library emission).
-
-#### Steps
-1. **Calibration against Validation Cohorts**:
-   - Evaluate spectral entropy similarity `lv` across the 1,145 validation molecules (`val_scripts/val_key.pkl`):
-     - `C1_npx` (n=245, identical library twins).
-     - `C1_xlib` (n=300, cross-library Class 1).
-     - `C2` (n=400, no reference spectra).
-     - `C2_hard` (n=200, structurally novel / distant decoys).
-2. **Precision vs Recall Measurement**:
-   - Compute False Discovery Rate at $\tau \in \{0.75, 0.80, 0.85, 0.90\}$.
-   - Verify that at `lv >= 0.85`, the fraction of C2/C2_hard queries mistakenly claimed by the separator is $< 1.0\%$.
-3. **Execution Latency Check**:
-   - Measure the exact search speed of `L.search(query_mz, CFG.PPM_WIN)` with the pre-indexed array. Must execute in $< 50\text{ ms}$ per query.
-
-#### Phase 0 Gate
-- **G0.1**: At `lv >= 0.85`, C1 recall $\ge 70\%$ and C2 false-positive rate $\le 1.0\%$.
-- **G0.2**: Precursor centering at $+1.45\text{ ppm}$ confirmed functional and tested against timsTOF test set spectra.
+| phase | milestone | where | status |
+|---|---|---|---|
+| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | PLANNED |
+| P1 | Honest benchmark cohorts + training split | Colab | PLANNED |
+| P2 | Formula stage | Colab / local | PLANNED |
+| P3 | Decoder training | Colab (GPU) | PLANNED |
+| P4 | Offline constrained search + verification | Colab | PLANNED |
+| P5 | Notebook integration | `build/` + Kaggle | PLANNED |
+| P6 | LB ablation and probes | Kaggle | PLANNED |
+| P7 | Deferred extensions | Colab | ONLY IF P4 PASSES AND BUDGET REMAINS |
 
 ---
 
-### Phase 1: De Novo Spectral Generator Adaptation
+## P0 — Feasibility
 
-#### Objective
-Prepare and adapt an autoregressive Encoder-Decoder Transformer conditioned on MS/MS spectra to generate SMILES strings.
+**Question:** can every building block run where it must, and are the search constraints sound?
+Nothing is trained in P0.
 
-#### Steps
-1. **Vocabulary & Chemical Grammar Definition**:
-   - Define a minimal, canonical SMILES token vocabulary:
-     - Atoms: `C`, `N`, `O`, `S`, `P`, `F`, `Cl`, `Br`, `I`, `c`, `n`, `o`, `s`, `p`.
-     - Bonds & Modifiers: `=`, `#`, `(`, `)`, `[`, `]`, `+`, `-`, `@`, `@@`, `/`, `\`.
-     - Ring closures: `1` through `9`, `%10`...`%20`.
-     - Special: `<PAD>`, `<BOS>`, `<EOS>`, `<UNK>`.
-   - Freeze vocabulary to `vocab.json` (size $V \approx 64$ tokens).
-2. **Model Training / Fine-Tuning**:
-   - Input: spectral peaks $(m/z, \text{intensity})$, precursor neutral mass, adduct token, collision energy (eV).
-   - Backbone: 6-layer Spectral Transformer Encoder ($d_{\text{model}} = 512, h=8$) + 6-layer Autoregressive SMILES Decoder.
-   - Training loss: Cross-entropy token loss on canonical SMILES strings from `train.parquet`.
-   - Training split: Scaffold-disjoint split (`_fpnet/pack/splits.npz`) to guarantee the model learns structural decomposition rather than memorizing scaffolds.
-3. **Quality Checkpoint**:
-   - Check validation loss on unseen scaffolds.
-   - Verify greedy decoding validity rate: $\ge 80\%$ of emitted SMILES must parse cleanly in RDKit.
+**Where it runs.**
 
-#### Phase 1 Gate
-- **G1.1**: The model trains without divergence; validation perplexity $\le 2.5$ on unseen scaffolds.
-- **G1.2**: Checkpoint size $\le 250\text{ MB}$; exported as a standalone TorchScript or standard PyTorch state dict.
+- `casmi_novel_p0_colab.ipynb` covers P0.1a and P0.2–P0.5. It needs a GPU for P0.1a; the rest runs
+  on CPU/High-RAM. Results go to `phase0_colab_gate.json`.
+- `casmi_novel_p0_kaggle.ipynb` covers P0.1b on a T4 with internet off. Results go to
+  `phase0_kaggle.json`.
+
+Both notebooks are generated by `build/mk_novel_p0.py`. Outputs live in Drive
+`casmi_2026/_novel/p0/`.
+
+**Code written in P0:**
+
+- `build/dreams_infer.py`: vendored, torch- and numpy-only DreaMS inference plus the shared
+  `dreams_peaks`.
+- `build/novel_decoder.py`, P0 part: vocabulary mapper, token → element table, reference and fast
+  trackers, and `prep_structure`.
+- `build/test_novel_p0.py`: the local fixture tests.
+
+### P0.1a DreaMS conversion and reference (Colab, GPU)
+
+1. **Install and load.** Clone DreaMS, check out `dbec3a0` and `pip install -e` it with its deps.
+   Copy `embedding_model.ckpt` from Drive. `ssl_model.ckpt` is fetched from Hugging Face
+   (`api.py:87-89`; A1). Record the SHA1 of both. Load the model with
+   `PreTrainedModel.from_name(DREAMS_EMBEDDING)`.
+2. **Record the settings.** Dump the backbone `args` (with `dformat` replaced by its constants) and
+   the head hparams, including **the fine-tuning dataset path**, which is the leakage note (A3).
+   Assert `charge_feature == False`, float32 and `n_highest_peaks == 100`.
+3. **Convert (A2).** Save `dreams_embed.pt`: the `state_dict` without the training heads
+   `ff_out`, `mz_masking_loss` and `ro_out`, the `args` dict, the DreaMS commit and the source SHA1s.
+   Record its own SHA1.
+4. **Parity rows.** Pick 200 rows of `corpus_meta.parquet`, stratified by adduct × `oob_mass` ×
+   peak count. Embed them with:
+   - (a) the official `dreams_embeddings`;
+   - (b) the vendored `dreams_infer`;
+   - (c) the cached rows (A6).
+
+   Save the peak lists, the (b) vectors and the row ids to `parity_200.npz`.
+5. **Package** `kaggle_upload/` as the dataset `casmi26-novel-offline`: `dreams_embed.pt`,
+   `parity_200.npz`, the pinned `selfies` wheel, `manifest.json` and `dataset-metadata.json`.
+
+### P0.1b DreaMS on Kaggle (T4, internet off)
+
+1. Install the `selfies` wheel with `--no-index` and time it (`T_novel_install`).
+2. Exec the embedded `dreams_infer` source. **No `dreams` package is installed**, and neither
+   `ssl_model.ckpt` nor any pickled `dreams.*` class is needed. Assert the SHA1 of
+   `dreams_embed.pt`.
+3. Embed `parity_200` on `cuda:1`. Compute the cosine with the Colab (b) vectors and time the
+   embedding per spectrum (`T_embed`).
+
+### P0.2 Cache audit
+
+1. **Cache shape.** Load `_dreams_out/emb/*.npy` and `corpus_meta.parquet`. Assert the counts match,
+   every value is finite and the dimension is 1024.
+2. **Recover the CE.** Replay `casmi_dreams_colab.ipynb` cell 7 **verbatim**, adding only
+   `collision_energy_ev` and `instrument_type` to `COLS`. That keeps the adduct filter, the
+   groupby-sorted per-library `sample(cap, random_state=0)` and the unusable-row drop. Assert that
+   `ingest_lib`, `inchikey14`, `adduct` and `precursor_mz` match row by row. Write
+   `corpus_ce.parquet` (row id, `ce_list`, `ce_mean`, `instrument_type`).
+   - If the replay does not match, re-embed with CE stored (Colab time **to measure**).
+3. **Report the corpus.** Rows, unique ik14, per-adduct counts, the ionisation-mode split, the share
+   of m/z above 1000, the CE histogram and the missing-CE share. Propose `CE_BINS`: quantile edges
+   plus an "unknown" bin.
+
+### P0.3 SELFIES
+
+1. **Prepare the structures.** Run `prep_structure` on every unique corpus structure (by ik14): parse,
+   strip stereo and isotopes (A9), take the canonical SMILES, then `sf.encoder`. Classify the
+   structures excluded before the round-trip: multi-component, and elements outside
+   C, H, N, O, P, S, F, Cl, Br, I.
+2. **Measure the round-trip rate.** SMILES → SELFIES → SMILES → ik14 under RDKit 2026.03.3, compared
+   with the original ik14. List the failure classes: charges, exotic valences, encoder errors.
+3. **Set `MAX_LEN`.** Take the token-length distribution and set `MAX_LEN` at p99.9. Report the share
+   of structures above it.
+4. **Build the vocabulary (A4).** The alphabet is the corpus alphabet ∪
+   `get_semantic_robust_alphabet()`, and **we** make the union, because a list passed to
+   `SelfiesTokenizer` is its only alphabet source. Build `SelfiesTokenizer(selfies_train=<non-empty
+   SELFIES list>, max_len=MAX_LEN + 2)`, export `get_vocab()` as `selfies_vocab.json` and record its
+   SHA1. Assert that `SelfiesVocab` ids equal the tokenizer's ids on 1k encodings.
+
+### P0.4 Tracker parity and mask soundness (plan §4.2)
+
+1. **Tracker parity.** On 10k random corpus structures, for every prefix, compare the fast
+   incremental tracker against the reference (`selfies.decoder` on the prefix, then RDKit counts).
+   Compare the remaining counts, the unsaturation and whether each atom was placed (A7).
+2. **Mask soundness.** On **all** round-trip-OK structures, walk the truth's tokens under its own
+   formula. Assert that every true next token is legal, that `</s>` is legal exactly at the end, and
+   that the length stays ≤ `MAX_LEN`. Run it twice: with the DBE prune (formulas without S or P) and
+   without it. Record violations by rule, with example SMILES.
+
+### P0.5 MassSpecGym import (training environment)
+
+1. **Install (A5).** On Colab, `pip install --no-deps -e MSGYM_novel`, then install
+   `pytorch-lightning`, `torchmetrics`, `torch_geometric`, `myopic-mces`, `pulp`, `matchms`,
+   `chemparse`, `tokenizers` and the pinned `selfies`.
+2. **Guard the import pitfalls.** Check that `distutils` resolves through setuptools; otherwise patch
+   `strtobool`. Assert that `pulp.listSolvers(onlyAvailable=True)` is non-empty.
+3. **Import** `SelfiesTokenizer`, `MolToFormulaVector`, `DeNovoMassSpecGymModel` and `RandomDeNovo`.
+4. **Build the exclusion set.** Download `MassSpecGym1.5.tsv` once from Hugging Face and build
+   `msg_ik14.npy` from `smiles`, using **our** RDKit 2026.03.3 ik14 function.
+5. **P1 preview (not gating).** Report `|corpus ik14 \ msg_ik14|`, overall, for the NP libraries and
+   for enveda-np-examples.
+6. **Licence.** Confirm the `selfies` licence at the pinned version.
+
+**Gate G0 (every item must pass).** The thresholds are pre-registered in `gate_report.md`.
+
+- **G0.1:** `dreams_embed.pt` loads and embeds on Kaggle, offline, with its SHA1 asserted. Cosine
+  must be ≥ 0.999 on all 200 parity rows, Kaggle (b) vs Colab (b). On Colab two more legs must hold:
+  (a) vs (b) ≥ 0.9999, and (b) vs cache (c) ≥ 0.999. If (b) vs (c) fails, the cache's commit drift
+  is diagnosed and a re-embed is costed.
+- **G0.2:** the CE replay matches row by row, or a re-embed is scheduled and costed.
+- **G0.3:** the SELFIES round-trip is ≥ 0.99 of the single-component structures made only of
+  allowed elements. The excluded share is reported and `MAX_LEN` is set.
+- **G0.4:** tracker parity is 100%, and the count, `</s>` and length rules have **0 violations**. A
+  DBE-prune violation sets `DBE_PRUNE = False`; it does not fail the gate (A8).
+- **G0.5:** the massspecgym modules import in the training environment, and `msg_ik14.npy` is built.
 
 ---
 
-### Phase 2: Constrained Beam Search & Dynamic Prefix Mass Pruning
+## P1 — Honest benchmark cohorts and the training split
 
-#### Objective
-Implement the constrained tree search engine that guarantees all generated SMILES respect the physical precursor mass of the query within $\pm 8.5\text{ ppm}$.
+**Question:** which molecules can we evaluate on that none of the three learned components has
+learned, and that retrieval cannot reach?
 
-#### Steps
-1. **Dynamic Prefix Mass Calculator**:
-   - Build a lookup table of monoisotopic atomic masses for all organic elements.
-   - Given any SMILES prefix string $S_{1:t}$, compute the cumulative lower-bound mass $M_{\min}(S_{1:t})$.
-   - Rule: An open branch is immediately pruned if $M_{\min}(S_{1:t}) > M_{\text{target}} \times (1 + 8.5 \times 10^{-6}) + 0.005\text{ Da}$.
-2. **Constrained Beam Search Execution**:
-   - Initialize beam with `<BOS>`.
-   - Maintain top-$K$ beams ($K = 30$). At each expansion, mask out tokens that violate mass constraints or syntax rules (e.g. invalid ring closure numbers).
-3. **DFS Completion for Bounded Leaves**:
-   - When a beam reaches $M_{\min} \in [M_{\text{target}} - 30\text{ Da}, M_{\text{target}}]$, switch to a fast Depth-First Search (max depth 10) to find completing tokens (`<EOS>`, ring closure, terminal hydrogen saturation).
-   - Validate completed SMILES with RDKit:
-     ```python
-     mol = Chem.MolFromSmiles(smiles, sanitize=True)
-     if mol is not None:
-         exact_mass = Descriptors.ExactMolWt(mol)
-         if abs(exact_mass - target_mass) / target_mass <= 8.5e-6:
-             ik14 = Chem.MolToInchiKey(mol)[:14]
-             valid_candidates[ik14] = smiles
-     ```
-4. **Throughput Benchmark**:
-   - Benchmark the engine on 50 representative test queries. Ensure median search time per query is $\le 15\text{ seconds}$ on a single GPU/CPU worker.
+Build two cohorts, one molecule per ik14, with spectra grouped per molecule as in the test:
 
-#### Phase 2 Gate
-- **G2.1**: 100% of emitted novel molecules pass RDKit sanitization and land within $\pm 8.5\text{ ppm}$ of the target mass.
-- **G2.2**: Generates at least 15 unique, valid candidates for $\ge 90\%$ of non-Class-1 queries.
+- **`pseudo_c3`.**
+  - The truth ik14 ∉ `msg_ik14`, so ICEBERG `msg_all` has not seen it.
+  - Take NP-like libraries first (riken, gnps, msdial, mona, enveda-np-examples). enveda-180 is
+    excluded because it is synthetic and drug-like.
+  - **The whole Murcko-scaffold group of each cohort molecule is removed from decoder training.** The
+    decoder then never sees the core, and that is the Class 3 situation.
+  - At evaluation, the truth is removed from the pool and the library.
+  - The timsTOF subset (enveda-np-examples) is reported separately.
+- **`c2_displace`.** The truth is in the pool, and its library spectra are banned. This measures the
+  cost to the base.
+
+**Training split.** Decoder training uses the corpus minus the `pseudo_c3` scaffold groups. A second
+scaffold-disjoint slice (`dec_val`) is held out from the training part for early stopping.
+
+**Gate G1:**
+
+- `pseudo_c3` has ≥ 300 molecules, ≥ 30 of them timsTOF.
+- `c2_displace` has ≥ 300 molecules.
+- The training split keeps ≥ 90% of the corpus structures.
 
 ---
 
-### Phase 3: Unified Forward Simulation Arena (ICEBERG)
+## P2 — Formula stage
 
-#### Objective
-Validate that generated novel candidates and retrieved database candidates can be scored side-by-side using forward spectral simulation without distribution bias.
+Steps:
 
-#### Steps
-1. **Candidate Pool Merging**:
-   - For each query:
-     - Track A: Retrieve up to 100 database candidates from COCONUT / train pool.
-     - Track B: Generate up to 50 novel candidates from Constrained Beam Search.
-     - Combine both lists and deduplicate by `InChIKey14`.
-2. **Batched Forward Simulation**:
-   - Run ICEBERG (`msg_all`) in a batch subprocess (batch size 128) on GPU.
-   - Throughput target: $\ge 30\text{ mol/s}$ on T4 GPU (matching measured 36.6 mol/s).
-   - Simulate at query's exact CE (in eV) and adduct.
-3. **Scoring & Ranking**:
-   - Compute spectral entropy similarity $sv$ between predicted and experimental spectra.
-   - Compute MetFrag-lite bond-disconnection score $fr$.
-   - Compute composite score: $\text{score} = sv + 0.10 \times fr - 0.01 \times |\text{ppm\_error}|$.
-4. **Ablation Validation on Synthetic Class 3 Benchmark**:
-   - Create a synthetic test set: hide 100 known molecules from the candidate pool (simulating Class 3).
-   - Evaluate MRR@25:
-     - Baseline (retrieval only): MRR on hidden molecules is strictly **0.000**.
-     - Specs Novel (retrieval + de novo): measure the recovered MRR on the hidden molecules.
+1. Implement `enumerate_formulas` and `score_formulas` (tech_stack §4).
+2. Derive the element-ratio filters from the formulas in `train.parquet`.
+3. Measure top-k formula recall on `pseudo_c3` for k ∈ {1, 3, 5, 10}, per adduct and per mass
+   decile.
+4. Record the median number of candidate formulas per molecule, before and after filtering.
+5. Run the ablation: explanation alone, window prior alone, and both.
 
-#### Phase 3 Gate
-- **G3.1**: The combined simulation of 150 candidates executes in $\le 5.0\text{ seconds}$ per query.
-- **G3.2**: Synthetic Class 3 MRR@25 $> 0.050$ (breaking the 0.000 ceiling).
+**Gate G2:** top-`FORMULA_TOPK` recall ≥ 0.80 on [M+H]+ (provisional). `FORMULA_TOPK` is the
+smallest k that meets it, and it is also bounded by the P4 runtime.
 
 ---
 
-### Phase 4: Kaggle Deployment & Controlled Ablation
+## P3 — Decoder training
 
-#### Objective
-Package the entire multi-tier system into an offline, self-contained Kaggle submission notebook and run a clean single-flag ablation against the incumbent baseline.
+**The model.** `DreamsSelfiesDecoder(DeNovoMassSpecGymModel)`, defined in `build/novel_decoder.py`
+(plan §3.5):
 
-#### Steps
-1. **Generator & Standalone Notebook Construction**:
-   - Create `build/mk_novel_submission.py` to compile the modular code into a production notebook.
-   - Bundle all dependencies offline:
-     - `casmi26-offline-rdkit-2026033` (RDKit wheel).
-     - `casmi26-iceberg-offline` (ICEBERG model weights & wheelhouse).
-     - `novel_generator.pt` + `vocab.json` (De Novo Generator weights).
-     - `coconut_dataset` (Candidate pool arrays).
-2. **Watchdog & Fail-Safe Architecture**:
-   - Fast-commit wrapper deep-scores 30 molecules during editing, switching to full 400 molecules on `KAGGLE_IS_COMPETITION_RERUN`.
-   - Global runtime watchdog: if elapsed time exceeds 7.5 hours, abort generative Track B and fall back to pure database retrieval to guarantee submission completion.
-3. **Controlled Single-Flag Submission**:
-   - Prepare two twin notebooks differing in exactly one configuration flag:
-     - `casmi_novel_submission.ipynb`: `CFG.USE_DE_NOVO = True`
-     - `casmi_novel_control.ipynb`: `CFG.USE_DE_NOVO = False`
-   - Submit both to Kaggle. The delta $\Delta \text{LB} = \text{LB}_{\text{novel}} - \text{LB}_{\text{control}}$ isolates the exact contribution of the de novo pipeline.
+- memory = per-spectrum tokens plus a formula token;
+- a pre-norm `nn.TransformerDecoder`;
+- tied input and output token embeddings;
+- trained with teacher forcing and cross-entropy on SELFIES, given the **true** formula.
 
-#### Phase 4 Gate
-- **G4.1**: Submission notebook completes on Kaggle in $< 8.0\text{ hours}$ without memory leaks or crashes.
-- **G4.2**: The generated submission passes all format checks (no nulls, exactly 400 rows, $\le 25$ unique valid SMILES per row).
+**Training.**
+
+- **Sample unit:** one molecule, with up to `MAX_SPEC_PER_MOL` of its spectra drawn at random each
+  epoch. This augments the data and matches the test's 1–16 spectra per molecule.
+- **Sizes:** `D_MODEL` and `N_DEC_LAYERS` start small (**to measure** against Colab time). There is
+  no pretraining (plan §1.3).
+
+**Evaluation on `dec_val`, then on `pseudo_c3`, with the oracle formula.** In each comparison, the
+null baseline receives the same formula.
+
+- Teacher-forced loss and token accuracy.
+- Unconstrained sampling: the share of samples with the correct heavy-atom formula. This shows how
+  much the decoder has learnt without masks.
+- **Constrained search (§4, `NODE_BUDGET` fixed):**
+  - top-25 **max Tanimoto** and MCES, from MassSpecGym's metrics;
+  - exact top-25;
+  - each compared against **`RandomDeNovo`**, the formula-constrained null baseline.
+
+**Gate G3:** constrained search beats `RandomDeNovo` on median top-25 max Tanimoto by ≥ 0.10
+(provisional), and the loss has converged.
+
+**Single rescue if G3 fails.** Pretrain the decoder as a SELFIES language model on
+`MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv` (`utils.load_unlabeled_mols`), with the
+cross-attention disabled. Then fine-tune as above and re-run G3 once. If it fails again, stop.
+
+---
+
+## P4 — Offline constrained search + verification
+
+Run the full novel path (plan §3.3–§3.7, §4) on `pseudo_c3` and `c2_displace`.
+
+Report:
+
+- **the funnel:** leaves → valid → single component → full formula → novel (∉ pool) → unique ik14;
+- **hit rates:** exact ik14 at top-1, top-10 and top-25; MRR@25 of the novel list; best Tanimoto
+  (a diagnostic only);
+- **where the losses are,** split three ways:
+  - oracle formula + oracle `NODE_BUDGET`;
+  - predicted formulas;
+  - predicted formulas + ICEBERG rerank;
+- **novel-list order:** `sv`-first vs `logp`-first vs a blend;
+- **displacement** on `c2_displace` under slot policy v1, for `K_NOVEL` ∈ {3, 5, 10};
+- **`sv` distributions** of true novel hits vs other novel candidates vs pool candidates, from which
+  δ for slot v2 is set;
+- **search variants:** best-first vs masked beam at equal time, and the `NODE_BUDGET` sweep of hit
+  rate against time;
+- **per-adduct and per-mode hit rates,** which decide whether `GEN_ADDUCTS` needs a restriction;
+- **the split by mass,** at or below 1000 m/z vs above 1000 m/z (DreaMS range);
+- **runtime per molecule:** embedding + search per formula + extra ICEBERG requests.
+
+**Gate G4:**
+
+- **G4.0 (kill):** oracle-formula exact@25 < 0.01 on `pseudo_c3` → stop. With the true formula given,
+  that is below the published ceiling (plan §1.2).
+- **G4.1:** predicted-formula MRR@25 of the merged list (v1) on `pseudo_c3` ≥ 0.01 (provisional).
+- **G4.2:** `c2_displace` MRR loss ≤ 0.005 at the chosen `K_NOVEL`.
+- **G4.3:** projected total runtime ≤ 7.5 h.
+
+---
+
+## P5 — Notebook integration
+
+Steps:
+
+1. **`build/novel_decoder.py`.** The model, the vocabulary mapper (JSON; no `tokenizers` needed at
+   inference), the fast tracker and the constrained search. The same file is used by P3 training.
+2. **`build/novel_worker.py`.** A subprocess on `cuda:1`, JSON in and JSON out, modelled on
+   `build/iceberg_worker.py`.
+   - It loads DreaMS and the decoder once.
+   - Per request it embeds each spectrum, builds the memory, searches per formula, and returns
+     leaves with `logp`.
+   - A failing molecule is reported and skipped.
+3. **`build/novel_sim_submit.py`.** Embeds `simple_sim_submit.py` verbatim and adds:
+   - the router;
+   - the formula stage;
+   - the worker request/response path;
+   - the constraint filter;
+   - novel candidates appended to the ICEBERG requests;
+   - the slot policy.
+4. **`build/mk_novel_sim.py`.** Generates `casmi_novel_submission.ipynb` (`CFG.USE_NOVEL = True`) and
+   `casmi_novel_control.ipynb` (`False`).
+5. **Watchdog.** Generation stops first, at `GEN_BUDGET_H`. ICEBERG keeps its existing budget.
+   Molecules still waiting when a stop fires keep their base lists.
+6. **`build/test_novel_sim.py`.** Tests to cover:
+   - verbatim embedding;
+   - twins that differ only in the flag;
+   - a fake worker returning scripted SELFIES/SMILES: valid, disconnected, wrong-H, in-pool and
+     duplicate entries;
+   - vocabulary JSON parity with `SelfiesTokenizer` token ids;
+   - tracker and mask fixtures from P0.4;
+   - the DreaMS preprocessing fixture (P0.1 parity rows);
+   - the constraint filter;
+   - slot policy v1;
+   - the watchdog cut-off;
+   - a worker crash, after which the base list is kept.
+
+**Gate G5:**
+
+- All tests pass. Read the outputs, because `run_all_tests.sh` hides exit codes (summary §8).
+- A Kaggle fast commit completes and writes `run_report.json` with generation counts.
+- The projected full run is ≤ 7.5 h.
+
+---
+
+## P6 — LB ablation and probes
+
+1. Submit `casmi_novel_control`, which must score 0.289 ± 0.002.
+2. Before the treatment is scored, write its read-out into `gate_report.md`:
+   - Δ > 0 means signal;
+   - Δ ≥ +0.005 justifies the probes;
+   - Δ ≤ 0 means stop and diagnose with the P4 funnel.
+3. Submit `casmi_novel_submission` (v1, `K_NOVEL` from P4).
+4. Run one-flag probes, one per submission: `K_NOVEL`, slot v2 (δ), `τ_gen`, then `FORMULA_TOPK` or
+   `NODE_BUDGET` if runtime allows.
+
+Record every submission in `specs_novel/scores_performed.txt`.
+
+---
+
+## P7 — Deferred extensions (only after G4 passes)
+
+- **Per-peak DreaMS memory.** Use the backbone's per-peak outputs (`dreams_intermediates`,
+  `precursor_only=False`) instead of one token per spectrum. This needs a re-embed, which is
+  expensive.
+- **Analog decoration** (knowledge_base §5.1). Mass-delta edits of library or analog hits, behind the
+  same `Generator` interface, with candidates merged into the same verifier and slot policy.
+- **Unfreezing DreaMS** for joint fine-tuning. Only if Colab budget allows, and only with a fresh
+  exclusion audit.

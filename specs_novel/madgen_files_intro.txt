@@ -1,0 +1,166 @@
+Code for extracting MADGEN checkpoints in google drive 
+
+# 1. Mount Google Drive
+from google.colab import drive
+drive.mount('/content/drive')
+
+import os
+
+# 2. Create the destination folder in Drive
+save_dir = "/content/drive/MyDrive/casmi_2026/madgen"
+os.makedirs(save_dir, exist_ok=True)
+%cd {save_dir}
+
+# 3. Direct download from Zenodo into Google Drive
+# Record ID: 15036069
+print("Downloading MADGEN MassSpecGym checkpoint and metadata...")
+
+# Download msgym.ckpt (67.1 MB)
+!wget -c "https://zenodo.org/records/17115068/files/msgym.ckpt?download=1" -O msgym.ckpt
+
+# Download msgym.pkl (167.1 MB)
+!wget -c "https://zenodo.org/records/17115068/files/msgym.pkl?download=1" -O msgym.pkl
+
+# Download ranks_msgym_pred.pkl (576.9 KB)
+!wget -c "https://zenodo.org/records/17115068/files/ranks_msgym_pred.pkl?download=1" -O ranks_msgym_pred.pkl
+
+# (Optional) If you also want the CANOPUS weights and rankings:
+!wget -c "https://zenodo.org/records/17115068/files/canopus.ckpt?download=1" -O canopus.ckpt
+!wget -c "https://zenodo.org/records/17115068/files/canopus.pkl?download=1" -O canopus.pkl
+!wget -c "https://zenodo.org/records/17115068/files/ranks_canopus_pred.pkl?download=1" -O ranks_canopus_pred.pkl
+
+print("\nDownload complete! Files saved to Drive:")
+!ls -lh
+
+
+
+
+
+
+Short answer
+- msgym.pkl — a pickled dataset dictionary (lists of canonical SMILES, preprocessed spectra, split labels, ids and some metadata). It is produced by data/msgym/raw/preprocess.py (or provided from Zenodo).
+- msgym.ckpt — a PyTorch Lightning training checkpoint for the Madgen/MarkovBridge model (contains model weights, optimizer state, epoch, logged metrics and hparams). It is produced by running train.py (ModelCheckpoint callbacks / trainer.save_checkpoint).
+- ranks_msgym_pred.pkl (ranks_msgym_pred) — a pickled mapping of test example identifiers → predicted scaffold SMILES. It is created by the scaffold_retrieval ranking pipeline: the ranking script writes raw ranking outputs (ranks_total_*.pkl) and preprocess_rank.py / preprocess_rank scripts aggregate those to produce ranks_msgym_pred.pkl.
+
+What I looked at (so you know where this comes from)
+- I opened data/msgym/raw/preprocess.py, data/msgym/raw/preprocess_rank.py, scaffold_retrieval/cand_rank_msg.py, scaffold_retrieval/params_msg.yaml, src/data/msgym_dataset.py, train.py and sample.py, README.md and configs/msgym.yaml to follow the full flow from raw data → dataset pickle → training → ranking → final scaffold-prediction file.
+- Note: code-search results may be incomplete — see the code search page for more: https://github.com/HassounLab/MADGEN/search?q=msgym&type=code
+
+Detailed, step-by-step (simple) — how each file is structured and how it was created
+
+1) msgym.pkl — what it contains
+- Type: a Python pickle file containing a dictionary (saved with pickle.dump).
+- Keys and values (from data/msgym/raw/preprocess.py):
+  - 'smiles': list of canonical SMILES strings (one per spectrum/molecule).
+  - 'ms': list of spectra, where each entry is an array-like of peaks (each peak holds intensity and mz). In the preprocess code these are numpy arrays (ms_list built from intensity arrays and mz arrays).
+  - 'source' (or 'fold'): list of split labels such as 'train' / 'val' / 'test' for each example.
+  - 'instrument_type', 'adduct', 'identifier': parallel lists giving metadata and a unique id for each example.
+- Where it’s saved: preprocess.py does
+    with open('msgym.pkl', 'wb') as f:
+        pickle.dump(data, f)
+
+How msgym.pkl is created (step-by-step)
+1. Start with raw input DataFrame (the script has a DataFrame named data — typically loaded from a raw CSV/JSON or external source).
+2. Convert intensity and mz columns to numpy arrays:
+   - inten = [np.array(eval(i)) for i in data['intensities']]
+   - mz = [np.array(eval(i)) for i in data['mzs']]
+   - ms_list = list(zip(inten, mz)) → then shaped and transposed so each spectrum is an (n_peaks, 2) array [intensity, mz].
+3. Optionally normalize mz/intensity (the script computes means/stds; some normalization lines are present).
+4. Shuffle rows (df.sample with fixed random_state), convert SMILES to canonical strings via RDKit (Chem.MolFromSmiles / Chem.MolToSmiles).
+5. Build final dictionary:
+   data = {
+     'smiles': smiles, 
+     'ms': ms_list,
+     'source': stage,
+     'instrument_type': instrument_type,
+     'adduct': adduct,
+     'identifier': identifier
+   }
+6. pickle.dump(data, 'msgym.pkl'). In the README the authors also provide a direct download link from Zenodo for msgym.pkl.
+
+Why this form is used
+- The dataset loader (src/data/msgym_dataset.py) reads msgym.pkl and uses these lists to build graph objects (create_scaffold_graph) and DataLoader batches for training or sampling.
+
+2) msgym.ckpt — what it contains
+- Type: PyTorch Lightning checkpoint file (.ckpt is a standard PL extension).
+- Typical contents (by convention and PL behavior; train.py uses Lightning Trainer + ModelCheckpoint):
+  - 'state_dict' (model weights)
+  - 'optimizer_states' and 'lr_schedulers' (optimizer and scheduler state)
+  - 'epoch', 'global_step'
+  - 'hyper_parameters' or 'hyper_parameters' / 'hparams' (the hparams used to instantiate the model)
+  - possibly trainer/PL metadata and logged metrics (top_1_accuracy, top_5_accuracy, etc.)
+- Where it’s produced: train.py configures ModelCheckpoint callbacks that save to checkpoints/<experiment>/top_1_accuracy/ and top_5_accuracy/ with names like "{epoch:03d}_{top_1_accuracy:.3f}.ckpt" (and trainer.save_checkpoint is used to save last.ckpt during sampling/validation too).
+
+How msgym.ckpt is created (step-by-step)
+1. Prepare your environment and data:
+   - Have data/msgym/raw/msgym.pkl available (download or run preprocess).
+   - Set up the config (configs/msgym.yaml) and any other parameters.
+2. Run training:
+   - Example command from README:
+       python train.py --config configs/msgym.yaml --model Madgen
+   - train.py builds the MsGymDataModule (which uses msgym.pkl), constructs the MarkovBridge model, and creates a Trainer with ModelCheckpoint callbacks.
+3. During training:
+   - PyTorch Lightning's ModelCheckpoint monitors metrics (top_1_accuracy, top_5_accuracy) and saves the top-k checkpoints into the configured directories at validation intervals. The trainer also may save a last.ckpt (trainer.save_checkpoint or callbacks).
+4. The resulting .ckpt file is a complete checkpoint you can load with:
+   - model = MarkovBridge.load_from_checkpoint("path/to/msgym.ckpt")
+   or used by sample.py (it calls model_class.load_from_checkpoint(args.checkpoint)).
+
+Notes about reproducing: the exact filename msgym.ckpt depends on the experiment name, epoch, and monitored metric; configs/msgym.yaml and args determine naming and saving.
+
+3) ranks_msgym_pred.pkl (ranks_preds_msgym / ranks_msgym_pred) — what it contains
+- Type: pickle file mapping test example identifiers → scaffold SMILES (string). In preprocess_rank.py they produce:
+    result_dict[i[1]] = list(sca_dict[formula].keys())[0]
+  where i[1] is the identifier for that query example and the value is the most frequent predicted scaffold SMILES for that formula.
+- In other words: keys are identifiers (the dataset identifier for each test item), values are predicted scaffold SMILES (Murcko scaffold SMILES).
+
+How ranks_msgym_pred.pkl is created (step-by-step)
+A. Ranking stage — produce raw rank files (ranks_total_*.pkl)
+1. Train or load the contrastive retrieval models (in scaffold_retrieval/cand_rank_msg.py):
+   - cand_rank_msg.py builds dataset structures, loads mol graphs and candidate dictionaries, trains or loads pretrained molecular encoders and spectrum encoders (train_contr), then runs a ranking loop over test queries.
+2. For each query spectrum, the ranking code scores candidate molecules and writes raw per-query output into a list structure rank_totalf = "results/ranks_total_" + timestamp + ".pkl".
+   - The raw record entries typically include: [query_smiles, identifier, ... , predictions_list], where ele[4] (in preprocess_rank.py) is the list of predicted candidate SMILES for that query sorted by score.
+3. These raw rank files are saved as ranks_total_{timestamp}.pkl in results/.
+
+B. Post-processing / aggregation — produce ranks_msgym_pred.pkl
+1. Run data/msgym/raw/preprocess_rank.py:
+   - It loads sca_list = pickle.load(open('./ranks_total_*.pkl', 'rb')) (the raw ranking file).
+   - For each element ele in sca_list:
+       - ele[0] is the query SMILES,
+       - ele[4] is the list of predicted SMILES for that query (ranked)
+       - ele[1] is an identifier used later as key.
+   - It converts each predicted SMILES into its Murcko scaffold (get_sca_smile), and aggregates counts per molecular formula (they aggregate by formula so predictions sharing a formula are combined).
+   - For each formula they sort scaffolds by frequency; then for each query they assign the most frequent scaffold for that query’s formula.
+   - The result is a dict mapping identifier → scaffold_smiles.
+2. The script then pickle.dump(result_dict, open('./ranks_msgym_pred.pkl', 'wb')).
+
+Why this step is done
+- The pipeline converts full ranked lists of candidate molecules into a single scaffold prediction per test example (or a dictionary of the most frequent scaffold per molecular formula). That scaffold prediction is then used by src/data/msgym_dataset.py during data processing (the dataset loader will open ranks_msgym_pred.pkl when stage=='test' and pass predicted scaffold info into create_scaffold_graph).
+
+How you can reproduce the end-to-end flow (commands, simple)
+1. Prepare raw spectrum and metadata files, or download the processed msgym.pkl from Zenodo (README provides link).
+2. Create msgym.pkl (if you need to): run data/msgym/raw/preprocess.py after placing your raw DataFrame / CSV in the expected location.
+3. Train the model and produce a checkpoint (msgym.ckpt):
+   - python train.py --config configs/msgym.yaml --model Madgen
+   - Checkpoint files appear in checkpoints/<experiment>/top_*/ and last.ckpt is saved during sampling/validation.
+4. Run scaffold ranking to produce raw ranks_total:
+   - Use scaffold_retrieval/cand_rank_msg.py with scaffold_retrieval/params_msg.yaml (the script writes results/ranks_total_{timestamp}.pkl).
+5. Aggregate to ranks_msgym_pred.pkl:
+   - Run data/msgym/raw/preprocess_rank.py (point it at the ranks_total file) which will create ranks_msgym_pred.pkl in the same folder.
+6. Use ranks_msgym_pred.pkl during dataset creation and evaluation (the dataset loader loads it when stage == 'test').
+
+Quick pointers to the exact code lines
+- msgym.pkl creation: data/msgym/raw/preprocess.py — at the end write pickle.dump(data, 'msgym.pkl').
+- dataset consumption: src/data/msgym_dataset.py — in process() it does ms_dict = pickle.load(open('./data/msgym/raw/msgym.pkl', 'rb')) and later uses create_scaffold_graph(..., sca_dict, key_list,...).
+- checkpoint saving: train.py — ModelCheckpoint callbacks and trainer.save_checkpoint call (find_last_checkpoint and callbacks.ModelCheckpoint configuration).
+- ranking and ranks_total generation: scaffold_retrieval/cand_rank_msg.py — writes results/ranks_total_{timestamp}.pkl.
+- aggregation to ranks_msgym_pred.pkl: data/msgym/raw/preprocess_rank.py — loads ranks_total_*.pkl and writes ranks_msgym_pred.pkl.
+
+Caveats and notes
+- I inspected the repository code to trace these exact steps, but code-search results are limited — you can view more matches on GitHub: https://github.com/HassounLab/MADGEN/search?q=msgym&type=code
+- Filenames and exact formats (which list index holds which field in ranks_total entries) are derived from the ranking scripts; if you have a specific ranks_total file, I can open it and show its structure (but I can’t read binary pickles in the repo — if you upload the .pkl I can inspect it).
+- The ranking pipeline aggregates predicted scaffolds by molecular formula (so the final ranks_msgym_pred is a per-identifier "most frequent predicted scaffold for that formula"), not necessarily the top-1 candidate scaffold per single query.
+
+If you want I can:
+- Show the exact functions that convert predicted SMILES → scaffold (I already pointed to preprocess_rank.py).
+- Produce a small diagram/one-line command sequence you can run to recreate the files locally.
+- Inspect a provided msgym.pkl or ranks_total file if you upload it (I can open and print a summary).
