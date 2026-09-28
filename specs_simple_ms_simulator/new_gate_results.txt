@@ -1,0 +1,41 @@
+               n  rows_with_drop  drop_share  drop_off  exp_off  empty_after_cut   ok
+adduct                                                                               
+[M+H]+        40           0.000       0.000       NaN      NaN              0.0  1.0
+[M+NH4]+      40           0.000       0.000       NaN      NaN              0.0  1.0
+[M-H2O+H]+    40           0.975       0.003    17.003   17.003              0.0  1.0
+[M-2H2O+H]+   40           1.000       0.020    35.013   35.013              0.0  1.0
+[M+Na]+       40           0.000       0.000       NaN      NaN              0.0  1.0
+[M+K]+        40           0.000       0.000       NaN      NaN              0.0  1.0
+[M-H]-        40           0.000       0.000       NaN      NaN              0.0  1.0
+[M-H2O-H]-    20           0.750       0.011    19.020   19.018              0.0  1.0
+[M+CH2O2-H]-  40           0.000       0.000       NaN      NaN              0.0  1.0
+[M+Cl]-       40           0.000       0.000       NaN      NaN              0.0  1.0
+
+adducts with dropped peaks: ['[M-H2O+H]+', '[M-2H2O+H]+', '[M-H2O-H]-']
+unshifted-root hypothesis (drops only in water-loss adducts, at the expected offset): CONFIRMED
+G6 sanity after the cut: 1.000 (threshold 0.98)
+
+
+
+pool 712,199 rows -> 711,690 unique ik14 with a finite mass (COCONUT 436,389, train 275,810; COCONUT key sample 'PJBPUBIFRFCYHE')
+380 queries with a pool mass (0 without), 379 with >= 1 decoy; 7,551 predictions
+full ±8.5 ppm window size per adduct (median): {'[M+H]+': 99.0, '[M+NH4]+': 102.0, '[M-H2O+H]+': 41.5, '[M-2H2O+H]+': 83.0, '[M+Na]+': 115.5, '[M+K]+': 73.5, '[M-H]-': 91.0, '[M-H2O-H]-': 20.0, '[M+CH2O2-H]-': 95.5, '[M+Cl]-': 112.5}
+$ /content/ms-pred/.venv/bin/python /content/simgate/iceberg_worker.py --gen "/content/simgate/ckpt/msg_all/gen/best.ckpt" --inten "/content/simgate/ckpt/msg_all/inten_contr/best.ckpt" --inp /content/simgate/req_iso.tsv --out /content/simgate/resp_iso.npz --device cuda --batch-size 128 --sparse-k 100  ...
+{"n": 7551, "n_predicted": 7550, "t_load": 0.6282839775085449, "t_pred": 111.65597677230835, "mol_per_s": 67.62736951733616, "device": "cuda", "batch_size": 128, "prec_margin": 2.0, "gpu": "NVIDIA A100-SXM4-40GB"}
+
+               n  cands   true   top1  chance_top1    lift      p    mrr  chance_mrr  truth_failed  covered
+adduct                                                                                                     
+[M+H]+        40   21.0  0.425  0.900        0.049  18.552  0.000  0.943       0.176             0     True
+[M+NH4]+      40   21.0  0.106  0.200        0.050   4.000  0.001  0.371       0.179             0     True
+[M-H2O+H]+    40   21.0  0.257  0.200        0.086   2.334  0.014  0.429       0.240             0    False
+[M-2H2O+H]+   40   21.0  0.132  0.125        0.054   2.334  0.060  0.274       0.187             0    False
+[M+Na]+       40   21.0  0.055  0.350        0.048   7.263  0.000  0.499       0.175             0     True
+[M+K]+        40   21.0  0.028  0.150        0.053   2.844  0.017  0.279       0.182             0    False
+[M-H]-        40   21.0  0.187  0.575        0.052  10.991  0.000  0.712       0.184             0     True
+[M-H2O-H]-    19   21.0  0.091  0.211        0.086   2.450  0.064  0.384       0.239             0    False
+[M+CH2O2-H]-  40   21.0  0.027  0.225        0.050   4.477  0.000  0.405       0.180             0     True
+[M+Cl]-       40   21.0  0.021  0.225        0.049   4.626  0.000  0.384       0.176             0     True
+
+COVERED (G2b: n >= 15, top1 >= 2.0x chance, p < 0.01): ['[M+H]+', '[M+NH4]+', '[M+Na]+', '[M-H]-', '[M+CH2O2-H]-', '[M+Cl]-']
+UNCOVERED -> MetFrag-lite fallback: ['[M-H2O+H]+', '[M-2H2O+H]+', '[M+K]+', '[M-H2O-H]-']
+G2 rule would have said: ['[M+H]+', '[M+NH4]+', '[M-H2O+H]+', '[M-2H2O+H]+', '[M+Na]+', '[M-H]-', '[M-H2O-H]-']

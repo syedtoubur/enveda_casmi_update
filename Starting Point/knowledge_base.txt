@@ -1,0 +1,447 @@
+================================================================================
+CASMI 2026: COMPREHENSIVE KNOWLEDGE BASE & STRATEGIC RESOURCE COMPENDIUM
+================================================================================
+Generated: September 2026
+Competition: Enveda CASMI 2026 - Molecule ID From Mass Spectra (Kaggle)
+Target Evaluation: Mean Reciprocal Rank @ 25 (MRR@25) on InChIKey14
+Current Best Workspace Score: 0.337 LB (enveda-casmi-2026-tier1-patched.ipynb)
+Platform Constraints: Kaggle Notebooks, <= 9 hours GPU/CPU, Completely Offline
+================================================================================
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. Executive Summary & Competition Fundamentals
+2. Deep Dive: Current Workspace Pipeline (V17 / Tier-1 Patched & Diagnostics)
+3. Open-Source Foundation Models & Neural Architectures for MS/MS
+4. Chemical Corpora & External Databases (Candidate Expansion for Class 2)
+5. De Novo & Generative Approaches (Breaking the Class 3 Wall)
+6. Spectral Algorithms, Toolkits & In-Silico Fragmentation
+7. Structural Foundation Models & Representation Learning
+8. Kaggle Infrastructure & Offline Deployment Blueprint
+9. Synthesis: Gap Analysis & Strategic Horizons for Spec-Driven Development
+
+================================================================================
+1. EXECUTIVE SUMMARY & COMPETITION FUNDAMENTALS
+================================================================================
+1.1 The Objective
+Given one or multiple tandem mass spectrometry (LC-MS/MS) spectra for an unknown 
+molecule (primarily natural products, analogs, and natural-like synthetic small 
+molecules), predict the top-25 candidate 2D chemical structures (SMILES strings).
+
+1.2 The Evaluation Metric: MRR@25 on InChIKey14
+- Each submission provides up to 25 semicolon-separated SMILES per molecule_id.
+- Formula: MRR = (1/N) * sum(1 / rank_i) for rank_i in [1, 25], else 0.
+- Equivalence Class: Both prediction and ground truth SMILES are standardized 
+  using RDKit's tautomer canonicalization (pinned strictly to RDKit 2026.03.3) 
+  and hashed into the first 14 characters of their InChIKey (InChIKey14).
+- Key Invariance:
+  * Stereochemistry (E/Z isomers, R/S stereocenters) does NOT matter.
+  * Tautomers collapse to the same InChIKey14.
+  * Only atom connectivity / 2D topological graph determines correctness.
+  * Duplicate InChIKey14 entries in the top-25 waste candidate slots.
+
+1.3 The Three Hidden Novelty Classes in Test Set
+The test set comprises ~1,500 spectra across ~400 molecules (1–16 spectra per 
+compound, median 3, monoisotopic masses 157 to 1,159 Da, median 348 Da, 10 adducts, 
+all acquired on a Bruker timsTOF):
+- Class 1 (In Public Spectral Libraries): 
+  * Identical structure exists in reference libraries with public MS/MS spectra.
+  * Solved via high-precision spectral matching (Entropy, Cosine, DreaMS embeddings).
+- Class 2 (Known Structure, No Public Spectra):
+  * Structure has NO public MS/MS spectra, but exists in chemical databases 
+    (PubChem, COCONUT, LOTUS, ChEBI, etc.).
+  * Solved via database retrieval (exact neutral mass window ± ppm) + neural 
+    fingerprint ranking / bi-encoder matching / analog propagation.
+- Class 3 (Novel Structure):
+  * Structure does NOT exist in PubChem or any public repository.
+  * CANNOT be found by pure database retrieval! Database retrieval has 0% ceiling.
+  * Requires de novo structure prediction, scaffold decoration, or analog mutation.
+
+1.4 Critical Physical & Experimental Nuances (timsTOF Bias)
+- Test spectra are 100% Bruker timsTOF acquisitions.
+- Precursor m/z in test exhibits a systematic +1.45 ppm offset relative to exact 
+  theoretical masses. Pre-centering the query mass target recovers ~0.006–0.009 MRR 
+  and allows narrowing the ppm retrieval window (e.g. from ±8.5 ppm to ±4.5–6.0 ppm) 
+  without dropping true positives, sharply reducing decoy candidate dilution.
+- Collision energy is 100% known in the test set (in eV). In train.parquet, many 
+  spectra are CE-null or in NCE (Normalized Collision Energy).
+
+================================================================================
+2. DEEP DIVE: CURRENT WORKSPACE PIPELINE (V17 / TIER-1 PATCHED & LESSONS)
+================================================================================
+2.1 The 4-Channel Decision Engine Architecture (enveda-casmi-2026-tier1-patched.ipynb)
+The current 0.337 LB solution extracts 31 features across 4 distinct evidence 
+channels, passed into an 8-model HistGradientBoosting ensemble:
+- Channel 1 (Direct Library Search):
+  * Compares query spectrum against 2.54M reference spectra in train.parquet within 
+    ±8.5 ppm of query neutral mass.
+  * Metric: Spectral entropy similarity (Li et al. 2021).
+  * Solves Class 1 queries when a twin spectrum is present.
+- Channel 2 (Mass-Shifted Analog Propagation):
+  * Searches reference library across a wide mass-shift window (±200 Da).
+  * Finds structurally related analogs; computes similarity-weighted Tanimoto 
+    propagation: sim(a)^4 * Tanimoto(analog, candidate).
+  * Informs Class 2 candidate scoring by projecting known scaffold patterns.
+- Channel 3 (MetFrag-Lite In-Silico Fragmentation):
+  * Simulates 1–2 bond disconnections on each candidate molecule.
+  * Matches simulated fragment masses against query peak list within 0.01 Da.
+  * Outputs peak explanation ratio (count and intensity weighted).
+  * Patched to max_bonds=60 to avoid bailing out on molecules >350 Da.
+- Channel 4 (Neural Fingerprint - FPNet):
+  * Deep spectrum-to-fingerprint network (Transformer/MLP) predicting a 6,930-bit 
+    molecular fingerprint (Morgan, MACCS, RDKit topological, PubChem).
+  * Scores candidate molecules using Bayes log-likelihood dot product (f · z).
+- GBDT Re-Ranker:
+  * 31 feature columns (12 derived from FPNet logits).
+  * Ensemble over W1 priors (0.30, 0.60) and 4 random seeds.
+  * Calibrated posterior probability P(candidate is truth), top-25 SMILES emitted.
+
+2.2 Key Diagnostics & Historical Failure Modes
+- The V1 Stage C Leakage Disaster (LB 0.337 -> 0.287):
+  * Stage C built training queries by sampling from train.parquet without 
+    excluding molecules the FPNet had trained on.
+  * FPNet logits had memorized those training molecules (truth was top-1 in 90.2% 
+    of training windows, compared to 42.0% in honest unseen windows).
+  * The GBDT ranker assigned 60.2% of its importance to FPNet and ignored library 
+    (2.7%) and analog (0.2%) channels.
+  * On the leaderboard, unseen structures caused the ranker to collapse.
+  * Fix (Stage C v2): Strict 4-cell stratification (Seen vs Unseen x Banned vs Visible).
+- The Self-Retrieval Numeric Bug:
+  * Reference library m/z values from RIKEN had only 2 decimal places (~12 ppm error).
+  * Setting STRUCT_MASS = True (indexing on the label's exact calculated molecular 
+    weight rather than noisy precursor_mz) recovered 2,401 NP structures and gave +0.006 MRR.
+- Candidate Pool Ceiling:
+  * The unified candidate pool consists of COCONUT 2.0 (462k) ∪ Train Scaffolds (275k) = 711k.
+  * Any Class 2 molecule that is in PubChem but NOT in COCONUT is fundamentally 
+    unreachable (0% hit rate).
+  * Any Class 3 molecule is fundamentally unreachable (0% hit rate).
+
+================================================================================
+3. OPEN-SOURCE FOUNDATION MODELS & NEURAL ARCHITECTURES FOR MS/MS
+================================================================================
+3.1 DreaMS (Deep Representations Empowering the Annotation of Mass Spectra)
+- Source / Repository:
+  * GitHub: https://github.com/pluskal-lab/DreaMS
+  * Nature Communications (2024), Pluskal Lab.
+  * Pretrained Weights: Zenodo Record 10997887 (https://zenodo.org/records/10997887)
+  * Hugging Face Space: https://huggingface.co/spaces/anton-bushuiev/DreaMS
+  * Dataset: GeMS (GNPS Experimental Mass Spectra) - millions of unannotated spectra.
+- Architecture:
+  * Transformer encoder accepting (m/z, intensity) peak lists and precursor m/z.
+  * Emits 1024-dimensional dense representation vectors.
+  * Self-supervised pretraining on peak masking and chromatographic retention prediction.
+- Status in Workspace:
+  * Already explored in casmi_dreams_colab.ipynb and _dreams_out/ in Drive.
+  * Pretrained backbone DreaMS_embedding_model_torchscript.pt is stored.
+  * Strategy: Freeze DreaMS backbone, extract 1024-d embeddings, train a downstream 
+    MLP head to predict molecular fingerprints or score cosine similarity.
+
+3.2 MassSpecGym (Pluskal Lab, NeurIPS 2024 / 2025 Spotlight)
+- Source / Repository:
+  * GitHub: https://github.com/pluskal-lab/MassSpecGym
+  * Hugging Face Dataset: https://huggingface.co/datasets/roman-bushuiev/MassSpecGym
+  * Hugging Face Profile: https://huggingface.co/roman-bushuiev
+- Description:
+  * Benchmark of 231,000+ curated, high-resolution MS/MS spectra designed specifically 
+    for three core tasks:
+    1. Molecular Retrieval (ranking candidate structures from spectra).
+    2. De Novo Molecular Generation (predicting structure without candidates).
+    3. Spectrum Simulation (forward prediction: molecule -> MS/MS).
+  * Standardizes scaffold-disjoint splits, evaluation metrics, and baselines.
+- Relevant Available Models:
+  * MS-GPT (nielsr/MS-GPT-MassSpecGym): GPT-style autoregressive model for MS/MS.
+  * De Novo Decoders (e.g. abrilrisso/massspecgym-denovo-decoder): Generating SMILES 
+    tokens conditioned on spectral embeddings.
+  * Retrieval Baselines: Pretrained contrastive models and MLP fingerprint predictors.
+
+3.3 MIST & MIST-CF (Metabolite Inference with Spectrum Transformers)
+- Source / Repository:
+  * GitHub: https://github.com/samgoldman97/mist
+  * GitHub (Formula): https://github.com/samgoldman97/mist-cf
+  * Author: Samuel Goldman et al. (MIT / Harvard)
+- Architecture & Strengths:
+  * Transformer-based architecture tailored for tandem mass spectrometry.
+  * Directly predicts sub-structure fingerprints (CSI:FingerID-style 4,000+ bit binary vectors) 
+    and chemical formulas with state-of-the-art precision.
+  * Uses contrastive losses and attention over peak loss patterns (neutral losses).
+  * Pretrained weights available in repo releases. Highly competitive candidate ranker.
+
+3.4 MS2DeepScore & matchms (Netherlands eScience Center / Hubrecht Institute)
+- Source / Repository:
+  * GitHub: https://github.com/matchms/ms2deepscore
+  * GitHub (matchms): https://github.com/matchms/matchms
+  * Pretrained models: Hosted on Zenodo (models trained on >200,000 GNPS spectra).
+- Architecture & Functionality:
+  * Siamese Neural Network taking pairs of binned MS/MS spectra and predicting 
+    structural Tanimoto similarity directly (without predicting explicit SMILES).
+  * Emits dense latent embeddings (typically 200–500 dims).
+  * High-speed nearest-neighbor search for spectral networking and analog discovery.
+  * Outstanding supplement to Channel 2 (analog propagation).
+
+3.5 MADGEN (Mass-Spec Attends to De Novo Molecular Generation, ICLR 2025)
+- Source / Repository:
+  * GitHub: https://github.com/HassounLab/MADGEN
+  * Authors: Hassoun Lab (Tufts University)
+- Architectural Innovation (Direct Fit for Class 2/3):
+  * Two-stage architecture:
+    Stage 1: Retrieve candidate core scaffold from spectrum.
+    Stage 2: Autoregressively generate substituents / complete 2D graph conditioned 
+             on both the retrieved scaffold and the MS/MS spectrum.
+  * This matches the exact physical reality of natural product biosynthesis: 
+    natural products exist in scaffold clusters (flavonoids, terpenoids, alkaloids) 
+    with variable functional groups (hydroxylations, glycosylations, acylations).
+
+3.6 Spec2Mol & MSFlow
+- Spec2Mol (Kavraki Lab, Communications Chemistry 2023):
+  * GitHub: https://github.com/KavrakiLab/Spec2Mol
+  * End-to-end Encoder-Decoder architecture translating MS/MS peak arrays directly 
+    into SMILES strings.
+- MSFlow (2026 Preprint / Flow-Matching):
+  * Generative flow-matching model using a formula-restricted transformer encoder 
+    and continuous flow decoder for molecular graph generation.
+
+3.7 SIRIUS 5 & CSI:FingerID / CANOPUS / COSMIC
+- Developed by Böcker Lab (University of Jena).
+- Gold standard in academic metabolomics:
+  * SIRIUS: Computes fragmentation trees from high-res MS/MS to find molecular formula.
+  * CSI:FingerID: Predicts molecular fingerprints from fragmentation trees using deep SVMs/NNs.
+  * CANOPUS: Predicts ChemOnt compound classes directly from MS/MS without database matching.
+  * COSMIC: Confidence scoring for uncharacterized natural products.
+- Note: Standalone CLI tools exist (academic license, offline binaries available).
+
+================================================================================
+4. CHEMICAL CORPORA & EXTERNAL DATABASES (CANDIDATE EXPANSION FOR CLASS 2)
+================================================================================
+The competition rules explicitly state:
+"Freely & publicly available external data is allowed, including pre-trained models."
+The test set description notes:
+- Class 2: "The structure is in PubChem or the natural-products database COCONUT, 
+  so it is reachable by database retrieval."
+If a molecule is in PubChem but not in COCONUT, a 711k-pool retrieval system has 
+a mathematical score ceiling of 0. Expanding the candidate pool is the highest-ROI 
+lever for Class 2.
+
+4.1 The Current Workspace Candidate Pool
+- Current: COCONUT 2.0 (462k) ∪ Train.parquet structures (275k) = ~711,705 unique structures.
+- File paths: coconut_dataset/coco_fp.npy, coco_meta.pkl.
+
+4.2 Essential Natural Product & Bioactive Databases to Ingest
+1. LOTUS (The LOTUS Initiative for Open Natural Products):
+   * Size: ~276,000 unique natural product structures with curated biological taxonomy.
+   * Access: Official portal (https://lotus.naturalproducts.net/download) or Zenodo 
+     (https://zenodo.org/communities/lotus-initiative/).
+   * Formats: SMILES, SDF, CSV.
+   * Value: Captures natural products discovered and cataloged via Wikidata; high 
+     divergence from standard synthetic screening compounds.
+2. NPAtlas (Natural Products Atlas):
+   * Size: ~35,000 microbial natural products (bacterial and fungal secondary metabolites).
+   * Access: https://www.npatlas.org/
+   * Value: Extremely high structural accuracy, curated stereocenters, high overlap 
+     with secondary metabolite classes.
+3. SuperNatural 3.0:
+   * Size: ~500,000 natural products and derivatives.
+   * Access: Free academic download (Charité / Berlin).
+4. ChEBI (Chemical Entities of Biological Interest):
+   * Size: ~60,000 curated chemical entities of biological interest.
+   * Already on user Drive: chebi-lipidmaps-casmi26 (bio_fp.npy, bio_mass.npy, bio_meta.pkl).
+5. LIPID MAPS:
+   * Size: ~48,000 curated lipid structures (Glycerolipids, Sphingolipids, Sterols, etc.).
+   * Essential because lipids fragment differently and are prominent in natural extracts.
+6. HMDB 5.0 (Human Metabolome Database):
+   * Size: ~220,000 endogenous and exogenous human metabolites.
+   * Access: https://hmdb.ca/downloads
+7. PubChem Filtered Natural-Product Space (PubChem-NP):
+   * Full PubChem is ~118M compounds, too large to store uncompressed in RAM.
+   * Strategy: Filter PubChem for:
+     a) Monoisotopic mass between 100 Da and 1,200 Da.
+     b) Organic elements only (C, H, N, O, P, S, F, Cl, Br, I).
+     c) Natural Product Likeness score (NP-likeness) > -1.0 or tagged under natural 
+        product deposition sources (e.g. UNPD, BioFacquim, NuBBEDB, TIPdb).
+     d) Reduces ~118M to ~2.5–3.5M highly plausible natural-product-like structures.
+   * Can be pre-indexed into a fast binary mass-search array (4-byte mass + 4-byte 
+     structure pointer) taking under 50 MB of memory!
+
+================================================================================
+5. DE NOVO & GENERATIVE APPROACHES (BREAKING THE CLASS 3 WALL)
+================================================================================
+Class 3 structures are novel and NOT present in PubChem or any reference database.
+A pure retrieval pipeline will score exactly 0.000 on Class 3.
+To score on Class 3 without sacrificing Class 1 and 2, three architectures exist:
+
+5.1 Strategy 1: Scaffold-Analog Mutation & Combinatorial Decoration (Graph Enumeration)
+- Motivation: Nature creates diversity by decorating conserved scaffolds (e.g., adding 
+  OH, OMe, sugar moieties, prenyl groups to core flavonoid/polyketide skeletons).
+- Workflow:
+  1. For a query spectrum, identify the top matching scaffolds from Channel 2 (Analog 
+     Propagation) or Channel 4 (FPNet).
+  2. Compute Delta_M = Neutral_Mass(Query) - Neutral_Mass(Scaffold).
+  3. Identify candidate chemical transformations that match Delta_M exactly (e.g. 
+     +15.9949 Da = +O; +14.0157 Da = +CH2; +162.0528 Da = +Hexose; -2.0157 Da = -2H).
+  4. Use RDKit BRICS or reaction SMARTS to attach functional groups to open aromatic 
+     or aliphatic carbons on the scaffold.
+  5. Canonicalize to InChIKey14 and inject the top generated candidates into the 
+     candidate pool before re-ranking!
+
+5.2 Strategy 2: Conditional Autoregressive Generation (Transformer / SMILES Decoders)
+- Models: Spec2Mol, MassSpecGym De Novo Decoder, MS-GPT.
+- Mechanism:
+  * Encoder encodes MS/MS peak list (e.g. DreaMS 1024-d embedding or peak Transformer).
+  * Decoder generates SMILES/SELFIES tokens autoregressively.
+  * Beam search (e.g. width=25–50) with precursor mass constraint: prune any beam 
+    branch whose molecular formula mass deviates from query precursor_mz by > 10 ppm.
+
+5.3 Strategy 3: Chemical Formula Gated Candidate Synthesis (MIST-CF + Chemical Graph)
+- Step 1: Predict the exact molecular formula using MIST-CF or isotopic envelope / ppm logic.
+- Step 2: Retrieve all isomers matching that exact formula from the expanded database.
+- Step 3: If no database isomer exists, invoke a formula-guided graph generator (e.g. 
+  MOLGEN or graph diffusion) to assemble valid chemical graphs matching the formula.
+
+================================================================================
+6. SPECTRAL ALGORITHMS, TOOLKITS & IN-SILICO FRAGMENTATION
+================================================================================
+6.1 Spectral Distance & Similarity Metrics
+- Spectral Entropy Similarity (Li et al., Nature Methods 2021):
+  * The gold standard for tandem mass spectra matching.
+  * Weights peak intensities by entropy; low-entropy peaks (characteristic diagnostic 
+    fragments) receive higher significance than ubiquitous low-mass noise.
+  * Used in Channel 1 with linear intensity (power=1.0) and entropy weighting.
+- Modified Cosine / Mass-Shifted Cosine (Watrous et al., PNAS 2012):
+  * Aligns both direct fragment peaks (m/z_i == m/z_j) and neutral loss shifts 
+    (precursor_1 - m/z_i == precursor_2 - m/z_j).
+  * Core engine behind GNPS molecular networking and Channel 2 analog propagation.
+
+6.2 In-Silico Fragmentation Tools
+- MetFrag & MetFrag-lite:
+  * Deterministic rule-based bond cleavage. Breaks 1 or 2 bonds and checks if fragment 
+    masses correspond to observed peaks.
+  * Fast Numba implementation already exists in the workspace.
+  * Patched in Tier-1: max_bonds increased to 60, allowing fragmentation simulation on 
+    heavy molecules (up to 1,159 Da).
+- CFM-ID 4.0 (Competitive Fragmentation Modeling):
+  * Uses probabilistic graphical models and neural networks to simulate energy-dependent 
+    MS/MS fragmentation spectra from SMILES.
+  * High accuracy, but too computationally slow for real-time 9-hour inference over 
+    thousands of candidates. Can be used for offline pre-computation on common NP standards.
+
+6.3 Open-Source Python Mass Spec Toolkits
+- matchms:
+  * Industry-standard Python library for loading, filtering, normalizing, and comparing 
+    mass spectra (MGF, MZML, JSON).
+  * Fast C/Numba implementations of Cosine, Modified Cosine, Neutral Loss, and 
+    Spec2Vec similarity.
+- pyOpenMS:
+  * Python bindings to OpenMS C++ library. High-precision isotopic deisotoping, peak picking, 
+    adduct resolution.
+- ms_entropy:
+  * Python/C++ package by Yuanyue Li implementing ultra-fast spectral entropy calculations.
+
+================================================================================
+7. STRUCTURAL FOUNDATION MODELS & DUAL-ENCODER (CONTRASTIVE) LEARNING
+================================================================================
+7.1 Contrastive Bi-Encoder Architecture for Structure Retrieval
+Instead of predicting thousands of sparse fingerprint bits with an MLP, a modern 
+alternative is a Two-Tower (Bi-Encoder) Contrastive Model (similar to CLIP / CLERMS / MSAlign):
+- Spectrum Tower (Encoder S):
+  * Input: MS/MS peak list + precursor m/z + collision energy.
+  * Backbone: Pretrained DreaMS transformer or 1D-CNN/Transformer.
+  * Output: 512-dimensional normalized embedding e_s.
+- Molecule Tower (Encoder M):
+  * Input: Candidate SMILES or 2D molecular graph.
+  * Backbone: Pretrained ChemBERTa-2, MolFormer-XL, or GNN (GINE / Graphormer).
+  * Output: 512-dimensional normalized embedding e_m.
+- Matching:
+  * Cosine similarity: score(s, m) = dot(e_s, e_m).
+  * Extremely fast: Candidate embeddings e_m for all 711k (or 2M) database compounds 
+    can be pre-computed offline and stored as float16/int8.
+  * At test time: compute e_s for the query spectrum in ~5 ms, then do matrix multiplication 
+    dot(e_s, E_window) against the ~50–200 candidates in the neutral mass window.
+
+7.2 Pretrained Molecular Language Models (Hugging Face)
+- ChemBERTa-2 (DeepChem / Hugging Face: `seyonec/ChemBERTa-zinc-base-v1`):
+  * RoBERTa architecture trained on 77M SMILES from ZINC.
+  * Emits 768-dimensional molecular embeddings.
+- MolFormer-XL (IBM / Hugging Face: `ibm/MoLFormer-XL-both-10pct`):
+  * Linear attention transformer trained on 1.1 billion molecules (PubChem + ZINC).
+  * State-of-the-art chemical representation for property prediction and retrieval.
+- Uni-Mol (DP Technology / GitHub: `deepmodeling/Uni-Mol`):
+  * 3D molecular representation model based on SE(3) transformer. Captures spatial conformations.
+
+================================================================================
+8. KAGGLE INFRASTRUCTURE & OFFLINE DEPLOYMENT BLUEPRINT
+================================================================================
+8.1 Offline Rules & Execution Constraints
+- Time limit: 9 hours execution for CPU or GPU notebook.
+- Internet access: OFF.
+- Dependencies: Must be packaged as Kaggle Datasets (pip wheels).
+  * Workspace already has: `casmi26-offline-rdkit-2026033` (rdkit wheel for Python 3.12).
+- Candidate Storage:
+  * Storing 1M+ SMILES and Morgan fingerprints in RAM can consume 5–10 GB.
+  * Use float16 or packed bitvectors (`np.packbits`, uint8) for fingerprints.
+  * Pre-index candidate databases by sorted neutral mass in binary `.npy` arrays.
+    Binary search (`np.searchsorted`) finds the candidate window in microseconds without scanning.
+
+8.2 Multi-Spectrum Query Aggregation
+- Test molecules have between 1 and 16 spectra (different collision energies, adducts).
+- Strategies:
+  1. Spectral Peak Fusion: Merge all peaks into a single composite spectrum with 
+     intensity decay weighting across collision energies.
+  2. Late Fusion (Logit Averaging): Run neural encoder / FPNet on each spectrum independently, 
+     then average the predicted fingerprint logits z_avg = (1/K) * sum(z_k).
+  3. Energy-Conditioned Hierarchical Attention: Feed all spectra of a molecule as 
+     a set/sequence into a small aggregator transformer.
+
+================================================================================
+9. SYNTHESIS: GAP ANALYSIS & STRATEGIC HORIZONS FOR SPEC-DRIVEN DEVELOPMENT
+================================================================================
+Based on the comprehensive audit of the current pipeline (0.337 LB) and available 
+open-source resources, here is the strategic roadmap for the upcoming `specs/` phase:
+
+--------------------------------------------------------------------------------
+HORIZON 1: HARDENING & FIXING CURRENT TIER-1 COUPLING (LOW RISK, IMMEDIATE GAINS)
+--------------------------------------------------------------------------------
+- Resolve the Stage D "HOLD" verdict:
+  * Execute `stage_d_diag_cell.py` to confirm that the C2 regression was caused by 
+    CE-null validation bias and val-banned training asymmetry rather than model degradation.
+  * Purge Cell C (`FPNet-seen & library-banned`) from `rank_raw.npz` so the GBDT does 
+    not over-rely on model logits in library-blind scenarios.
+  * Re-run Stage D Pass 3 (takes ~25 min) to produce a validated, leak-free ranker.
+- Narrow the Neutral Mass Retrieval Window:
+  * Given the measured +1.45 ppm systematic shift, pre-centering the target mass allows 
+    reducing `PPM_WIN` from 8.5 ppm to 5.0–6.0 ppm.
+  * Sheds ~30% of candidate decoys per window with zero loss of recall on timsTOF.
+
+--------------------------------------------------------------------------------
+HORIZON 2: CANDIDATE POOL EXPANSION (CRACKING CLASS 2 BEYOND COCONUT)
+--------------------------------------------------------------------------------
+- Download and integrate LOTUS (276k) and NPAtlas (35k).
+- Filter a high-probability Natural Product subset from PubChem (1.5M–2.5M compounds).
+- Build a unified binary candidate index:
+  * Sorted array of exact monoisotopic neutral masses.
+  * Binary packed bitvectors for rapid fingerprint dot products.
+  * Directly solves the "unreachable Class 2" failure mode where compounds are absent 
+    from COCONUT.
+
+--------------------------------------------------------------------------------
+HORIZON 3: FOUNDATION EMBEDDING ENSEMBLE (DreaMS & MIST)
+--------------------------------------------------------------------------------
+- Activate Channel 5 (DreaMS backbone + trained head):
+  * DreaMS embeddings (1024-d) already cached in Drive `_dreams_out/`.
+  * Train a shallow ranking head / projection head to emit candidate similarity scores.
+- Evaluate MIST / MassSpecGym pretrained models:
+  * Compare MIST fingerprint predictions against current FPNet to ensemble or replace 
+    lower-accuracy bits.
+
+--------------------------------------------------------------------------------
+HORIZON 4: DE NOVO & ANALOG DECORATION (CRACKING CLASS 3)
+--------------------------------------------------------------------------------
+- Implement MADGEN / BRICS scaffold decoration around Channel 2 analogs:
+  * For queries where Channel 1 (Library) and Channel 4 (FPNet) show low confidence 
+    in existing database candidates, trigger analog mutation.
+  * Swap functional groups on the closest library scaffold to match the query exact 
+    mass within 5 ppm.
+  * Populate slots 15–25 with these novel candidates to harvest Class 3 MRR points.
+
+================================================================================
+END OF KNOWLEDGE BASE COMPENDIUM
+================================================================================

@@ -1,0 +1,63 @@
+Time
+#
+Log Message
+7.5s	1	0.00s - Debugger warning: It seems that frozen modules are being used, which may
+7.5s	2	0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+7.5s	3	0.00s - to python to disable frozen modules.
+7.5s	4	0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+8.1s	5	0.00s - Debugger warning: It seems that frozen modules are being used, which may
+8.1s	6	0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+8.1s	7	0.00s - to python to disable frozen modules.
+8.1s	8	0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+10.4s	9	[INFO] Competition directory: /kaggle/input/competitions/enveda-CASMI26-molecule-id-mass-spectra
+10.4s	10	       Files available: ['sample_submission.csv', 'train.parquet', 'test.parquet']
+10.4s	11	[INFO] Installing offline RDKit wheel: /kaggle/input/casmi26-offline-rdkit-2026033/rdkit-2026.3.3-cp312-cp312-manylinux_2_28_x86_64.whl
+16.4s	12	[SUCCESS] RDKit 2026.3.3 is active and verified.
+78.7s	13	[SUCCESS] Calibrated Ranker ensemble ready: 8 GBMs (2 priors x 4 seeds) on 142,762 rows x 31 features.
+80.6s	14	  Loaded fp_merged_m1.pt: d=512, layers=6, step=24000
+81.6s	15	  Loaded fp_single_s2.pt: d=512, layers=6, step=20000
+81.6s	16	[SUCCESS] Neural FPNet Ensemble ready: 1 single + 1 merged on cuda
+83.6s	17	[INFO] COCONUT 2.0 component: 436,389 structures loaded (2.2s)
+85.1s	18	[INFO] Computing fingerprints for 275,810 training structures (multiprocessing)...
+345.8s	19	[SUCCESS] Unified candidate pool ready: 712,199 structures (264.4s)
+376.0s	20	[INFO] Reference Library loaded: 2,539,608 spectra / 275,810 unique structures (29.9s)
+378.1s	21	[INFO] Built polarity-aware representative analog set: 371,699 spectra across 275,666 unique scaffolds.
+378.8s	22	[MODE: FAST COMMIT] Commit/Save Version detected (400 rows).
+378.8s	23	       Running full 4-channel engine on first 10 molecules for rapid validation (~5 mins total).
+378.8s	24	       Remaining molecules will be populated with fast mass-matched candidates to produce a 100% valid submission.csv.
+378.8s	25	[INFO] Evaluating 1,213 spectra across 400 unique test molecules...
+399.0s	26	  [FULL] Processed 1/400 molecules | Elapsed: 388.8s
+465.2s	27	  [FAST] Processed 51/400 molecules | Elapsed: 455.0s
+465.2s	28	  [FAST] Processed 101/400 molecules | Elapsed: 455.0s
+465.2s	29	  [FAST] Processed 151/400 molecules | Elapsed: 455.0s
+465.2s	30	  [FAST] Processed 201/400 molecules | Elapsed: 455.0s
+465.2s	31	  [FAST] Processed 251/400 molecules | Elapsed: 455.0s
+465.2s	32	  [FAST] Processed 301/400 molecules | Elapsed: 455.0s
+465.3s	33	  [FAST] Processed 351/400 molecules | Elapsed: 455.1s
+465.3s	34	  [FAST] Processed 400/400 molecules | Elapsed: 455.1s
+465.3s	35	
+465.3s	36	[SUCCESS] submission.csv generated successfully with shape (400, 2) in 455.1s total.
+465.5s	37	
+465.5s	38	--- Test Cohort Empirical Summary ---
+465.5s	39	       n_candidates  best_library_sim  best_analog_sim  top_prob
+465.5s	40	count        10.000              10.0           10.000    10.000
+465.5s	41	mean        130.600               1.0            0.966     0.682
+465.5s	42	std          99.442               0.0            0.072     0.089
+465.5s	43	min          44.000               1.0            0.818     0.547
+465.5s	44	25%          56.000               1.0            1.000     0.621
+465.5s	45	50%          84.000               1.0            1.000     0.699
+465.5s	46	75%         178.250               1.0            1.000     0.739
+465.5s	47	max         332.000               1.0            1.000     0.824
+466.2s	48	
+466.2s	49	Molecules with confident library hit (>0.85): 100.0%
+466.2s	50	Molecules powered by Analog Propagation & Neural Model: 0.0%
+472.2s	51	/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+472.2s	52	  cells[i][c] = re.sub('\\\\\|', '|', cell)
+472.4s	53	/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+472.4s	54	  text = re.sub(r'_', '\_', text) # Escape underscores in display text
+473.1s	55	[NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+473.5s	56	[NbConvertApp] Writing 237803 bytes to __notebook__.ipynb
+475.9s	57	[NbConvertApp] Converting notebook __notebook__.ipynb to html
+477.1s	58	[NbConvertApp] Support files will be in __results___files/
+477.1s	59	[NbConvertApp] Making directory __results___files
+477.1s	60	[NbConvertApp] Writing 587855 bytes to __results__.html

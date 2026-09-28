@@ -1,0 +1,55 @@
+casmi_simple_sim_submission - Version 2
+Succeeded · 3h ago
+0.289
+
+casmi_submission_notebook - Version 11
+Succeeded · 2d ago
+0.314
+
+casmi_submission_notebook - Version 10
+Succeeded · 2d ago
+0.323
+
+casmi_submission_notebook - Version 9
+Succeeded · 2d ago
+0.323
+
+casmi_submission_notebook - Version 8
+Succeeded · 4d ago
+0.310
+
+casmi_submission_notebook - new_trained_fp_ranker
+Succeeded · 4d ago
+0.286
+
+casmi_submission_notebook - Version 6
+Succeeded · 5d ago
+0.309
+
+casmi_submission_notebook - Version 5
+Succeeded · 6d ago
+0.319
+
+casmi_submission_notebook - Version 3
+Succeeded · 6d ago
+0.032
+
+casmi_submission_notebook - Version 2
+Succeeded · 6d ago
+0.337
+
+
+
+Here are the score i have performed so far 0.337 is from the C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb 
+which is the copy of another notebook 
+
+when i tried to add polarity based channel then the score 
+become 0.319 C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-phase1-enhanced-baseline.ipynb
+
+0.323 is the score when i trained the fpnet and ranker myself
+summary.md contains  a summary of that 
+
+here 
+with smiles to mass spectrum simulator the score is 0.289 and without is 
+the score is 0.254
+

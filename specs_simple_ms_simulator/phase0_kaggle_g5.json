@@ -1,0 +1,24 @@
+{
+    "python_kernel": "3.12.13",
+    "python_wheels": "3.12.3",
+    "install_ok": true,
+    "install_s": 176.8,
+    "imports_ok": true,
+    "cuda": true,
+    "sha1_ok": true,
+    "smoke_wall_s": 9.7,
+    "ok_rate": 1.0,
+    "median_sim_vs_colab": 0.9999999942764881,
+    "min_sim_vs_colab": 0.7294002320850209,
+    "timing": {
+        "n": 20,
+        "n_predicted": 20,
+        "t_load": 0.7283482551574707,
+        "t_pred": 1.3350329399108887,
+        "mol_per_s": 14.980903768063557,
+        "device": "cuda",
+        "batch_size": 64,
+        "gpu": "Tesla T4"
+    },
+    "G5": "PASS"
+}

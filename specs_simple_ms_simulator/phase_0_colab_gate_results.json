@@ -1,0 +1,1053 @@
+{
+    "mspred_commit": "708148c2a8eb0c32120644436fefd2fe90cd2214",
+    "started": "2026-09-26 09:59",
+    "env": {
+        "python": "3.12.3",
+        "torch": "2.6.0+cu124",
+        "cuda": "True",
+        "dgl": "2.5.0+cu124",
+        "rdkit": "2025.03.6"
+    },
+    "G1": {
+        "checkpoints": {
+            "msg_all": {
+                "url": "https://www.dropbox.com/scl/fo/kwm35ih8tlfnshfrcq8ot/AOeS4M0_v9MhqeEZys9sCRQ?rlkey=f1n6pbzx94g1k2el2wcbmee61&dl=1",
+                "gen": "gen/best.ckpt",
+                "inten": "inten_contr/best.ckpt",
+                "gen_sha1": "c626bae180a7d3bc4c7ee658f762bd5f1f017af2",
+                "inten_sha1": "465836840089fa8f380ea7400c770cf72cfad926",
+                "gen_hparams": {
+                    "embed_adduct": true,
+                    "embed_collision": true,
+                    "embed_instrument": true,
+                    "encode_forms": true,
+                    "max_broken": 6,
+                    "hidden_size": 512
+                },
+                "inten_hparams": {
+                    "embed_adduct": true,
+                    "embed_collision": true,
+                    "embed_instrument": true,
+                    "encode_forms": true,
+                    "include_unshifted_mz": true,
+                    "max_broken": 6,
+                    "hidden_size": 256
+                }
+            },
+            "msg_simulation": {
+                "url": "https://www.dropbox.com/scl/fo/mcj0ngdvuj2xkhr983frb/ABGLrS8ZCeyYUWhzRfxPtRg?rlkey=rccvo52cehh75ma1yy8jji46t&dl=1",
+                "gen": "gen/best.ckpt",
+                "inten": "inten_contr/best.ckpt",
+                "gen_sha1": "3415292cece04d6a0541d40331b855e880401476",
+                "inten_sha1": "a34d748684b4ee1e94b4b43c81d4c14e90336d32",
+                "gen_hparams": {
+                    "embed_adduct": true,
+                    "embed_collision": true,
+                    "embed_instrument": true,
+                    "encode_forms": true,
+                    "max_broken": 6,
+                    "hidden_size": 512
+                },
+                "inten_hparams": {
+                    "embed_adduct": true,
+                    "embed_collision": true,
+                    "embed_instrument": true,
+                    "encode_forms": true,
+                    "include_unshifted_mz": true,
+                    "max_broken": 6,
+                    "hidden_size": 256
+                }
+            }
+        },
+        "licence": "MIT (ms-pred) / MIT (MassSpecGym)",
+        "adducts_refused_by_code": []
+    },
+    "sample": [
+        {
+            "adduct": "[M+H]+",
+            "n": 40,
+            "enveda": 40,
+            "tof": 0,
+            "ce_median": 40.0
+        },
+        {
+            "adduct": "[M+NH4]+",
+            "n": 40,
+            "enveda": 40,
+            "tof": 0,
+            "ce_median": 40.0
+        },
+        {
+            "adduct": "[M-H2O+H]+",
+            "n": 40,
+            "enveda": 5,
+            "tof": 35,
+            "ce_median": 15.0
+        },
+        {
+            "adduct": "[M-2H2O+H]+",
+            "n": 40,
+            "enveda": 3,
+            "tof": 7,
+            "ce_median": 15.15
+        },
+        {
+            "adduct": "[M+Na]+",
+            "n": 40,
+            "enveda": 40,
+            "tof": 0,
+            "ce_median": 40.0
+        },
+        {
+            "adduct": "[M+K]+",
+            "n": 40,
+            "enveda": 40,
+            "tof": 0,
+            "ce_median": 40.0
+        },
+        {
+            "adduct": "[M-H]-",
+            "n": 40,
+            "enveda": 40,
+            "tof": 0,
+            "ce_median": 40.0
+        },
+        {
+            "adduct": "[M-H2O-H]-",
+            "n": 20,
+            "enveda": 0,
+            "tof": 5,
+            "ce_median": 35.0
+        },
+        {
+            "adduct": "[M+CH2O2-H]-",
+            "n": 40,
+            "enveda": 40,
+            "tof": 0,
+            "ce_median": 40.0
+        },
+        {
+            "adduct": "[M+Cl]-",
+            "n": 40,
+            "enveda": 40,
+            "tof": 0,
+            "ce_median": 40.0
+        }
+    ],
+    "G2": {
+        "best_variant": "msg_all_ev_QTOF",
+        "checkpoint": "msg_all",
+        "ce_mode": "ev",
+        "instrument": "QTOF",
+        "covered": [
+            "[M+H]+",
+            "[M+NH4]+",
+            "[M-H2O+H]+",
+            "[M-2H2O+H]+",
+            "[M+Na]+",
+            "[M-H]-",
+            "[M-H2O-H]-"
+        ],
+        "uncovered": [
+            "[M+K]+",
+            "[M+CH2O2-H]-",
+            "[M+Cl]-"
+        ],
+        "variants": {
+            "msg_all_ev_QTOF": {
+                "sanity": 0.8631578947368421,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.4247,
+                        "shuffled": 0.0215,
+                        "gap": 0.4032,
+                        "top1": 0.95,
+                        "mrr": 0.9708,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.1056,
+                        "shuffled": 0.0114,
+                        "gap": 0.0942,
+                        "top1": 0.425,
+                        "mrr": 0.5361,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.2612,
+                        "shuffled": 0.0,
+                        "gap": 0.2612,
+                        "top1": 0.725,
+                        "mrr": 0.8248,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.132,
+                        "shuffled": 0.0,
+                        "gap": 0.132,
+                        "top1": 0.55,
+                        "mrr": 0.6721,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.0547,
+                        "shuffled": 0.0,
+                        "gap": 0.0547,
+                        "top1": 0.35,
+                        "mrr": 0.4718,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0279,
+                        "shuffled": 0.0,
+                        "gap": 0.0279,
+                        "top1": 0.325,
+                        "mrr": 0.4128,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.1872,
+                        "shuffled": 0.0044,
+                        "gap": 0.1828,
+                        "top1": 0.75,
+                        "mrr": 0.8433,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.078,
+                        "shuffled": 0.0,
+                        "gap": 0.078,
+                        "top1": 0.4,
+                        "mrr": 0.5546,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.0271,
+                        "shuffled": 0.0,
+                        "gap": 0.0271,
+                        "top1": 0.25,
+                        "mrr": 0.4261,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0208,
+                        "shuffled": 0.0,
+                        "gap": 0.0208,
+                        "top1": 0.25,
+                        "mrr": 0.4121,
+                        "chance": 0.025
+                    }
+                ]
+            },
+            "msg_all_ev_Orbitrap": {
+                "sanity": 0.8447368421052631,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.4154,
+                        "shuffled": 0.0195,
+                        "gap": 0.3959,
+                        "top1": 0.925,
+                        "mrr": 0.95,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.0961,
+                        "shuffled": 0.0102,
+                        "gap": 0.0859,
+                        "top1": 0.375,
+                        "mrr": 0.5112,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.2511,
+                        "shuffled": 0.0,
+                        "gap": 0.2511,
+                        "top1": 0.725,
+                        "mrr": 0.8402,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.1267,
+                        "shuffled": 0.0,
+                        "gap": 0.1267,
+                        "top1": 0.625,
+                        "mrr": 0.7144,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.0467,
+                        "shuffled": 0.0,
+                        "gap": 0.0467,
+                        "top1": 0.375,
+                        "mrr": 0.4708,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0233,
+                        "shuffled": 0.0,
+                        "gap": 0.0233,
+                        "top1": 0.275,
+                        "mrr": 0.3604,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.1766,
+                        "shuffled": 0.0027,
+                        "gap": 0.1739,
+                        "top1": 0.7,
+                        "mrr": 0.8154,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.0734,
+                        "shuffled": 0.0,
+                        "gap": 0.0734,
+                        "top1": 0.25,
+                        "mrr": 0.4538,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.0298,
+                        "shuffled": 0.0,
+                        "gap": 0.0298,
+                        "top1": 0.25,
+                        "mrr": 0.3982,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0242,
+                        "shuffled": 0.0,
+                        "gap": 0.0242,
+                        "top1": 0.275,
+                        "mrr": 0.4118,
+                        "chance": 0.025
+                    }
+                ]
+            },
+            "msg_all_nce_QTOF": {
+                "sanity": 0.9052631578947369,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.3361,
+                        "shuffled": 0.03,
+                        "gap": 0.3061,
+                        "top1": 0.9,
+                        "mrr": 0.9272,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.0977,
+                        "shuffled": 0.0147,
+                        "gap": 0.0829,
+                        "top1": 0.475,
+                        "mrr": 0.5497,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.1622,
+                        "shuffled": 0.0,
+                        "gap": 0.1622,
+                        "top1": 0.5,
+                        "mrr": 0.6424,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.1297,
+                        "shuffled": 0.0,
+                        "gap": 0.1297,
+                        "top1": 0.55,
+                        "mrr": 0.6639,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.0428,
+                        "shuffled": 0.0051,
+                        "gap": 0.0377,
+                        "top1": 0.35,
+                        "mrr": 0.4487,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0213,
+                        "shuffled": 0.0,
+                        "gap": 0.0213,
+                        "top1": 0.3,
+                        "mrr": 0.3805,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.1323,
+                        "shuffled": 0.0056,
+                        "gap": 0.1266,
+                        "top1": 0.625,
+                        "mrr": 0.7357,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.0176,
+                        "shuffled": 0.0,
+                        "gap": 0.0176,
+                        "top1": 0.2,
+                        "mrr": 0.383,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.0367,
+                        "shuffled": 0.0,
+                        "gap": 0.0367,
+                        "top1": 0.25,
+                        "mrr": 0.4109,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0216,
+                        "shuffled": 0.0,
+                        "gap": 0.0216,
+                        "top1": 0.3,
+                        "mrr": 0.4161,
+                        "chance": 0.025
+                    }
+                ]
+            },
+            "msg_all_nce_Orbitrap": {
+                "sanity": 0.881578947368421,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.3673,
+                        "shuffled": 0.0307,
+                        "gap": 0.3365,
+                        "top1": 0.95,
+                        "mrr": 0.9653,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.1046,
+                        "shuffled": 0.0137,
+                        "gap": 0.0909,
+                        "top1": 0.45,
+                        "mrr": 0.5472,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.2254,
+                        "shuffled": 0.0,
+                        "gap": 0.2254,
+                        "top1": 0.675,
+                        "mrr": 0.8092,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.134,
+                        "shuffled": 0.0,
+                        "gap": 0.134,
+                        "top1": 0.5,
+                        "mrr": 0.6245,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.0429,
+                        "shuffled": 0.0031,
+                        "gap": 0.0397,
+                        "top1": 0.35,
+                        "mrr": 0.4392,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0187,
+                        "shuffled": 0.0,
+                        "gap": 0.0187,
+                        "top1": 0.25,
+                        "mrr": 0.321,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.1242,
+                        "shuffled": 0.0047,
+                        "gap": 0.1195,
+                        "top1": 0.65,
+                        "mrr": 0.7586,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.0601,
+                        "shuffled": 0.0,
+                        "gap": 0.0601,
+                        "top1": 0.25,
+                        "mrr": 0.4457,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.035,
+                        "shuffled": 0.0,
+                        "gap": 0.035,
+                        "top1": 0.175,
+                        "mrr": 0.3658,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0186,
+                        "shuffled": 0.0,
+                        "gap": 0.0186,
+                        "top1": 0.3,
+                        "mrr": 0.4106,
+                        "chance": 0.025
+                    }
+                ]
+            },
+            "msg_simulation_ev_QTOF": {
+                "sanity": 0.9026315789473685,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.3029,
+                        "shuffled": 0.0248,
+                        "gap": 0.2781,
+                        "top1": 0.95,
+                        "mrr": 0.9646,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.0741,
+                        "shuffled": 0.0117,
+                        "gap": 0.0624,
+                        "top1": 0.375,
+                        "mrr": 0.4804,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.1885,
+                        "shuffled": 0.0,
+                        "gap": 0.1885,
+                        "top1": 0.625,
+                        "mrr": 0.7462,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.0603,
+                        "shuffled": 0.0,
+                        "gap": 0.0603,
+                        "top1": 0.475,
+                        "mrr": 0.5781,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.0501,
+                        "shuffled": 0.0109,
+                        "gap": 0.0392,
+                        "top1": 0.275,
+                        "mrr": 0.3952,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0158,
+                        "shuffled": 0.0,
+                        "gap": 0.0158,
+                        "top1": 0.175,
+                        "mrr": 0.2879,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.1328,
+                        "shuffled": 0.0035,
+                        "gap": 0.1293,
+                        "top1": 0.55,
+                        "mrr": 0.6838,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.0212,
+                        "shuffled": 0.0,
+                        "gap": 0.0212,
+                        "top1": 0.25,
+                        "mrr": 0.3632,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.0266,
+                        "shuffled": 0.0,
+                        "gap": 0.0266,
+                        "top1": 0.15,
+                        "mrr": 0.3136,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0173,
+                        "shuffled": 0.0,
+                        "gap": 0.0173,
+                        "top1": 0.275,
+                        "mrr": 0.3954,
+                        "chance": 0.025
+                    }
+                ]
+            },
+            "msg_simulation_ev_Orbitrap": {
+                "sanity": 0.8921052631578947,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.3005,
+                        "shuffled": 0.0223,
+                        "gap": 0.2782,
+                        "top1": 0.9,
+                        "mrr": 0.931,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.0779,
+                        "shuffled": 0.0107,
+                        "gap": 0.0672,
+                        "top1": 0.4,
+                        "mrr": 0.503,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.2068,
+                        "shuffled": 0.0,
+                        "gap": 0.2068,
+                        "top1": 0.7,
+                        "mrr": 0.7967,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.0669,
+                        "shuffled": 0.0,
+                        "gap": 0.0669,
+                        "top1": 0.425,
+                        "mrr": 0.5817,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.0488,
+                        "shuffled": 0.0104,
+                        "gap": 0.0384,
+                        "top1": 0.275,
+                        "mrr": 0.3792,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0129,
+                        "shuffled": 0.0,
+                        "gap": 0.0129,
+                        "top1": 0.175,
+                        "mrr": 0.2903,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.1419,
+                        "shuffled": 0.0037,
+                        "gap": 0.1382,
+                        "top1": 0.625,
+                        "mrr": 0.7388,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.0422,
+                        "shuffled": 0.0,
+                        "gap": 0.0422,
+                        "top1": 0.25,
+                        "mrr": 0.406,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.0224,
+                        "shuffled": 0.0,
+                        "gap": 0.0224,
+                        "top1": 0.25,
+                        "mrr": 0.356,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0152,
+                        "shuffled": 0.0,
+                        "gap": 0.0152,
+                        "top1": 0.15,
+                        "mrr": 0.2986,
+                        "chance": 0.025
+                    }
+                ]
+            },
+            "msg_simulation_nce_QTOF": {
+                "sanity": 0.9289473684210526,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.2387,
+                        "shuffled": 0.0304,
+                        "gap": 0.2083,
+                        "top1": 0.65,
+                        "mrr": 0.779,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.0716,
+                        "shuffled": 0.0143,
+                        "gap": 0.0572,
+                        "top1": 0.4,
+                        "mrr": 0.4932,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.1025,
+                        "shuffled": 0.0,
+                        "gap": 0.1025,
+                        "top1": 0.6,
+                        "mrr": 0.6846,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.0645,
+                        "shuffled": 0.0,
+                        "gap": 0.0645,
+                        "top1": 0.45,
+                        "mrr": 0.5863,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.044,
+                        "shuffled": 0.0103,
+                        "gap": 0.0337,
+                        "top1": 0.225,
+                        "mrr": 0.3364,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0155,
+                        "shuffled": 0.0,
+                        "gap": 0.0155,
+                        "top1": 0.175,
+                        "mrr": 0.2787,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.074,
+                        "shuffled": 0.0,
+                        "gap": 0.074,
+                        "top1": 0.45,
+                        "mrr": 0.5982,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.0,
+                        "shuffled": 0.0,
+                        "gap": 0.0,
+                        "top1": 0.05,
+                        "mrr": 0.2249,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.0308,
+                        "shuffled": 0.0,
+                        "gap": 0.0308,
+                        "top1": 0.2,
+                        "mrr": 0.3348,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0194,
+                        "shuffled": 0.0,
+                        "gap": 0.0194,
+                        "top1": 0.3,
+                        "mrr": 0.4206,
+                        "chance": 0.025
+                    }
+                ]
+            },
+            "msg_simulation_nce_Orbitrap": {
+                "sanity": 0.9184210526315789,
+                "errors": {},
+                "table": [
+                    {
+                        "adduct": "[M+H]+",
+                        "n": 40,
+                        "true": 0.2587,
+                        "shuffled": 0.0314,
+                        "gap": 0.2273,
+                        "top1": 0.875,
+                        "mrr": 0.9198,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+NH4]+",
+                        "n": 40,
+                        "true": 0.1074,
+                        "shuffled": 0.0149,
+                        "gap": 0.0925,
+                        "top1": 0.425,
+                        "mrr": 0.5283,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O+H]+",
+                        "n": 40,
+                        "true": 0.1504,
+                        "shuffled": 0.0,
+                        "gap": 0.1504,
+                        "top1": 0.625,
+                        "mrr": 0.7496,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-2H2O+H]+",
+                        "n": 40,
+                        "true": 0.0982,
+                        "shuffled": 0.0,
+                        "gap": 0.0982,
+                        "top1": 0.525,
+                        "mrr": 0.6386,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Na]+",
+                        "n": 40,
+                        "true": 0.0474,
+                        "shuffled": 0.0119,
+                        "gap": 0.0355,
+                        "top1": 0.25,
+                        "mrr": 0.3788,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+K]+",
+                        "n": 40,
+                        "true": 0.0173,
+                        "shuffled": 0.0,
+                        "gap": 0.0173,
+                        "top1": 0.15,
+                        "mrr": 0.2705,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H]-",
+                        "n": 40,
+                        "true": 0.0956,
+                        "shuffled": 0.0046,
+                        "gap": 0.091,
+                        "top1": 0.55,
+                        "mrr": 0.6798,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M-H2O-H]-",
+                        "n": 20,
+                        "true": 0.0,
+                        "shuffled": 0.0,
+                        "gap": 0.0,
+                        "top1": 0.2,
+                        "mrr": 0.3236,
+                        "chance": 0.05
+                    },
+                    {
+                        "adduct": "[M+CH2O2-H]-",
+                        "n": 40,
+                        "true": 0.0313,
+                        "shuffled": 0.0,
+                        "gap": 0.0313,
+                        "top1": 0.2,
+                        "mrr": 0.3208,
+                        "chance": 0.025
+                    },
+                    {
+                        "adduct": "[M+Cl]-",
+                        "n": 40,
+                        "true": 0.0148,
+                        "shuffled": 0.0,
+                        "gap": 0.0148,
+                        "top1": 0.225,
+                        "mrr": 0.3446,
+                        "chance": 0.025
+                    }
+                ]
+            }
+        }
+    },
+    "G6": {
+        "sanity_best": 0.8631578947368421,
+        "threshold": 0.98,
+        "passed": false
+    },
+    "G3": {
+        "median_sim_10_vs_60": 0.3496816433894928,
+        "ce_effective": true,
+        "mrr_ev": 0.9708333333333332,
+        "mrr_nce": 0.9271825396825395,
+        "chosen": "ev"
+    },
+    "G4": {
+        "gpu_bs64": {
+            "mol_per_s": 51.74466694135163,
+            "wall_s": 29.423532485961914,
+            "t_load": 0.6207642555236816,
+            "ok": 1.0,
+            "gpu": "NVIDIA A100-SXM4-40GB",
+            "errors": {}
+        },
+        "gpu_bs128": {
+            "mol_per_s": 58.52984005194126,
+            "wall_s": 27.187728881835938,
+            "t_load": 0.6271061897277832,
+            "ok": 1.0,
+            "gpu": "NVIDIA A100-SXM4-40GB",
+            "errors": {}
+        },
+        "cpu": {
+            "mol_per_s": 2.3973468495181223,
+            "wall_s": 49.633118867874146,
+            "ok": 1.0,
+            "vcpu": 12
+        },
+        "projection_h_per_condition_712k": 3.380037522398697
+    },
+    "G5": {
+        "colab_half": "done",
+        "upload": "/content/drive/MyDrive/casmi_2026/_simlib/gate/kaggle_upload",
+        "n_wheels": 145,
+        "upload_gb": 3.682506191,
+        "kaggle_half": "PENDING -- run casmi_simple_sim_gate_kaggle.ipynb"
+    },
+    "verdict": "FAIL: G6 sanity 0.863 < 0.98",
+    "finished": "2026-09-26 10:20"
+}

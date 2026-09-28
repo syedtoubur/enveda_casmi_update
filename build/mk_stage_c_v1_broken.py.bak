@@ -1,0 +1,478 @@
+"""Build the Stage-C Kaggle notebook: regenerate rank_train.npz against the NEW FPNet.
+
+Cells 1-8 of the phase1 inference notebook are embedded VERBATIM. That is the whole point:
+the feature matrix the GBDT trains on must be produced by the same code that produces it at
+inference, down to the byte.
+"""
+import json
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SRC = HERE.parent / "enveda-casmi-2026-phase1-enhanced-baseline.ipynb"
+OUT = HERE.parent / "casmi_rank_matrix.ipynb"
+
+nb = json.loads(SRC.read_text(encoding="utf-8"))
+P = ["".join(c["source"]) for c in nb["cells"]]
+
+# cell 8 holds rank_features AND the RANKERS fit. Stage C needs the first half only --
+# it is generating the ranker's training data, so it must not depend on the old matrix.
+split = P[8].index("# Fit Calibrated Rankers")
+RANK_FEATURES = P[8][:split].rstrip()
+assert "def rank_features" in RANK_FEATURES and "rank_train.npz" not in RANK_FEATURES
+
+cells = []
+
+
+def md(s):
+    cells.append({"cell_type": "markdown", "metadata": {}, "source": s.splitlines(True)})
+
+
+def code(s):
+    cells.append({"cell_type": "code", "metadata": {}, "execution_count": None,
+                  "outputs": [], "source": s.splitlines(True)})
+
+
+md("""# CASMI 2026 - Stage C: regenerate `rank_train.npz`
+
+The GBDT fusion ranker is the layer that decides final order, and **12 of its 31 features are
+functions of the FPNet logits** (`raw = cand_fp @ z`, its z-score, its rank-normalisation, its
+gap to the max, and six cross-channel agreement terms). The forked `rank_train.npz` was built
+against the *forked* checkpoints. Pair it with a newly trained FPNet and the GBDTs apply split
+thresholds learned on a different model's logit distribution - which is how a better model
+produces a worse leaderboard score.
+
+This notebook rebuilds that matrix against **your** checkpoints.
+
+**Cells 1-8 below are copied verbatim from `enveda-casmi-2026-phase1-enhanced-baseline.ipynb`.**
+Do not edit them. `rank_features` must be the same function here and at inference.
+
+### Attach exactly these datasets
+* the competition data
+* `casmi26-offline-rdkit-2026033`
+* `coconut_dataset` (`fp_bits.npy`, `coco_*`)
+* `val_scripts` (for `val_key.pkl` - the structures to hold out)
+* **`casmi26-fpnet-v3`** - your new checkpoints
+* **not** `casmi26-fp-models-v2` and **not** `casmi26-ranker-features`.
+  `load_neural_models()` globs `fp_*.pt` across all of `/kaggle/input`, so attaching the old
+  dataset too would silently ensemble the old model into your new features.
+
+### Sharding
+Set `SC.SHARD` to 0, 1, 2 and run three copies concurrently. Each writes
+`rank_shard_{i}.npz`; the final cell merges whatever shards it can find.""")
+
+md("## Cells 1-8 - verbatim from the inference notebook")
+for i in range(1, 8):
+    code(P[i])
+code(RANK_FEATURES)
+
+code('''# ===================================================================================
+#  Stage-C config
+# ===================================================================================
+class SC:
+    SHARD     = 0          # <- 0, 1, 2 in three concurrent notebooks
+    N_SHARDS  = 3
+    N_QUERIES = 2000       # total across all shards; ~1000 per class regime
+
+    # Cohort definition, mirroring the validation-set builder so the ranker is trained on
+    # the same kind of query it will be scored on.
+    NP_LIBS = ['riken','mona','msdial','massbank','gnps','enveda-np-examples','masaryk']
+    MASS_LO, MASS_HI = 157.0, 1159.0
+    MIN_PEAKS = 5
+
+    NEG_PER_CHANNEL = 15   # hard negatives kept per channel
+    NEG_RANDOM      = 15
+    SEED = 20260922
+    OUT = '/kaggle/working'
+
+NFEAT = N_FEAT   # 31 -- the natural width of rank_features, not a borrowed matrix's width
+print(f"shard {SC.SHARD+1}/{SC.N_SHARDS}  |  NFEAT={NFEAT}")''')
+
+code('''# ===================================================================================
+#  Verify the fp_bits contract, then load YOUR checkpoints
+# ===================================================================================
+import hashlib
+FP_SHA1 = hashlib.sha1(np.ascontiguousarray(BITS).tobytes()).hexdigest()
+print(f"fp_bits sha1 (this notebook): {FP_SHA1}")
+
+found = sorted(glob.glob('/kaggle/input/**/fp_*.pt', recursive=True))
+print("checkpoints visible to load_neural_models():")
+for p in found: print("   ", p)
+assert found, "no fp_*.pt found - attach casmi26-fpnet-v3"
+
+for p in found:
+    ck = torch.load(p, map_location='cpu', weights_only=False)
+    got = ck.get('fp_bits_sha1')
+    if got is None:
+        print(f"  !! {os.path.basename(p)} carries no fp_bits_sha1 - this is an OLD checkpoint.")
+        print("     Detach casmi26-fp-models-v2, or Stage C bakes the old model into the features.")
+        raise SystemExit("old checkpoint attached")
+    assert got == FP_SHA1, (
+        f"{os.path.basename(p)} was trained against a different fp_bits layout "
+        f"({got[:12]}... vs {FP_SHA1[:12]}...). f.z would be noise.")
+print("all checkpoints agree on the fp_bits layout")
+
+load_neural_models()
+assert _MODEL is not None, "FPNet failed to load"
+single, merged, dev_, nb_ = _MODEL
+assert nb_ == len(BITS), f"checkpoint nbits {nb_} != {len(BITS)}"
+assert len(single) >= 1 and len(merged) >= 1, "need at least one single and one merged model"
+print(f"ready: {len(single)} single + {len(merged)} merged on {dev_}")''')
+
+code('''# ===================================================================================
+#  Library, pool, representative analog set  (same construction as inference)
+# ===================================================================================
+pool = build_candidate_pool()
+L = load_library(TRAIN)
+rep, rep_key, rep_nm, rep_pos = build_rep(L)
+print(f"[INFO] pool {len(pool.mass):,} | library {len(L['off'])-1:,} spectra | rep {len(rep):,}")''')
+
+code('''# ===================================================================================
+#  Ban-aware channels - the leakage machinery, same as the validation notebook
+# ===================================================================================
+#  A Class-2 query must not be able to match its own spectrum. These wrap the verbatim
+#  channel functions with the row/key filter rather than replacing them.
+
+def _drop(cand, ban_rows, ban_keys, ik_arr):
+    if cand.size == 0 or (not len(ban_rows) and not len(ban_keys)): return cand
+    m = np.ones(len(cand), bool)
+    if len(ban_rows): m &= ~np.isin(cand, ban_rows)
+    if len(ban_keys): m &= ~np.isin(ik_arr[cand], ban_keys)
+    return cand[m]
+
+def lib_sim_ban(L, specs, target, ban_rows=(), ban_keys=()):
+    cand = lib_window(L, target, target * CFG.PPM_WIN / 1e6)
+    cand = _drop(cand, np.asarray(ban_rows, np.int64),
+                 np.asarray(ban_keys, dtype=object), L['ik'])
+    if len(cand) == 0: return {}
+    agg = {}
+    for mz, it in specs:
+        qm, qp = clean_spectrum(mz, it)
+        if len(qm) == 0: continue
+        sc = search(qm, qp, cand, L['off'], L['mz'], L['it'],
+                    CFG.MZ_TOL, CFG.INT_FLOOR, CFG.MAX_PEAKS, CFG.INT_POWER, CFG.ENT_WEIGHT)
+        for c, s in zip(cand, sc):
+            k = L['ik'][c]
+            if s > agg.get(k, -1.0): agg[k] = float(s)
+    return agg
+
+def analog_sim_ban(L, specs, target, rep, rep_key, rep_nm, ban_rows=(), ban_keys=()):
+    lo = np.searchsorted(rep_nm, target - CFG.ANALOG_WIN, 'left')
+    hi = np.searchsorted(rep_nm, target + CFG.ANALOG_WIN, 'right')
+    if hi <= lo: return []
+    cand  = rep[lo:hi]
+    shift = (target - rep_nm[lo:hi]).astype(np.float32)
+    ckey  = rep_key[lo:hi]
+    if len(ban_rows) or len(ban_keys):
+        m = np.ones(len(cand), bool)
+        if len(ban_rows): m &= ~np.isin(cand, np.asarray(ban_rows, np.int64))
+        if len(ban_keys): m &= ~np.isin(ckey, np.asarray(ban_keys, dtype=object))
+        cand, shift, ckey = cand[m], shift[m], ckey[m]
+    if len(cand) == 0: return []
+    agg = {}
+    for mz, it in specs:
+        qm, qp = clean_spectrum(mz, it)
+        if len(qm) == 0: continue
+        sc = search_shift(qm, qp, cand, L['off'], L['mz'], L['it'],
+                          CFG.MZ_TOL, CFG.INT_FLOOR, CFG.MAX_PEAKS,
+                          CFG.INT_POWER, CFG.ENT_WEIGHT, shift)
+        for c, k, s in zip(cand, ckey, sc):
+            if s > agg.get(k, -1.0): agg[k] = float(s)
+    return sorted(agg.items(), key=lambda x: -x[1])[:CFG.N_ANALOG]
+
+print("ban-aware channels ready")''')
+
+code('''# ===================================================================================
+#  frag_scores with a persistent worker pool
+# ===================================================================================
+#  phase1's frag_scores forks a 4-worker pool PER MOLECULE. Fine for 400 test molecules,
+#  wasteful for thousands. Reusing one pool is numerically identical - fragment_masses is a
+#  pure function of the SMILES - and the assertion in the generation loop proves it on real
+#  data before the result is used.
+_MP = None
+def frag_scores_fast(cand_smiles, specs, mode):
+    global _MP
+    if not HAVE_RDKIT: return np.zeros(len(cand_smiles), np.float32)
+    if _MP is None: _MP = MPool(4)
+    frags = _MP.map(_frag_masses_wrapper, cand_smiles, chunksize=8)
+    peaks = []
+    for mz, it in specs:
+        m2, i2 = _clean(np.asarray(mz, np.float32), np.asarray(it, np.float32),
+                        CFG.INT_FLOOR, CFG.MAX_PEAKS, 1.0, False)
+        peaks.append((np.asarray(m2, float), np.asarray(i2, float)))
+    out = np.zeros(len(cand_smiles), np.float32)
+    for j, f in enumerate(frags):
+        out[j] = max((explain_score(f, a, b, mode=mode, tol=CFG.MZ_TOL) for a, b in peaks),
+                     default=0.0)
+    return out
+print("frag_scores_fast ready")''')
+
+code('''# ===================================================================================
+#  Query cohort: sampled from train, DISJOINT from the validation set
+# ===================================================================================
+MDCOLS = ['inchikey14','normalized_smiles','ingest_lib','adduct','ionization_mode',
+          'instrument_type','precursor_mz','num_peaks','collision_energy_ev']
+md = pq.read_table(TRAIN, columns=MDCOLS).to_pandas()
+md['row'] = np.arange(len(md), dtype=np.int64)
+md['nm']  = neutral_mass(md.precursor_mz.values.astype(np.float64), md.adduct.values)
+
+val_key = pickle.load(open(find_file('val_key.pkl'), 'rb'))
+BANNED = set()
+for r in val_key:
+    BANNED.add(r['inchikey14'])
+    BANNED |= set(r.get('ban_keys') or [])
+print(f"[INFO] validation reserves {len(BANNED):,} structures - excluded from the ranker's "
+      f"training queries so Stage D measures generalisation, not recall of its own fit set")
+
+TEST_ADDUCTS = ["[M+H]+","[M+NH4]+","[M-H2O+H]+","[M-2H2O+H]+","[M+Na]+","[M+K]+",
+                "[M-H]-","[M-H2O-H]-","[M+CH2O2-H]-","[M+Cl]-"]
+elig = (md.ingest_lib.isin(SC.NP_LIBS).values
+        & md.adduct.isin(TEST_ADDUCTS).values
+        & np.isfinite(md.nm.values)
+        & (md.nm.values >= SC.MASS_LO) & (md.nm.values <= SC.MASS_HI)
+        & (md.num_peaks.values >= SC.MIN_PEAKS)
+        & md.inchikey14.notna().values
+        & md.normalized_smiles.notna().values
+        & ~md.inchikey14.isin(BANNED).values)
+E = md[elig]
+print(f"[INFO] eligible query spectra: {len(E):,} / {E.inchikey14.nunique():,} structures")
+
+def ce_tag(v):
+    try:
+        a = np.atleast_1d(v)
+        return float(np.nanmean(a.astype(float))) if len(a) and not pd.isna(a).all() else np.nan
+    except Exception:
+        return np.nan
+E = E.assign(ce=[ce_tag(v) for v in E.collision_energy_ev])
+E['ce_known'] = E.ce.notna()
+
+# Structures measured in >=2 libraries can play the Class-1 role: ban the query's own
+# source library and the OTHER libraries' spectra of it remain findable by Channel 1.
+kl   = md[['inchikey14','ingest_lib']].dropna().drop_duplicates()
+nlib = kl.groupby('inchikey14').ingest_lib.nunique()
+multi = set(nlib[nlib >= 2].index)
+
+rng = np.random.default_rng(SC.SEED)
+keys   = np.array(sorted(set(E.inchikey14)))
+m_keys = np.array(sorted(set(keys) & multi))
+half   = SC.N_QUERIES // 2
+cls1   = rng.choice(m_keys, size=min(half, len(m_keys)), replace=False)
+restk  = np.array(sorted(set(keys) - set(cls1)))
+cls2   = rng.choice(restk, size=min(SC.N_QUERIES - len(cls1), len(restk)), replace=False)
+
+# M=0 Class-1-like, M=1 Class-2-like. Disjoint structure sets, so no two rows in the matrix
+# come from the same molecule scored under two regimes.
+QUERIES = [(k, 0) for k in cls1] + [(k, 1) for k in cls2]
+rng.shuffle(QUERIES)
+QUERIES = QUERIES[SC.SHARD::SC.N_SHARDS]
+print(f"[INFO] shard {SC.SHARD}: {len(QUERIES):,} queries "
+      f"({sum(1 for _,m in QUERIES if m==0)} class-1-like / "
+      f"{sum(1 for _,m in QUERIES if m==1)} class-2-like)")
+
+SPEC_N = pq.read_table(TEST, columns=['molecule_id']).to_pandas().groupby('molecule_id').size().values''')
+
+code('''# ===================================================================================
+#  Assemble each query: pick spectra like the test set, then compute the ban lists
+# ===================================================================================
+rows_of_key = md.dropna(subset=['inchikey14']).groupby('inchikey14').row.apply(list).to_dict()
+Eg = {k: g for k, g in E.groupby('inchikey14')}
+
+records = []
+for ik, M in QUERIES:
+    g = Eg.get(ik)
+    if g is None or len(g) == 0: continue
+    src = g.ingest_lib.value_counts().idxmax()
+    g = g[g.ingest_lib == src]
+    if len(g) == 0: continue
+
+    # Prefer CE-known rows: the test set always reports collision energy in eV, so a query
+    # built from a CE-null row would exercise FPNet's 25.0 eV fallback, not the real path.
+    gk = g[g.ce_known]
+    gp = gk if len(gk) else g
+
+    n = int(min(len(gp), rng.choice(SPEC_N)))
+    pick, seen = [], set()
+    for r in gp.sample(frac=1.0, random_state=int(rng.integers(1 << 30))).itertuples():
+        ce_key = round(r.ce, 1) if not np.isnan(r.ce) else f"unk_{r.row}"
+        t = (r.adduct, ce_key)
+        if t not in seen:
+            seen.add(t); pick.append(r.row)
+        if len(pick) == n: break
+    if not pick: continue
+
+    own = md.loc[rows_of_key[ik]]
+    if M == 0:
+        ban_rows = sorted(own.loc[own.ingest_lib == src, 'row'].tolist()); ban_keys = []
+    else:
+        ban_rows = sorted(own.row.tolist()); ban_keys = [ik]
+    records.append(dict(ik=ik, M=M, rows=pick, ban_rows=ban_rows, ban_keys=ban_keys))
+
+print(f"[INFO] {len(records):,} query molecules, {sum(len(r['rows']) for r in records):,} spectra")
+
+# read the peak lists for exactly those rows, row-group by row-group
+sel_rows = np.array(sorted({x for r in records for x in r['rows']}), dtype=np.int64)
+pf   = pq.ParquetFile(TRAIN)
+offs = np.cumsum([0] + [pf.metadata.row_group(i).num_rows for i in range(pf.metadata.num_row_groups)])
+PK = {}
+for rg in range(pf.metadata.num_row_groups):
+    lo, hi = offs[rg], offs[rg+1]
+    loc = sel_rows[(sel_rows >= lo) & (sel_rows < hi)] - lo
+    if len(loc) == 0: continue
+    t = pf.read_row_group(rg, columns=['ms2_mzs','ms2_normalized_intensities'])
+    a = t.column('ms2_mzs').combine_chunks(); b = t.column('ms2_normalized_intensities').combine_chunks()
+    ao, av = a.offsets.to_numpy(), a.values.to_numpy(zero_copy_only=False)
+    bo, bv = b.offsets.to_numpy(), b.values.to_numpy(zero_copy_only=False)
+    for k in loc:
+        PK[int(lo + k)] = (av[ao[k]:ao[k+1]].astype(np.float32),
+                           bv[bo[k]:bo[k+1]].astype(np.float32))
+    del t, a, b, av, bv
+print(f"[INFO] peak lists loaded for {len(PK):,} spectra")''')
+
+code('''# ===================================================================================
+#  Generate the matrix
+# ===================================================================================
+#  Features are computed over the FULL candidate window and only THEN are rows subsampled.
+#  _rank_norm and _z are window-wide statistics; subsampling first would compute them over a
+#  different population than inference does, and the GBDT would learn the wrong thresholds.
+import traceback
+
+CKPT = os.path.join(SC.OUT, f'rank_shard_{SC.SHARD}_partial.npz')
+Xs, Ys, Ms, done = [], [], [], 0
+if os.path.exists(CKPT):
+    d = np.load(CKPT)
+    Xs, Ys, Ms, done = [d['X']], [d['Y']], [d['M']], int(d['done'])
+    print(f"[RESUME] {done} queries already processed, {d['X'].shape[0]:,} rows")
+
+# Column indices verified empirically against rank_features, not assumed:
+#   0 = library entropy sim | 5 = analog ap | 15 = _z(f.z) | 21 = MetFrag explain ratio
+HARD_COLS = [0, 5, 21, 15]
+
+# Positional views. `.at[row, col]` on an object column holding numpy arrays is fragile
+# across pandas versions; raw .values indexing is not.
+_PREC = md['precursor_mz'].values
+_AD   = md['adduct'].values
+_ION  = md['ionization_mode'].values
+_INS  = md['instrument_type'].values
+_CE   = md['collision_energy_ev'].values
+t_loop = time.time()
+checked = False
+
+for qi, r in enumerate(records):
+    if qi < done: continue
+    try:
+        sub = pd.DataFrame([dict(
+            ms2_mzs=PK[g][0], ms2_normalized_intensities=PK[g][1],
+            precursor_mz=float(_PREC[g]), adduct=_AD[g],
+            ionization_mode=_ION[g], instrument_type=_INS[g],
+            collision_energy_ev=_CE[g]) for g in r['rows']])
+
+        nms = neutral_mass(sub.precursor_mz.values.astype(np.float64), sub.adduct.values)
+        nms = nms[np.isfinite(nms)]
+        if len(nms) == 0: continue
+        target = float(np.median(nms)) / (1.0 + CFG.PPM_CENTER / 1e6)
+        specs  = [(a, b) for a, b in zip(sub.ms2_mzs, sub.ms2_normalized_intensities)]
+
+        lib_hits = lib_sim_ban(L, specs, target, r['ban_rows'], r['ban_keys'])
+        analogs  = analog_sim_ban(L, specs, target, rep, rep_key, rep_nm,
+                                  r['ban_rows'], r['ban_keys'])
+
+        cand = pool.window(target, CFG.PPM_WIN)
+        if len(cand) == 0: cand = pool.window(target, CFG.PPM_FALLBACK)
+        if len(cand) == 0: continue
+
+        cfp = pool.fps(cand)
+        lv  = np.array([lib_hits.get(pool.keys[c], 0.0) for c in cand], np.float32)
+        ids, sims = [], []
+        for k, s in analogs:
+            i = pool.k2i.get(k, -1)
+            if i >= 0: ids.append(i); sims.append(s)
+        afp = pool.fps(np.array(ids)) if ids else None
+
+        ion_mode = float(np.mean([1.0 if m == 'positive' else -1.0 for m in sub.ionization_mode]))
+        fsc = frag_scores_fast([pool.smiles[c] for c in cand], specs, ion_mode)
+        if not checked:
+            ref = frag_scores([pool.smiles[c] for c in cand], specs, ion_mode)
+            assert np.allclose(fsc, ref), "frag_scores_fast diverged from frag_scores"
+            print("[CHECK] frag_scores_fast == frag_scores on a real query"); checked = True
+
+        zlog = model_logits(sub)
+        X = rank_features(cfp, lv, afp, np.array(sims, np.float32), zlog, fsc)[:, :NFEAT]
+        y = (pool.keys[cand] == r['ik']).astype(np.int8)
+
+        # keep every positive; subsample negatives, hard ones first
+        pos = np.flatnonzero(y == 1)
+        neg = np.flatnonzero(y == 0)
+        if len(neg) > SC.NEG_PER_CHANNEL * len(HARD_COLS) + SC.NEG_RANDOM:
+            take = set()
+            for c in HARD_COLS:
+                take |= set(neg[np.argsort(-X[neg, c])[:SC.NEG_PER_CHANNEL]].tolist())
+            rest = np.setdiff1d(neg, np.fromiter(take, np.int64, len(take)))
+            if len(rest):
+                take |= set(rng.choice(rest, size=min(SC.NEG_RANDOM, len(rest)),
+                                       replace=False).tolist())
+            neg = np.fromiter(sorted(take), np.int64, len(take))
+        keep = np.concatenate([pos, neg]) if len(pos) else neg
+        if len(keep) == 0: continue
+
+        Xs.append(X[keep]); Ys.append(y[keep])
+        Ms.append(np.full(len(keep), r['M'], np.int8))
+    except Exception:
+        print(f"[WARN] query {qi} ({r['ik']}) failed:"); traceback.print_exc()
+
+    if (qi + 1) % 50 == 0 or qi == len(records) - 1:
+        nrow = sum(len(x) for x in Xs)
+        el = time.time() - t_loop
+        rate = (qi + 1 - done) / max(el, 1e-9)
+        print(f"  {qi+1}/{len(records)} queries | {nrow:,} rows | {el:.0f}s | "
+              f"{rate:.2f} q/s | eta {(len(records)-qi-1)/max(rate,1e-9)/60:.0f} min", flush=True)
+    if (qi + 1) % 100 == 0:
+        np.savez_compressed(CKPT, X=np.vstack(Xs), Y=np.concatenate(Ys),
+                            M=np.concatenate(Ms), done=qi + 1)
+
+X = np.vstack(Xs).astype(np.float32)
+Y = np.concatenate(Ys).astype(np.int8)
+M = np.concatenate(Ms).astype(np.int8)
+out = os.path.join(SC.OUT, f'rank_shard_{SC.SHARD}.npz')
+np.savez_compressed(out, X=X, Y=Y, M=M)
+print(f"\\n[SUCCESS] {out}: X{X.shape} Y{Y.shape} M{M.shape}")
+print(f"  positives {int(Y.sum()):,} ({Y.mean()*100:.2f}%) | "
+      f"M=0 {int((M==0).sum()):,} | M=1 {int((M==1).sum()):,}")''')
+
+code('''# ===================================================================================
+#  Merge the shards  (run once, with all three shard files attached or present)
+# ===================================================================================
+shards = sorted(glob.glob('/kaggle/input/**/rank_shard_[0-9].npz', recursive=True)) or \\
+         sorted(glob.glob(os.path.join(SC.OUT, 'rank_shard_[0-9].npz')))
+print("shards:", [os.path.basename(s) for s in shards])
+assert shards, "no shards found"
+
+X = np.vstack([np.load(s)['X'] for s in shards]).astype(np.float32)
+Y = np.concatenate([np.load(s)['Y'] for s in shards]).astype(np.int8)
+M = np.concatenate([np.load(s)['M'] for s in shards]).astype(np.int8)
+
+assert X.shape[1] == 31, f"expected 31 features, got {X.shape[1]}"
+assert np.isfinite(X).all(), "non-finite feature values"
+assert set(np.unique(Y)) <= {0, 1} and Y.sum() > 0
+frac1 = (M == 0).mean()
+print(f"X{X.shape}  positives {int(Y.sum()):,} ({Y.mean()*100:.2f}%)  M=0 fraction {frac1:.2f}")
+assert 0.35 < frac1 < 0.65, (
+    f"M split is {frac1:.2f}; CFG.W1_PRIORS=(0.30,0.60) hedging assumes a balanced split")
+
+np.savez_compressed('/kaggle/working/rank_train.npz', X=X, Y=Y, M=M)
+print("\\n[SUCCESS] rank_train.npz written.")
+print("Add it to casmi26-fpnet-v3 ALONGSIDE the checkpoints it was built from. They are a")
+print("matched pair - shipping one without the other is the failure this notebook exists to prevent.")
+
+# sanity: fit the ranker exactly as phase1 does and confirm it separates
+from sklearn.ensemble import HistGradientBoostingClassifier
+W = np.where(M == 0, 0.30, 0.70)
+m0 = HistGradientBoostingClassifier(random_state=0, **CFG.GBM).fit(X, Y, sample_weight=W)
+p = m0.predict_proba(X)[:, 1]
+print(f"in-sample mean p(positive)={p[Y==1].mean():.3f} vs p(negative)={p[Y==0].mean():.3f}")''')
+
+out = {"cells": cells,
+       "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python",
+                                   "name": "python3"},
+                    "language_info": {"name": "python", "version": "3.12"}},
+       "nbformat": 4, "nbformat_minor": 5}
+OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+print(f"{OUT.name}: {len(cells)} cells (7 verbatim + rank_features + 9 new)")

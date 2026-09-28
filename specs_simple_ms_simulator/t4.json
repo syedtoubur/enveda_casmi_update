@@ -1,0 +1,112 @@
+{
+ "gpus": [
+  "Tesla T4",
+  "Tesla T4"
+ ],
+ "vcpu": 4,
+ "manifest": {
+  "checkpoint": "msg_all",
+  "ce_mode": "ev",
+  "instrument": "QTOF",
+  "gen_sha1": "c626bae180a7d3bc4c7ee658f762bd5f1f017af2",
+  "inten_sha1": "465836840089fa8f380ea7400c770cf72cfad926",
+  "mspred_commit": "708148c2a8eb0c32120644436fefd2fe90cd2214",
+  "python": "3.12.3",
+  "cuda_extra": "cu124",
+  "covered_adducts": [
+   "[M+H]+",
+   "[M+NH4]+",
+   "[M-H2O+H]+",
+   "[M-2H2O+H]+",
+   "[M+Na]+",
+   "[M-H]-",
+   "[M-H2O-H]-"
+  ]
+ },
+ "n_requests": 2000,
+ "request_mass": {
+  "count": 2000.0,
+  "mean": 372.4,
+  "std": 131.4,
+  "min": 133.0,
+  "25%": 289.2,
+  "50%": 354.2,
+  "75%": 424.2,
+  "max": 1108.6
+ },
+ "install_s": 197.1,
+ "sha1_ok": true,
+ "runs": {
+  "1gpu_bs64": {
+   "n": 2000,
+   "wall_s": 66.44543409347534,
+   "t_pred": 56.00275921821594,
+   "t_load": 0.6732399463653564,
+   "ok": 1.0,
+   "errors": {},
+   "gpu": "Tesla T4",
+   "worker_mol_per_s": 35.712526095490354,
+   "gpus": 1,
+   "batch_size": 64,
+   "aggregate_mol_per_s": 35.712526095490354,
+   "aggregate_wall_mol_per_s": 30.09988612891599,
+   "startup_s": 10.4426748752594
+  },
+  "1gpu_bs128": {
+   "n": 2000,
+   "wall_s": 63.46801257133484,
+   "t_pred": 54.64773416519165,
+   "t_load": 0.6519479751586914,
+   "ok": 1.0,
+   "errors": {},
+   "gpu": "Tesla T4",
+   "worker_mol_per_s": 36.59804071572866,
+   "gpus": 1,
+   "batch_size": 128,
+   "aggregate_mol_per_s": 36.59804071572866,
+   "aggregate_wall_mol_per_s": 31.511936784724448,
+   "startup_s": 8.820278406143188
+  },
+  "2gpu_bs128": {
+   "gpus": 2,
+   "batch_size": 128,
+   "n": 2000,
+   "parts": [
+    {
+     "n": 1000,
+     "wall_s": 37.22305393218994,
+     "t_pred": 28.24914050102234,
+     "t_load": 0.9019184112548828,
+     "ok": 1.0,
+     "errors": {},
+     "gpu": "Tesla T4",
+     "worker_mol_per_s": 35.399307103301425
+    },
+    {
+     "n": 1000,
+     "wall_s": 63.77446484565735,
+     "t_pred": 54.73624587059021,
+     "t_load": 0.8981389999389648,
+     "ok": 1.0,
+     "errors": {},
+     "gpu": "Tesla T4",
+     "worker_mol_per_s": 18.269429773540608
+    }
+   ],
+   "ok": 1.0,
+   "aggregate_mol_per_s": 36.538859547081216,
+   "aggregate_wall_mol_per_s": 31.360514037087803,
+   "startup_s": 9.038218975067139
+  }
+ },
+ "best": {
+  "config": "1gpu_bs128",
+  "gpus": 1,
+  "batch_size": 128,
+  "aggregate_mol_per_s": 36.59804071572866,
+  "aggregate_wall_mol_per_s": 31.511936784724448
+ },
+ "startup_s": 10.4426748752594,
+ "ok_rate": 1.0,
+ "finished": "2026-09-27 05:13"
+}

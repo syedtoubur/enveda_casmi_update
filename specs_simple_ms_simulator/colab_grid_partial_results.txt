@@ -1,0 +1,94 @@
+Step 1
+
+/tmp/ipykernel_22390/496762596.py:16: DeprecationWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  per_mol = d.groupby("mol").apply(lambda g: len(set(zip(g.adduct, g.ce)))).describe()
+
+=== enveda-np-examples: 1,184 spectra, 250 molecules; merged 34.7%; on the 20/40/60(+merged) ladder 51.4%
+ce
+(40.0,)                          213
+(20.0, 50.0)                     209
+(60.0,)                          200
+(35.0,)                          124
+(20.0,)                          114
+(80.0,)                          110
+(20.0, 40.0, 60.0, 80.0)         100
+(20.0, 40.0, 60.0)                81
+(0.0, 20.0, 40.0, 60.0, 80.0)     15
+(50.0,)                           11
+(20.0, 40.0)                       3
+(20.0, 40.0, 80.0)                 1
+ce            (40.0,)  (20.0, 50.0)  (60.0,)  (35.0,)  (20.0,)  (80.0,)  (20.0, 40.0, 60.0, 80.0)  (20.0, 40.0, 60.0)
+adduct                                                                                                               
+[M+CH2O2-H]-       22            12       18        4       13       13                        15                   5
+[M+Cl]-             2             3        1        0        0        0                         0                   1
+[M+H]+            104            68      104       69       58       59                        50                  45
+[M+K]+              0            14        0        1        0        0                         0                   0
+[M+NH4]+           17             7       17       13       15       10                        10                   8
+[M+Na]+            13            37        7        6        3        6                         5                   2
+[M-2H2O+H]+         0             5        0        3        0        0                         0                   0
+[M-H2O+H]+          0            18        0        4        1        0                         1                   0
+[M-H2O-H]-          0             1        0        0        0        0                         0                   0
+[M-H]-             55            44       53       24       24       22                        19                  20
+/tmp/ipykernel_22390/496762596.py:16: DeprecationWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  per_mol = d.groupby("mol").apply(lambda g: len(set(zip(g.adduct, g.ce)))).describe()
+
+=== enveda-180: 1,153,785 spectra, 182,941 molecules; merged 26.6%; on the 20/40/60(+merged) ladder 99.8%
+ce
+(40.0,)               327468
+(20.0, 40.0, 60.0)    304780
+(60.0,)               299465
+(20.0,)               220130
+(20.0, 40.0)            1776
+(20.0, 60.0)             116
+(40.0, 60.0)              50
+ce              (40.0,)  (20.0, 40.0, 60.0)  (60.0,)  (20.0,)  (20.0, 40.0)  (20.0, 60.0)  (40.0, 60.0)
+adduct                                                                                                 
+[2M+C2H4O2-H]-       48                  68       30       40             1             0             0
+[2M+CH2O2-H]-       130                 201      151      171             5             0             1
+[2M+H]+           22236               24304    20708    22074           132            22            11
+[2M+Na]+          48305               51919    38095    49073           739            15            12
+[2M-H]-           13225               14822    11927    12896            58             3             2
+[M+Br]-               4                   9        2       10             0             0             0
+[M+C2H4O2-H]-       113                  96       85       75             7             0             0
+[M+CH2O2-H]-       7924                7218     5055     4201           150             5             3
+[M+Cl]-             782                 793      456      362            14             0             0
+[M+H]+           165833              158076   165377    99123            63            26             9
+[M+K]+              284                 407      208      172            10             2             1
+[M+NH4]+           1278                1402     1182      821            16             1             2
+[M+Na]+            6261                4019     3647     1926            77            20             7
+[M-H]-            61045               41446    52542    29186           504            22             2
+
+=== public test: 1,213 spectra, 400 molecules; merged 24.6%; on the 20/40/60(+merged) ladder 100.0%
+ce
+(60.0,)               363
+(40.0,)               362
+(20.0, 40.0, 60.0)    298
+(20.0,)               190
+ce            (60.0,)  (40.0,)  (20.0, 40.0, 60.0)  (20.0,)
+adduct                                                     
+[M+CH2O2-H]-        5       10                   9        7
+[M+Cl]-             0        0                   1        1
+[M+H]+            281      269                 250      159
+[M+K]+              1        1                   0        0
+[M+NH4]+            1        2                   1        0
+[M+Na]+             6        9                   6        1
+[M-H]-             69       71                  31       22
+
+ladder confirmed on np-examples: False -> base CEs [20.0, 35.0, 40.0, 50.0, 60.0, 80.0]   (26s)
+/tmp/ipykernel_22390/496762596.py:16: DeprecationWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  per_mol = d.groupby("mol").apply(lambda g: len(set(zip(g.adduct, g.ce)))).describe()
+
+  Step 2
+
+  tol: 9,628 rows, 9,570 ok, 53.0 mol/s, errors {'predict': 58}
+median sim(pred@c, pred@c+Δ): {2.5: 0.846, 5.0: 0.826, 10.0: 0.804, 15.0: 0.759}
+around the base CEs: {'20±2.5': 0.901, '20±5': 0.888, '20±10': 0.848, '20±15': 0.84, '35±2.5': 0.864, '35±5': 0.863, '35±10': 0.853, '35±15': 0.778, '40±2.5': 0.862, '40±5': 0.853, '40±10': 0.828, '40±15': 0.786, '50±2.5': 0.839, '50±5': 0.831, '50±10': 0.794, '50±15': 0.727, '60±2.5': 0.758, '60±5': 0.79, '60±10': 0.76, '60±15': 0.734, '80±2.5': 0.786, '80±5': 0.759, '80±10': 0.767, '80±15': 0.674}
+-> nearest-grid tolerance 0 eV (rule: largest Δ with median ≥ 0.9)
+mean peaks after cleaning 63.6; throughput here 53.0 mol/s on NVIDIA A100-SXM4-80GB
+off-grid CEs -- np-examples: [15.0]; public test (fast commit only): none
+
+
+Step 3
+
+merged-CE queries: 366  {'[M+H]+': 173, '[M-H]-': 86, '[M+Na]+': 45, '[M+CH2O2-H]-': 33, '[M+NH4]+': 25, '[M+Cl]-': 4}  CE lists {'(20.0, 50.0)': 171, '(20.0, 40.0, 60.0, 80.0)': 99, '(20.0, 40.0, 60.0)': 78, '(0.0, 20.0, 40.0, 60.0, 80.0)': 14, '(20.0, 40.0)': 2}
+Runtime Crash after using all available Ram happens here even with A4100+ HIGH RAM
