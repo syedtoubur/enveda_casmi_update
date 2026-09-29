@@ -64,25 +64,40 @@ def _init_worker(vocab_path):
 
 
 def _structure(args):
-    """(ik14, smiles) -> dict. `in_scope` means prep ok, every token in the vocabulary, and
-    a length within MAX_LEN, i.e. the molecule is reachable by the decoder at all."""
-    ik, smi = args
-    status, can, selfies, formula = nd.prep_structure(smi)
-    rec = dict(inchikey14=ik, status=status, can=can, selfies=selfies,
-               formula=None, n_tokens=0, n_unk=0, in_scope=False)
-    if status != "ok":
-        return rec
-    ids = _VOCAB.encode(selfies)
-    rec["formula"] = formula_str(formula)
+    """(ik14, smiles, label_formula, max_len) -> novel_cohort.structure_record plus the P3 fields.
+
+    P1's record is reused verbatim so the two phases cannot drift on what a structure *is*
+    (status, canonical SMILES, SELFIES, scaffold_key, its own `in_scope`). P3 adds only:
+
+      formula   the ORACLE formula, from the prepared structure via RDKit with hydrogen included.
+                Never `molecular_formula`: 165 corpus structures disagree with their label.
+      n_tokens / n_unk   under our vocabulary
+      in_scope  P1's, tightened by "every token is in the vocabulary and there is at least one".
+                A token the vocabulary lacks can never be generated, so such a molecule is not
+                reachable and must not be trained on as if it were.
+    """
+    rec = nc.structure_record(args)
+    ids = _VOCAB.encode(rec["selfies"]) if rec["selfies"] else []
     rec["n_tokens"] = len(ids)
     rec["n_unk"] = sum(1 for i in ids if i == _VOCAB.unk_id)
-    rec["in_scope"] = rec["n_unk"] == 0 and 0 < len(ids) <= MAX_LEN
+    rec["formula"] = None
+    if rec["status"] == "ok" and rec["can"]:
+        Chem = nd._chem()
+        m = Chem.MolFromSmiles(rec["can"])
+        if m is not None:
+            rec["formula"] = formula_str(nd.mol_formula(m))
+    rec["in_scope"] = bool(rec["in_scope"] and rec["n_unk"] == 0 and rec["n_tokens"] > 0
+                           and rec["formula"])
     return rec
 
 
-def build_structures(ik14, smiles, vocab_path, workers=None, chunksize=256):
-    """One row per unique ik14. Uses a fork pool, as the P1 notebook does."""
-    args = list(zip(ik14, smiles))
+def build_structures(ik14, smiles, label_formula, vocab_path, max_len=MAX_LEN, workers=None,
+                     chunksize=256):
+    """One row per unique ik14. Fork pool, as the P1 notebook does.
+
+    Feed it `META.drop_duplicates("inchikey14")` in corpus-row order -- the same representative row
+    per structure that P1 used, so scaffolds and splits line up."""
+    args = [(a, b, c, max_len) for a, b, c in zip(ik14, smiles, label_formula)]
     workers = workers or os.cpu_count() or 1
     if workers > 1:
         ctx = mp.get_context("fork") if hasattr(os, "fork") else mp.get_context("spawn")

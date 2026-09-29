@@ -7,6 +7,7 @@
     novel_lx_cpu_colab.py  -> casmi_novel_lx_cpu_colab.ipynb   (Colab CPU: G0.1-R2 peak leg)
     novel_lx_kaggle.py     -> casmi_novel_lx_kaggle.ipynb      (Kaggle, internet off: G0.1-R2 leg)
     novel_p1_colab.py      -> casmi_novel_p1_colab.ipynb       (Colab CPU: P1 cohorts, G1)
+    novel_p3_train_colab.py -> casmi_novel_p3_train_colab.ipynb (Colab GPU: P3 decoder training)
 
 Each placeholder line `NAME = None  # @@TAG@@` becomes `NAME = <repr of the source file>`: the notebooks
 write the sources back to files, so the multiprocessing workers and the DreaMS venv can import them.
@@ -28,6 +29,7 @@ SOURCES = {   # tag -> (variable, embedded file)
     "NOVEL_LX": ("NOVEL_LX_SRC", HERE / "novel_lx.py"),
     "NOVEL_COHORT": ("NOVEL_COHORT_SRC", HERE / "novel_cohort.py"),
     "SIMSIM_COMMON": ("SIMSIM_COMMON_SRC", HERE / "simsim_common.py"),
+    "NOVEL_P3_DATA": ("NOVEL_P3_DATA_SRC", HERE / "novel_p3_data.py"),
 }
 BUILDS = [
     (HERE / "novel_p0_colab.py", ROOT / "casmi_novel_p0_colab.ipynb",
@@ -38,6 +40,8 @@ BUILDS = [
     (HERE / "novel_lx_cpu_colab.py", ROOT / "casmi_novel_lx_cpu_colab.ipynb", ("DREAMS_INFER", "NOVEL_LX")),
     (HERE / "novel_lx_kaggle.py", ROOT / "casmi_novel_lx_kaggle.ipynb", ("DREAMS_INFER", "NOVEL_LX")),
     (HERE / "novel_p1_colab.py", ROOT / "casmi_novel_p1_colab.ipynb", ("NOVEL_DECODER", "SIMSIM_COMMON", "NOVEL_COHORT")),
+    (HERE / "novel_p3_train_colab.py", ROOT / "casmi_novel_p3_train_colab.ipynb",
+     ("NOVEL_DECODER", "SIMSIM_COMMON", "NOVEL_COHORT", "NOVEL_P3_DATA")),
 ]
 
 
