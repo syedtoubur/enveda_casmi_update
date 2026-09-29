@@ -112,7 +112,36 @@ def build_fake_drive(d):
     full = rng.standard_normal((len(meta), 1024)).astype(np.float32)
     for c in range((len(meta) + chunk - 1) // chunk):
         np.save(emb_dir / f"emb_{c:04d}.npy", full[c * chunk:(c + 1) * chunk])
-    return dict(n_rows=len(meta), n_ik14=n_mol, chunk=chunk, labels=pd.Series(labels).value_counts().to_dict())
+
+    # cohort parquets for the eval leg: the held-out molecules stand in for pseudo_c3 / ts_dec, with
+    # the same columns the P1 notebook writes
+    by_ik = {k: g for k, g in meta.groupby("inchikey14")}
+
+    def cohort(ik_list, timstof):
+        rows = []
+        for ik in ik_list:
+            g = by_ik[ik]
+            mi = iks.index(ik)
+            rows.append(dict(molecule_id=f"m_{ik}", inchikey14=ik, smiles=keep[mi], can=keep[mi],
+                             selfies=nd.prep_structure(keep[mi])[2], formula=formulas[mi],
+                             scaffold=f"s{mi}", group_size=1,
+                             src_lib="enveda-np-examples" if timstof else "gnps",
+                             timstof=timstof, in_scope=True,
+                             rows=np.asarray(g.index.to_numpy()[:4], np.int64),
+                             train_rows=np.zeros(0, np.int64),
+                             adducts=[str(a) for a in g.adduct.to_numpy()[:4]],
+                             ces=[20.0, None, 40.0, None][:len(g.index[:4])],
+                             lib_ban_keys=[ik], pool_ban_keys=[ik], dreams_ft_risk=False))
+        return pd.DataFrame(rows)
+
+    heldout = [ik for ik, lab in zip(iks, labels) if lab == "heldout_c3"]
+    trainish = [ik for ik, lab in zip(iks, labels) if lab == "train"][:3]
+    cohort(heldout, False).to_parquet(d / "_novel" / "p1" / "pseudo_c3.parquet", index=False)
+    cohort(trainish, True).to_parquet(d / "_novel" / "p1" / "ts_dec.parquet", index=False)
+
+    return dict(n_rows=len(meta), n_ik14=n_mol, chunk=chunk,
+                labels=pd.Series(labels).value_counts().to_dict(),
+                n_c3=len(heldout), n_ts=len(trainish))
 
 
 # --------------------------------------------------------------------------------------------- #
@@ -178,6 +207,37 @@ def train_subs(drive_dir, facts, chunk):
          '    torch.cuda.synchronize()',
          '        if i == CAL_WARMUP - 1:\n            t0 = time.time()\n    pass'),
         ('                cuda=torch.cuda.get_rng_state_all(),', '                cuda=None,'),
+    ]
+
+
+def eval_subs(drive_dir, chunk):
+    """Environment-only substitutions for the eval notebook: no Colab, CPU, small budgets."""
+    return [
+        ('from google.colab import drive\ndrive.mount("/content/drive")', 'drive = None  # dry run'),
+        ('ROOT = Path("/content/drive/MyDrive/casmi_2026")', f'ROOT = Path({str(drive_dir)!r})'),
+        ('WORK = Path("/content/novel_p3_eval")',
+         f'WORK = Path({str(Path(drive_dir).parent / "work_eval")!r})'),
+        ('assert torch.cuda.is_available(), "the bake-off needs a GPU runtime"\n'
+         'DEV = torch.device("cuda")',
+         'DEV = torch.device("cpu")'),
+        ('gpu=torch.cuda.get_device_name(0),', 'gpu="dry-run-cpu",'),
+        ('assert v_match(rdkit.__version__, RDKIT_PIN), rdkit.__version__\n'
+         'assert dist_version("selfies") == SELFIES_PIN, dist_version("selfies")',
+         'print("dry run: version pins not enforced")'),
+        ('N_CORPUS_ROWS = 1_323_878', f'N_CORPUS_ROWS = None'),
+        ('STORE = p3d.EmbeddingStore(EMB, n_rows=N_CORPUS_ROWS)',
+         f'STORE = p3d.EmbeddingStore(EMB, chunk={chunk})'),
+        # budgets: the search itself still runs for real, just narrower
+        ('L_SEED, K_ROOTS, M_ROLLOUT = 4, 8, 32             # 8 x 32 = 256',
+         'L_SEED, K_ROOTS, M_ROLLOUT = 3, 2, 4'),
+        ('BEAM = 256', 'BEAM = 8'),
+        ('DEC_VAL_SUBSET = 300', 'DEC_VAL_SUBSET = 3'),
+        ('CHUNK_MOL = 50                                    # flush to Drive every 50 molecules',
+         'CHUNK_MOL = 2'),
+        ('SAMPLE_UNCONSTRAINED = 64                         # samples per molecule for the no-mask diagnostic\n'
+         'UNCONSTRAINED_MOLS = 100',
+         'SAMPLE_UNCONSTRAINED = 4\nUNCONSTRAINED_MOLS = 2'),
+        ('tf_loss, tf_acc = teacher_forced(VAL_IDX)', 'tf_loss, tf_acc = teacher_forced(VAL_IDX, 1, 4)'),
     ]
 
 
@@ -254,6 +314,48 @@ def main():
                    "train-truncated")
         assert ns_c["START"] == int(cks[-2].stem.split("_")[1]) + 1, ns_c["START"]
         print(f"leg 3 OK: fell back to {cks[-2].name} and resumed at epoch {ns_c['START']}")
+
+        # ---- leg 4: the eval notebook, then a resume of it ----
+        print("\n" + "=" * 88 + "\nLEG 4: eval notebook (bake-off) + generation resume\n" + "=" * 88)
+        nb_eval = ROOT / "casmi_novel_p3_eval_colab.ipynb"
+        etext = patch(nb_code(nb_eval), eval_subs(drive_dir, facts["chunk"]))
+        ns_e = run(etext, "eval")
+        assert ns_e["WINNER"] in ns_e["ARMS"], ns_e["WINNER"]
+        assert len(ns_e["BAKE"]) == 3, sorted(ns_e["BAKE"])
+        cand_dir = drive_dir / "_novel" / "p3" / "cands"
+        parts = sorted(p.name for p in cand_dir.glob("cands_*.parquet"))
+        assert parts, "no candidate parquet was written"
+        assert (drive_dir / "_novel" / "p3" / "p3_eval.json").exists()
+        ev = json.loads((drive_dir / "_novel" / "p3" / "p3_eval.json").read_text())
+        for key in ("bake_off", "winner", "cohorts", "teacher_forced", "unconstrained", "queries"):
+            assert key in ev, key
+        print(f"leg 4 OK: winner {ns_e['WINNER']}, {len(parts)} candidate parts, "
+              f"cohorts {sorted(ev['cohorts'])}")
+
+        # every generated leaf must satisfy its molecule's FULL formula -- the gate rests on this
+        import novel_decoder as _nd
+        from rdkit import Chem
+        checked = 0
+        for label in ("pseudo_c3", "ts_dec"):
+            q = {x["molecule_id"]: x for x in (ns_e["Q_C3"] if label == "pseudo_c3" else ns_e["Q_TS"])}
+            df = pd.concat([pd.read_parquet(p) for p in
+                            cand_dir.glob(f"cands_{ns_e['WINNER']}_{label}_*.parquet")],
+                           ignore_index=True)
+            for _, r in df[df["rank"] >= 0].iterrows():
+                m = Chem.MolFromSmiles(r["smiles"])
+                want = _nd.parse_formula(q[r["molecule_id"]]["formula"])
+                assert m is not None and _nd.mol_formula(m) == want, (label, r["smiles"])
+                assert len(Chem.GetMolFrags(m)) == 1, (label, r["smiles"])
+                checked += 1
+        print(f"leg 4 OK: all {checked} written leaves match their full formula, single component")
+
+        # a resumed eval run must add nothing and re-derive the same winner
+        before = {p.name: p.stat().st_size for p in cand_dir.glob("cands_*.parquet")}
+        ns_e2 = run(etext, "eval-resume")
+        after = {p.name: p.stat().st_size for p in cand_dir.glob("cands_*.parquet")}
+        assert before == after, f"a resumed eval run rewrote candidates: {before} -> {after}"
+        assert ns_e2["WINNER"] == ns_e["WINNER"], (ns_e2["WINNER"], ns_e["WINNER"])
+        print("leg 4 OK: a resumed eval run generated nothing new and picked the same winner")
 
         print("\n" + "=" * 88)
         print("DRYRUN: OK")

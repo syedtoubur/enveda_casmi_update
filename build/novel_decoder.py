@@ -940,13 +940,21 @@ SEARCHES = {"prefix_seeded": search_prefix_seeded,
 # --------------------------------------------------------------------------------------------- #
 
 def morgan_fps(smiles, radius=2, n_bits=2048):
-    """MassSpecGym's fingerprint (utils.morgan_fp): GetMorganFingerprintAsBitVect(r=2, 2048)."""
+    """MassSpecGym's fingerprint definition -- Morgan, radius 2, 2048 bits (`utils.morgan_fp`).
+
+    Their code calls `Chem.GetMorganFingerprintAsBitVect`, which does not exist on RDKit 2026.03.3
+    (the metric's pinned version): it moved to AllChem and is now deprecated in favour of
+    MorganGenerator. So the *definition* is reused, not the call. The generator returns bit-identical
+    fingerprints -- test_novel_p3.check_morgan asserts that against the deprecated function wherever
+    it is still reachable."""
     Chem = _chem()
     from rdkit import DataStructs
+    from rdkit.Chem import rdFingerprintGenerator
+    gen = rdFingerprintGenerator.GetMorganGenerator(radius=radius, fpSize=n_bits)
     fps = []
     for s in smiles:
-        m = Chem.MolFromSmiles(s)
-        fps.append(None if m is None else Chem.GetMorganFingerprintAsBitVect(m, radius, nBits=n_bits))
+        m = Chem.MolFromSmiles(s) if s else None
+        fps.append(None if m is None else gen.GetFingerprint(m))
     return fps, DataStructs
 
 

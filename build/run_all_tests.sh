@@ -13,3 +13,4 @@ python build/test_simple_sim_grid.py | tail -1
 python build/test_simple_sim.py      | tail -1
 python build/test_novel_p0.py      | tail -1
 python build/test_novel_p1.py      | tail -1
+python build/test_novel_p3.py      | tail -1
