@@ -266,9 +266,9 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 1. ~~**Commit the P0 work**~~ **done** (8bdc4dd).
 2. **done (2026-09-29)** — **Pre-register G1**: write the `gate_report.md` G1 section plus the roadmap and tech_stack
    amendments, then commit, **before** any P1 run.
-3. Write `build/novel_cohort.py` and `build/test_novel_p1.py`, and make the tests pass locally.
+3. **done (d31c863)** — Write `build/novel_cohort.py` and `build/test_novel_p1.py`, and make the tests pass locally.
    Miniconda base has RDKit and selfies 2.1.2.
-4. Write `build/novel_p1_colab.py`, extend `mk_novel_p0.py`, and regenerate with
+4. **done** — Write `build/novel_p1_colab.py`, extend `mk_novel_p0.py`, and regenerate with
    `python build/mk_novel_p0.py`. Run `test_novel_p0.py`, `test_novel_p1.py` and
    `run_all_tests.sh`, and read each test's output.
 5. **User** runs `casmi_novel_p1_colab.ipynb` on Colab (CPU, High-RAM) and pastes the printout or

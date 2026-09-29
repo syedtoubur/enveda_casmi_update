@@ -223,7 +223,37 @@ def test_ft_risk_and_invariants(scaf, c3, c2, split):
     print("  dreams_ft_risk + invariants: OK")
 
 
+def test_notebook():
+    """casmi_novel_p1_colab: fresh, parses, embeds the sources verbatim, and uses the G1 thresholds."""
+    import ast
+    import json
+    import mk_novel_p0 as mk
+    src, dst, tags = next(b for b in mk.BUILDS if b[0].name == "novel_p1_colab.py")
+    before = dst.read_text(encoding="utf-8") if dst.exists() else None
+    mk.build(src, dst, tags)
+    assert before is None or before == dst.read_text(encoding="utf-8"), f"{dst.name} was stale -- re-run"
+    code = ["".join(c["source"]) for c in json.loads(dst.read_text(encoding="utf-8"))["cells"]
+            if c["cell_type"] == "code"]
+    for i, c in enumerate(code):
+        ast.parse(c, filename=f"{dst.name}[code {i}]")
+    for tag in tags:
+        var, path = mk.SOURCES[tag]
+        lines = [ln for c in code for ln in c.split("\n") if ln.startswith(f"{var} = ")]
+        assert len(lines) == 1 and ast.literal_eval(lines[0][len(var) + 3:]) == path.read_text(encoding="utf-8"), var
+    text = src.read_text(encoding="utf-8")
+    c = {t.id: ast.literal_eval(a.value) for a in ast.parse(text).body if isinstance(a, ast.Assign)
+         for t in a.targets if isinstance(t, ast.Name) and isinstance(a.value, ast.Constant)}
+    assert (c["MIN_C3"], c["MIN_C3_TIMSTOF"], c["MIN_C2"], c["MIN_TRAIN_SHARE"]) == (300, 30, 300, 0.90)
+    assert c["MAX_LEN"] == 171 and c["N_CORPUS_ROWS"] == 1_323_878 and c["N_CORPUS_IK14"] == 194_668
+    used = set(__import__("re").findall(r"\bnc\.([A-Za-z_]\w*)", text))
+    assert used <= set(dir(nc)), used - set(dir(nc))
+    assert 'OUT = ROOT / "_novel" / "p1"' in text and "emb_" not in text.split("# %%", 2)[2].replace(
+        "emb_dbec3a0", ""), "P1 must not read embeddings"
+    print(f"  notebook: OK ({dst.name}, {len(code)} code cells)")
+
+
 def main():
+    test_notebook()
     test_scaffold_key()
     test_structure_record()
     test_label_ok()
