@@ -45,7 +45,8 @@ thin wrapper, so that the Kaggle import needs no massspecgym.
 | `_novel/emb_dbec3a0_lx/emb_*.npy` + `manifest.json` | corpus embeddings rebuilt with the fixed (lexsort) `dreams_peaks`, `dreams_infer` SHA1 `57ce1bc1…`; row `i` = `corpus_meta` row `i` | G0.1-R2 (`casmi_novel_lx_reembed_colab.ipynb`) | **the P3 training cache** once G0.1-R2 passes; `emb_dbec3a0` is provisional |
 | `parity_lx.npz` | 200 parity rows (150 with an intensity tie at the top-100 cut): row ids, `train_row`, peaks, identities, new-cache vectors | G0.1-R2 | the cross-platform reference; replaces `parity_200.npz` as the P5 fixture |
 | `pseudo_c3.parquet`, `c2_displace.parquet` | one row per molecule: `molecule_id`, `inchikey14`, `smiles`, `can`, `selfies`, `formula`, `scaffold`, `group_size`, `src_lib`, `timstof`, `in_scope`, `rows` (corpus rows = embedding rows), `train_rows`, `adducts`, `ces`, `lib_ban_keys`, `pool_ban_keys`, `dreams_ft_risk` | P1 (`casmi_novel_p1_colab.ipynb`) | **to measure** (G1) |
-| `dec_split.parquet` | `inchikey14`, `scaffold_key`, `split` ∈ {`train`, `dec_val`, `heldout_c3`, `heldout_c2`} | P1 | — |
+| `ts_dec.parquet` | same columns as `pseudo_c3`: the decoder-only timsTOF cohort (ICEBERG-seen), for G3 and G4.0 only (A-G1.1) | P1 run 2 | **to measure** |
+| `dec_split.parquet` | `inchikey14`, `scaffold_key`, `split` ∈ {`train`, `dec_val`, `heldout_c3`, `heldout_c2`, `heldout_ts`} | P1 | — |
 | `decoder.pt` | `state_dict`, hyperparameters, vocab SHA1, adduct list, CE bins | P3 | **to measure** |
 | `gate_report.md` | pre-registered thresholds and measured results per gate | P0–P6 | — |
 

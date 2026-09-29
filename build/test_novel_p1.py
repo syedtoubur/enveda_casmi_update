@@ -196,6 +196,53 @@ def test_assign_splits():
     return scaf, c3, c2, split
 
 
+def test_ts_dec():
+    """A-G1.1: ts_dec = ICEBERG-seen timsTOF molecules outside every c3 / c2 group, whole groups held out."""
+    elig, scaf = synthetic_elig(n=4000, n_ts=30, seed=4)
+    G = 25
+    c3, c2 = nc.sample_cohorts(elig, G, seed=3, n_c3=150, n_c2=80)
+    ik = np.array(scaf.index)
+    rng = np.random.default_rng(5)
+    ts_rows = rng.choice(ik, 500, replace=False)
+    rows = pd.DataFrame({"inchikey14": np.concatenate([ts_rows, ik[:300]]),
+                         "ingest_lib": [nc.TIMSTOF_LIB] * 500 + ["gnps"] * 300,
+                         "ok": np.r_[np.arange(500) % 10 != 0, np.ones(300, bool)]})
+    msg = np.concatenate([ts_rows[:400], ik[:300]])                  # 100 timsTOF molecules not in msg
+    ts, fun = nc.sample_ts_dec(rows, msg, scaf, c3, c2, G)
+    size = scaf.value_counts()
+    c3_scaf, c2_scaf = set(scaf.loc[c3]), set(scaf.loc[c2])
+    okts = set(rows.inchikey14[rows.ok & (rows.ingest_lib == nc.TIMSTOF_LIB)])
+    want = sorted(k for k in okts & set(msg) if scaf[k] not in c3_scaf | c2_scaf and size[scaf[k]] <= G)
+    assert ts == want and len(ts) > 20, (len(ts), len(want))
+    assert fun["candidates"] == len(okts & set(msg)) >= fun["after_cohort_exclusions"] >= fun["within_gmax"] == len(ts)
+    assert not set(ts) & (set(c3) | set(c2))
+    split = nc.assign_splits(scaf, c3, c2, G, seed=3, ts=ts)
+    ts_scaf = set(scaf.loc[ts])
+    df = pd.DataFrame({"scaf": scaf, "split": split})
+    assert df[df.scaf.isin(ts_scaf)].split.eq("heldout_ts").all() and split.eq("heldout_ts").sum() >= len(ts)
+    assert df[df.scaf.isin(c3_scaf)].split.eq("heldout_c3").all() and split.loc[c2].eq("heldout_c2").all()
+    assert not set(df[df.split == "dec_val"].scaf) & (ts_scaf | c3_scaf | c2_scaf)
+    base = nc.assign_splits(scaf, c3, c2, G, seed=3)
+    assert base.eq("heldout_c3").equals(split.eq("heldout_c3")) and "heldout_ts" not in set(base)
+    # invariants with ts
+    allk = list(c3) + list(c2) + list(ts)
+    cohort_rows = {k: [i] for i, k in enumerate(allk)}
+    src = {**{k: "gnps" for k in list(c3) + list(c2)}, **{k: nc.TIMSTOF_LIB for k in ts}}
+    row_lib = np.array([src[k] for k in allk], object)
+    args = dict(split=split, scaf=scaf, c3=c3, c2=c2, cohort_rows=cohort_rows, row_ok=np.ones(len(allk), bool),
+                row_lib=row_lib, src_lib_of=src, msg_ik14=np.array(ts), ts=ts)
+    inv = nc.check_invariants(**args)
+    assert all(inv.values()), inv
+    s2 = split.copy(); s2.loc[ts[0]] = "train"
+    assert not nc.check_invariants(**{**args, "split": s2})["ts_groups_not_in_train_or_dec_val"]
+    assert not nc.check_invariants(**{**args, "msg_ik14": np.array(ts[1:])})["ts_all_in_msg"]
+    assert not nc.check_invariants(**{**args, "ts": list(ts) + [c3[0]], "msg_ik14": np.array(list(ts) + [c3[0]])}
+                                   )["ts_disjoint_from_c3_c2"]
+    src2 = {**src, ts[0]: "gnps"}
+    assert not nc.check_invariants(**{**args, "src_lib_of": src2})["ts_src_lib_timstof"]
+    print(f"  ts_dec: OK ({len(ts)} molecules, funnel {fun})")
+
+
 def test_ft_risk_and_invariants(scaf, c3, c2, split):
     assert nc.dreams_ft_risk("mona", ["[M+H]+", "[M+Na]+"])
     assert not nc.dreams_ft_risk("mona", ["[M+Na]+"]) and not nc.dreams_ft_risk("gnps", ["[M+H]+"])
@@ -243,7 +290,9 @@ def test_notebook():
     text = src.read_text(encoding="utf-8")
     c = {t.id: ast.literal_eval(a.value) for a in ast.parse(text).body if isinstance(a, ast.Assign)
          for t in a.targets if isinstance(t, ast.Name) and isinstance(a.value, ast.Constant)}
-    assert (c["MIN_C3"], c["MIN_C3_TIMSTOF"], c["MIN_C2"], c["MIN_TRAIN_SHARE"]) == (300, 30, 300, 0.90)
+    assert (c["MIN_C3"], c["MIN_TS_DEC"], c["MIN_C2"], c["MIN_TRAIN_SHARE"]) == (300, 100, 300, 0.90)   # A-G1.1
+    assert "MIN_C3_TIMSTOF" not in c and "\"G1.1'\"" in text and "\"G1.4'\"" in text
+    assert "nc.sample_ts_dec(" in text and "ts=TS)" in text and '"ts_dec.parquet"' in text
     assert c["MAX_LEN"] == 171 and c["N_CORPUS_ROWS"] == 1_323_878 and c["N_CORPUS_IK14"] == 194_668
     used = set(__import__("re").findall(r"\bnc\.([A-Za-z_]\w*)", text))
     assert used <= set(dir(nc)), used - set(dir(nc))
@@ -262,6 +311,7 @@ def main():
     test_sample_cohorts()
     test_pick_spectra()
     test_ft_risk_and_invariants(*test_assign_splits())
+    test_ts_dec()
     print("test_novel_p1: OK")
 
 

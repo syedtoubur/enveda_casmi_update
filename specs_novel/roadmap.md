@@ -26,7 +26,7 @@ after G2. The phase numbers are unchanged.
 | phase | milestone | where | status |
 |---|---|---|---|
 | P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | CLOSED BY DECISION 2026-09-29 (G0.1-R failed on peak tie-breaking; `emb_dbec3a0` accepted; `gate_report.md`). G0.1-R2 (fixed-code re-embed) PENDING, precondition for P3 |
-| P1 | Honest benchmark cohorts + training split | Colab | IN PROGRESS |
+| P1 | Honest benchmark cohorts + training split | Colab | IN PROGRESS: run 1 FAILED G1.1 (15 timsTOF outside MassSpecGym); amendment A-G1.1 (`ts_dec`) registered, run 2 pending |
 | P2 | Formula stage (runs after P4-oracle) | Colab / local | PLANNED |
 | P3 | Decoder training (needs G0.1-R2) | Colab (GPU) | PLANNED |
 | P4 | Offline constrained search + verification (oracle leg after P3, predicted leg after P2) | Colab | PLANNED |
@@ -194,6 +194,10 @@ and the design is in `phase1_plan.md`.
 - **`c2_displace` structures are also held out of decoder training,** as the structure only.
 - **Two recorded, non-gating flags:** `in_scope` and `dreams_ft_risk`.
 - **G1 gains G1.4, the invariants.** G1.3 counts only the `train` label as kept.
+- **A-G1.1 (after run 1):** the timsTOF minimum moves to a separate, decoder-only cohort `ts_dec`.
+  It holds the timsTOF molecules that ICEBERG has seen, with whole scaffold groups held out as
+  `heldout_ts`. It is used for G3 and G4.0 only, never for ICEBERG-based metrics. G1.1′ is
+  `pseudo_c3` ≥ 300 and `ts_dec` ≥ 100.
 
 **Training split.** Decoder training uses the corpus minus the `pseudo_c3` scaffold groups. A second
 scaffold-disjoint slice (`dec_val`) is held out from the training part for early stopping.

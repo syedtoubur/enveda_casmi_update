@@ -271,7 +271,8 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 4. **done** — Write `build/novel_p1_colab.py`, extend `mk_novel_p0.py`, and regenerate with
    `python build/mk_novel_p0.py`. Run `test_novel_p0.py`, `test_novel_p1.py` and
    `run_all_tests.sh`, and read each test's output.
-5. **User** runs `casmi_novel_p1_colab.ipynb` on Colab (CPU, High-RAM) and pastes the printout or
+5. **Run 1 done (2026-09-29): G1 FAILED on G1.1** (15 timsTOF outside MassSpecGym). Amendment A-G1.1
+   (`ts_dec`, `gate_report.md`) is implemented; **run 2 pending.** — **User** runs `casmi_novel_p1_colab.ipynb` on Colab (CPU, High-RAM) and pastes the printout or
    `p1_gate.json`.
 6. Fill in the G1 results in `gate_report.md`, update the roadmap status and tech_stack, and commit.
    If G1 fails, follow protocol 2: stop and present the options.

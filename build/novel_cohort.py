@@ -23,7 +23,7 @@ DEC_VAL_SHARE = 0.03
 N_C3, N_C2 = 600, 400
 MAX_SPEC = 16
 SEED = 20260929
-SPLITS = ("train", "dec_val", "heldout_c3", "heldout_c2")
+SPLITS = ("train", "dec_val", "heldout_c3", "heldout_c2", "heldout_ts")
 
 
 # --------------------------------------------------------------------------------------------- #
@@ -175,6 +175,22 @@ def sample_cohorts(elig, gmax, seed=SEED, n_c3=N_C3, n_c2=N_C2):
     return sorted(c3), sorted(c2)
 
 
+def sample_ts_dec(rows, msg_ik14, scaf, c3, c2, gmax):
+    """A-G1.1: the decoder-only timsTOF cohort. -> (sorted ts_dec ik14s, funnel dict).
+
+    Candidates: ik14 in msg_ik14 (ICEBERG has seen them) with >= 1 quality-OK timsTOF row. Excluded:
+    members of a pseudo_c3 scaffold group, c2_displace structures, members of a group holding a
+    c2_displace structure, and group size > gmax. Every remaining candidate is taken (no draw)."""
+    msg = set(np.asarray(msg_ik14).astype(str))
+    r = rows.loc[rows.ok.astype(bool) & (rows.ingest_lib == TIMSTOF_LIB), "inchikey14"].astype(str)
+    cand = set(r) & msg
+    size = scaf.value_counts()
+    c3_scaf, c2_scaf = set(scaf.loc[list(c3)]), set(scaf.loc[list(c2)])
+    after = {k for k in cand if scaf[k] not in c3_scaf and scaf[k] not in c2_scaf and k not in set(c2)}
+    ts = sorted(k for k in after if size[scaf[k]] <= gmax)
+    return ts, dict(candidates=len(cand), after_cohort_exclusions=len(after), within_gmax=len(ts))
+
+
 def draw_n(spec_counts, rng, cap=MAX_SPEC):
     """Spectra per molecule, drawn from the test's per-molecule counts, capped at `cap`."""
     return int(min(cap, rng.choice(np.asarray(spec_counts))))
@@ -214,22 +230,27 @@ def dreams_ft_risk(src_lib, adducts):
 # Decoder training split
 # --------------------------------------------------------------------------------------------- #
 
-def assign_splits(scaf, c3, c2, gmax, seed=SEED, dec_val=DEC_VAL_SHARE):
+def assign_splits(scaf, c3, c2, gmax, seed=SEED, dec_val=DEC_VAL_SHARE, ts=()):
     """scaf: Series ik14 -> scaffold_key over every corpus ik14. -> Series ik14 -> split label.
 
-    heldout_c3: every member of a pseudo_c3 scaffold group; heldout_c2: the c2_displace structures;
-    dec_val: whole random scaffold groups with size <= gmax that hold no cohort structure, added in
-    random order while the total stays <= dec_val * U; train: the rest."""
+    heldout_c3: every member of a pseudo_c3 scaffold group; heldout_ts: every member of a ts_dec
+    scaffold group (A-G1.1); heldout_c2: the c2_displace structures; dec_val: whole random scaffold
+    groups with size <= gmax that hold no cohort structure, added in random order while the total
+    stays <= dec_val * U; train: the rest."""
     rng = np.random.default_rng(seed + 1)
     size = scaf.value_counts()
     c3_scaf = set(scaf.loc[list(c3)])
+    ts_scaf = set(scaf.loc[list(ts)])
+    assert not ts_scaf & c3_scaf, "a ts_dec group is also a pseudo_c3 group"
     split = pd.Series("train", index=scaf.index, dtype=object)
     split[scaf.isin(c3_scaf)] = "heldout_c3"
+    split[scaf.isin(ts_scaf)] = "heldout_ts"
     c2 = list(c2)
-    assert not split.loc[c2].eq("heldout_c3").any(), "a c2_displace structure is in a pseudo_c3 group"
+    assert split.loc[c2].eq("train").all(), "a c2_displace structure is in a pseudo_c3 or ts_dec group"
     split.loc[c2] = "heldout_c2"
     c2_scaf = set(scaf.loc[c2])
-    cand = np.array(sorted(k for k, s in size.items() if s <= gmax and k not in c3_scaf and k not in c2_scaf),
+    busy = c3_scaf | ts_scaf | c2_scaf
+    cand = np.array(sorted(k for k, s in size.items() if s <= gmax and k not in busy),
                     dtype=object)
     rng.shuffle(cand)
     target, total, take = dec_val * len(scaf), 0, []
@@ -243,14 +264,15 @@ def assign_splits(scaf, c3, c2, gmax, seed=SEED, dec_val=DEC_VAL_SHARE):
     return split
 
 
-def check_invariants(split, scaf, c3, c2, cohort_rows, row_ok, row_lib, src_lib_of, msg_ik14):
-    """G1.4 -> {invariant: bool}.
+def check_invariants(split, scaf, c3, c2, cohort_rows, row_ok, row_lib, src_lib_of, msg_ik14, ts=()):
+    """G1.4 (G1.4' with ts_dec, A-G1.1) -> {invariant: bool}.
 
-    cohort_rows: {ik14: [corpus rows]} over both cohorts; row_ok / row_lib: per corpus row;
+    cohort_rows: {ik14: [corpus rows]} over every cohort; row_ok / row_lib: per corpus row;
     src_lib_of: {ik14: src_lib}."""
     msg = set(np.asarray(msg_ik14).astype(str))
-    c3, c2 = set(c3), set(c2)
+    c3, c2, ts = set(c3), set(c2), set(ts)
     c3_members = set(scaf.index[scaf.isin(set(scaf.loc[list(c3)]))])
+    ts_members = set(scaf.index[scaf.isin(set(scaf.loc[list(ts)]))])
     ok = {
         "split_labels_valid": bool(split.isin(SPLITS).all()),
         "split_covers_every_ik14_once": bool(split.index.is_unique and set(split.index) == set(scaf.index)),
@@ -261,5 +283,9 @@ def check_invariants(split, scaf, c3, c2, cohort_rows, row_ok, row_lib, src_lib_
             for ik, rs in cohort_rows.items()),
         "no_cohort_ik14_in_msg": not ((c3 | c2) & msg),
         "cohorts_disjoint": not (c3 & c2),
+        "ts_groups_not_in_train_or_dec_val": bool(split.loc[list(ts_members)].eq("heldout_ts").all()),
+        "ts_disjoint_from_c3_c2": not (ts & (c3 | c2)),
+        "ts_all_in_msg": ts <= msg,
+        "ts_src_lib_timstof": all(src_lib_of[k] == TIMSTOF_LIB for k in ts),
     }
     return ok

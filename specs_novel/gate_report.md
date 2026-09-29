@@ -270,10 +270,10 @@ and those are valid in both `emb_dbec3a0` and `emb_dbec3a0_lx`.
 
 | item | pass condition | result | status |
 |---|---|---|---|
-| G1.1 | `pseudo_c3` has ≥ **300** molecules, and ≥ **30** of them are timsTOF (enveda-np-examples) | — | PENDING |
-| G1.2 | `c2_displace` has ≥ **300** molecules | — | PENDING |
-| G1.3 | the `train` label covers ≥ **90 %** of corpus ik14 (`dec_val` and both held-out labels count as removed) | — | PENDING |
-| G1.4 | every invariant holds. `dec_split` labels are disjoint and cover every corpus ik14. No member of a `pseudo_c3` group is in `train` or `dec_val`. No `c2_displace` structure is in `train` or `dec_val`. Every cohort row is a quality-OK corpus row from its `src_lib`. No cohort ik14 is in `msg_ik14`. `pseudo_c3` ∩ `c2_displace` = ∅. | — | PENDING |
+| G1.1 | `pseudo_c3` has ≥ **300** molecules, and ≥ **30** of them are timsTOF (enveda-np-examples) | 600 molecules; **15** timsTOF (run 1, 2026-09-29) | **FAIL** (run 1) → amended, see A-G1.1 |
+| G1.2 | `c2_displace` has ≥ **300** molecules | 400 (run 1) | PASS (run 1) |
+| G1.3 | the `train` label covers ≥ **90 %** of corpus ik14 (`dec_val` and both held-out labels count as removed) | 0.9463 (run 1) | PASS (run 1) |
+| G1.4 | every invariant holds. `dec_split` labels are disjoint and cover every corpus ik14. No member of a `pseudo_c3` group is in `train` or `dec_val`. No `c2_displace` structure is in `train` or `dec_val`. Every cohort row is a quality-OK corpus row from its `src_lib`. No cohort ik14 is in `msg_ik14`. `pseudo_c3` ∩ `c2_displace` = ∅. | all 7 true (run 1) | PASS (run 1) |
 
 ### Decision rules
 
@@ -297,3 +297,76 @@ and those are valid in both `emb_dbec3a0` and `emb_dbec3a0_lx`.
 | held-out share of U, split into `heldout_c3`, `heldout_c2` and `dec_val` | P1 |
 | count of `molecular_formula` vs RDKit formula mismatches | P1 |
 | overlap with the val_scripts cohorts (`val_scripts/val_key.pkl`), for information | P1 |
+
+### G1 run 1 — result *(2026-09-29, `casmi_novel_p1_colab.ipynb`, `p1_gate.json`)*
+
+**Verdict: FAIL on G1.1 only.** G1.2, G1.3 and G1.4 pass.
+
+| value | result |
+|---|---|
+| quality-OK rows | 1,220,817 / 1,323,878 (92.2 %). Lowest: massbank 83.5 %, drug_plus 85.3 %, mona 86.1 %, riken 86.1 % |
+| structures | 194,668. Prep `ok` 194,589, `element` 79. In scope 99.87 %. Formula mismatches 165. Scaffolds 108,531, of which 12,519 acyclic. Largest group: benzene, 6,577 |
+| funnel | 194,668 → 50,223 (quality-OK in an NP library) → 26,966 (∉ `msg_ik14`) → 20,126 (≤ `G_MAX`) |
+| **timsTOF funnel** | 250 → 245 → **15** → 15. 230 of 245 (94 %) are in MassSpecGym |
+| `G_MAX` | 100, budget met. m(G): 200 → 15.87, 100 → 9.28, 50 → 5.13, 25 → 3.32. It excludes 25.4 % of eligible molecules |
+| `src_lib` of eligible molecules | gnps 22,627, massbank 1,804, msdial 938, mona 873, riken 701, enveda-np-examples 15, masaryk 8 |
+| `pseudo_c3` | 600 molecules (gnps 483), 1,028 spectra. CE known on 15.4 % of spectra. Spectra per molecule: median 1, mean 1.71. `dreams_ft_risk` 10. Median group size 1 |
+| `c2_displace` | 400 molecules (gnps 328), 669 spectra. CE known on 16.3 %. `dreams_ft_risk` 6 |
+| split | train 184,216 (94.63 %), dec_val 5,840 (3.00 %), heldout_c3 4,212 (2.16 %), heldout_c2 400 (0.21 %) |
+| val_scripts overlap | `pseudo_c3` 29, `c2_displace` 9 (of 1,145 val molecules) |
+
+**Diagnosis.** The binding constraint is the ICEBERG exclusion, not `G_MAX`: `G_MAX` removes 0 of
+the 15 timsTOF molecules. No `G_MAX`, seed or sampling choice can exceed 15 honest timsTOF
+Class-3 molecules, so decision rule 2's suggestion does not apply. The threshold of 30 was copied
+from the roadmap without checking `P0.5.p1_preview`, which already held this count.
+
+**Findings for later phases** (recorded, not gating):
+
+1. About 80 % of both cohorts come from GNPS. P4 reports its numbers per `src_lib`.
+2. Only about 15 % of cohort spectra have a known CE, while every test spectrum has one. P3 must
+   handle unknown CE well, and P4 reports results split by whether CE is known.
+3. Spectra per molecule: median 1. Cohort results are pessimistic about multi-spectrum
+   aggregation.
+4. The cohort `formula` column is the label formula. The oracle-formula gates (G3, G4.0) use the
+   formula of the prepared structure (`can`), because 165 structures disagree with their label.
+
+### A-G1.1 — decoder-only timsTOF cohort `ts_dec` *(amendment, registered 2026-09-29 after run 1, before run 2)*
+
+The user chose to amend G1.1 and not to end P1 or accept 15.
+
+**Why it is honest.** G3 and G4.0 measure the decoder and its constrained search with the oracle
+formula. ICEBERG is not involved in either. A timsTOF molecule that ICEBERG has seen is therefore
+a valid test of the decoder, **as long as the decoder has not seen its scaffold group**. The DreaMS
+head was fine-tuned on MoNA, not on enveda-np-examples.
+
+**Definition of `ts_dec`** (run 2):
+
+- **Candidates.** ik14 ∈ `msg_ik14` with ≥ 1 quality-OK enveda-np-examples row. `src_lib` is
+  enveda-np-examples.
+- **Excluded** if any of these holds:
+  - the molecule is in a `pseudo_c3` scaffold group;
+  - it is a `c2_displace` structure;
+  - its scaffold group contains a `c2_displace` structure, which keeps every group whole under one
+    label;
+  - `group_size > G_MAX`. `G_MAX` is still chosen by the unchanged rule and is not re-chosen.
+- **Size.** Every remaining candidate is taken; there is no draw.
+- **Decoder holdout.** The whole scaffold group, under the new `dec_split` label `heldout_ts`.
+  `dec_val` does not draw from `heldout_ts` groups.
+- **Spectra.** Picked as for the other cohorts, from enveda-np-examples rows.
+- **Use.** Decoder-level metrics only: G3, the G4.0 funnel and exact@k with the oracle formula,
+  reported as the instrument-shift check. **It is excluded from every metric that uses ICEBERG
+  `sv`, rerank or the merged list** (G4.1–G4.3, P6), and it is never pooled with `pseudo_c3`.
+
+**Amended gate** (run 2; G1.2 and G1.3 are unchanged):
+
+| item | pass condition |
+|---|---|
+| G1.1′ | `pseudo_c3` ≥ **300** molecules **and** `ts_dec` ≥ **100** molecules. The honest timsTOF molecules stay in `pseudo_c3` and are reported, with no minimum. |
+| G1.4′ | G1.4, plus the following. No member of a `ts_dec` group is in `train` or `dec_val`. `ts_dec` is disjoint from `pseudo_c3` and `c2_displace`. Every `ts_dec` ik14 is in `msg_ik14`. Every `ts_dec` row is a quality-OK enveda-np-examples row. |
+
+**Expected before the run:** `pseudo_c3` and `c2_displace` are identical to run 1 (same seed and
+draw order), and only `dec_split` changes. The train share drops by roughly
+230 × m(100) ≈ 2,100 structures (about 1.1 %). If G1.1′ or G1.3 fails, P1 stops (protocol 2).
+
+**Recorded, not gating:** the `ts_dec` funnel (candidates → after the c3/c2 exclusions → ≤ `G_MAX`),
+and the `ts_dec` counts by adduct, CE-known share and spectra per molecule.

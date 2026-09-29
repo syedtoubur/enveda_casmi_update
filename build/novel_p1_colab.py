@@ -14,12 +14,16 @@
 # | rows | label-quality filter: max(10 ppm, 0.0075 Da), neutral mass in [157, 1159] |
 # | eligibility | ik14 ∉ `msg_ik14`, a quality-OK NP-library row; `src_lib` timsTOF first |
 # | `G_MAX` | largest of {200, 100, 50, 25} within the 7 % held-out budget |
-# | cohorts | `pseudo_c3` (600, all eligible timsTOF first), `c2_displace` (400), spectra per molecule |
-# | split | `dec_split`: `heldout_c3` / `heldout_c2` / `dec_val` / `train` |
-# | gate | G1.1–G1.4 and everything recorded |
+# | cohorts | `pseudo_c3` (600, all eligible timsTOF first), `c2_displace` (400), `ts_dec` (A-G1.1), spectra per molecule |
+# | split | `dec_split`: `heldout_c3` / `heldout_ts` / `heldout_c2` / `dec_val` / `train` |
+# | gate | G1.1′ (amended), G1.2, G1.3, G1.4′ and everything recorded |
+#
+# **Run 2 (amendment A-G1.1).** Run 1 failed G1.1: only 15 timsTOF molecules are outside MassSpecGym.
+# `ts_dec` adds the timsTOF molecules ICEBERG *has* seen as a **decoder-only** cohort (whole scaffold
+# group held out as `heldout_ts`), for G3 / G4.0 only — never for ICEBERG-based metrics.
 #
 # Outputs go to Drive `casmi_2026/_novel/p1/`: `pseudo_c3.parquet`, `c2_displace.parquet`,
-# `dec_split.parquet`, `p1_gate.json`. Paste the final printout back into the chat.
+# `ts_dec.parquet`, `dec_split.parquet`, `p1_gate.json`. Paste the final printout back into the chat.
 
 # %%
 import os, sys, json, time, hashlib, subprocess, pickle
@@ -52,14 +56,14 @@ MAX_LEN = 171                                   # P0.3
 N_CORPUS_ROWS = 1_323_878                       # P0.2
 N_CORPUS_IK14 = 194_668
 
-# gate thresholds -- specs_novel/gate_report.md G1, committed before this run
+# gate thresholds -- specs_novel/gate_report.md G1 + amendment A-G1.1, committed before this run
 MIN_C3 = 300
-MIN_C3_TIMSTOF = 30
+MIN_TS_DEC = 100                                # G1.1': replaces run 1's ">= 30 timsTOF in pseudo_c3"
 MIN_C2 = 300
 MIN_TRAIN_SHARE = 0.90
 NCPU = os.cpu_count()
 
-GATE_RESULT = {"started": time.strftime("%Y-%m-%d %H:%M"), "vcpu": NCPU}
+GATE_RESULT = {"started": time.strftime("%Y-%m-%d %H:%M"), "vcpu": NCPU, "run": 2, "amendment": "A-G1.1"}
 
 def save_gate():
     (OUT / "p1_gate.json").write_text(json.dumps(GATE_RESULT, indent=1, default=str))
@@ -240,22 +244,25 @@ print(f"funnel {FUNNEL}\nfunnel timsTOF {FUNNEL_TS}")
 # ## Cohorts and spectra per molecule
 #
 # n per molecule is drawn from the test's spectra-per-molecule counts (capped at 16), rows come from
-# `src_lib` only, quality-OK, CE-known first, distinct (adduct, CE) pairs first.
+# `src_lib` only, quality-OK, CE-known first, distinct (adduct, CE) pairs first. `ts_dec` (A-G1.1)
+# is drawn after `pseudo_c3` and `c2_displace`, so those two are the same as in run 1.
 
 # %%
 C3, C2 = nc.sample_cohorts(ELIG, GMAX)
+TS, TS_FUNNEL = nc.sample_ts_dec(META[["inchikey14", "ingest_lib", "ok"]], MSG, SCAF, C3, C2, GMAX)
 SPEC_N = pd.read_parquet(TEST, columns=["molecule_id"]).molecule_id.value_counts().to_numpy()
 E = ELIG.set_index("inchikey14")
 SI = S.set_index("inchikey14")
-CAND = META[META.ok & META.inchikey14.isin(set(C3) | set(C2))]
+SRC_OF = {**E.src_lib.to_dict(), **{k: nc.TIMSTOF_LIB for k in TS}}
+CAND = META[META.ok & META.inchikey14.isin(set(C3) | set(C2) | set(TS))]
 CAND = {k: g for k, g in CAND.groupby("inchikey14")}
 LABEL_FORMULA = META.drop_duplicates("inchikey14").set_index("inchikey14").molecular_formula
 rng = np.random.default_rng(nc.SEED + 2)
 
-def cohort_frame(keys, prefix, is_c3):
+def cohort_frame(keys, prefix, pool_ban):
     recs = []
     for i, ik in enumerate(keys):
-        src = E.loc[ik, "src_lib"]
+        src = SRC_OF[ik]
         g = CAND[ik]
         g = g[g.ingest_lib == src]
         rows = nc.pick_spectra(g[["row", "adduct", "ce"]], nc.draw_n(SPEC_N, rng), rng)
@@ -264,15 +271,16 @@ def cohort_frame(keys, prefix, is_c3):
             molecule_id=f"{prefix}{i:05d}", inchikey14=ik, smiles=SI.loc[ik, "normalized_smiles"],
             can=SI.loc[ik, "can"], selfies=SI.loc[ik, "selfies"], formula=LABEL_FORMULA[ik],
             scaffold=SI.loc[ik, "scaffold_key"], group_size=int(SI.loc[ik, "group_size"]), src_lib=src,
-            timstof=bool(E.loc[ik, "timstof"]), in_scope=bool(SI.loc[ik, "in_scope"]),
+            timstof=src == nc.TIMSTOF_LIB, in_scope=bool(SI.loc[ik, "in_scope"]),
             rows=[int(r) for r in rows], train_rows=[int(x) for x in sub.train_row],
             adducts=list(sub.adduct), ces=[float(x) for x in sub.ce],
-            lib_ban_keys=[ik], pool_ban_keys=[ik] if is_c3 else [],
+            lib_ban_keys=[ik], pool_ban_keys=[ik] if pool_ban else [],
             dreams_ft_risk=nc.dreams_ft_risk(src, sub.adduct)))
     return pd.DataFrame(recs)
 
 T_C3 = cohort_frame(C3, "C3_", True)
 T_C2 = cohort_frame(C2, "C2_", False)
+T_TS = cohort_frame(TS, "TS_", True)               # decoder-only: G3 / G4.0, never ICEBERG metrics
 
 def cohort_summary(T):
     ces = np.concatenate([np.asarray(c, np.float64) for c in T.ces]) if len(T) else np.zeros(0)
@@ -283,7 +291,8 @@ def cohort_summary(T):
                 spectra_per_mol=pd.Series([len(r) for r in T.rows]).describe().round(2).to_dict(),
                 group_size_median=float(T.group_size.median()))
 
-GATE_RESULT["cohorts"] = {"pseudo_c3": cohort_summary(T_C3), "c2_displace": cohort_summary(T_C2)}
+GATE_RESULT["cohorts"] = {"pseudo_c3": cohort_summary(T_C3), "c2_displace": cohort_summary(T_C2),
+                          "ts_dec": {**cohort_summary(T_TS), "funnel": TS_FUNNEL}}
 save_gate()
 print(json.dumps(GATE_RESULT["cohorts"], indent=1))
 
@@ -291,11 +300,12 @@ print(json.dumps(GATE_RESULT["cohorts"], indent=1))
 # ## Decoder training split and the G1.4 invariants
 
 # %%
-SPLIT = nc.assign_splits(SCAF, C3, C2, GMAX)
-cohort_rows = {**dict(zip(T_C3.inchikey14, T_C3.rows)), **dict(zip(T_C2.inchikey14, T_C2.rows))}
-src_of = {**dict(zip(T_C3.inchikey14, T_C3.src_lib)), **dict(zip(T_C2.inchikey14, T_C2.src_lib))}
+SPLIT = nc.assign_splits(SCAF, C3, C2, GMAX, ts=TS)
+T_ALL = pd.concat([T_C3, T_C2, T_TS])
+cohort_rows = dict(zip(T_ALL.inchikey14, T_ALL.rows))
+src_of = dict(zip(T_ALL.inchikey14, T_ALL.src_lib))
 INV = nc.check_invariants(SPLIT, SCAF, C3, C2, cohort_rows, META.ok.to_numpy(),
-                          META.ingest_lib.to_numpy(object), src_of, MSG)
+                          META.ingest_lib.to_numpy(object), src_of, MSG, ts=TS)
 shares = SPLIT.value_counts(normalize=True).to_dict()
 GATE_RESULT["split"] = dict(counts=SPLIT.value_counts().to_dict(), shares=shares, invariants=INV)
 save_gate()
@@ -309,7 +319,7 @@ if VAL_KEY.exists():
     vk = pickle.load(open(VAL_KEY, "rb"))
     vset = {r["inchikey14"] for r in vk}
     GATE_RESULT["val_overlap"] = {"pseudo_c3": len(set(C3) & vset), "c2_displace": len(set(C2) & vset),
-                                  "val_molecules": len(vset)}
+                                  "ts_dec": len(set(TS) & vset), "val_molecules": len(vset)}
 else:
     GATE_RESULT["val_overlap"] = "val_key.pkl not on Drive -- skipped"
 save_gate()
@@ -320,33 +330,37 @@ print(GATE_RESULT["val_overlap"])
 
 # %%
 items = {
-    "G1.1": len(T_C3) >= MIN_C3 and int(T_C3.timstof.sum()) >= MIN_C3_TIMSTOF,
+    "G1.1'": len(T_C3) >= MIN_C3 and len(T_TS) >= MIN_TS_DEC,
     "G1.2": len(T_C2) >= MIN_C2,
     "G1.3": shares.get("train", 0.0) >= MIN_TRAIN_SHARE,
-    "G1.4": all(INV.values()),
+    "G1.4'": all(INV.values()),
 }
 VERDICT = "PASS" if all(items.values()) else "FAIL"
 
 DEC = pd.DataFrame({"inchikey14": SPLIT.index, "scaffold_key": SCAF.loc[SPLIT.index].to_numpy(),
                     "split": SPLIT.to_numpy()})
-if items["G1.4"]:                              # never write cohorts that break the invariants
+if items["G1.4'"]:                             # never write cohorts that break the invariants
     T_C3.to_parquet(OUT / "pseudo_c3.parquet", index=False)
     T_C2.to_parquet(OUT / "c2_displace.parquet", index=False)
+    T_TS.to_parquet(OUT / "ts_dec.parquet", index=False)
     DEC.to_parquet(OUT / "dec_split.parquet", index=False)
 GATE_RESULT.update(items={k: "PASS" if v else "FAIL" for k, v in items.items()}, verdict=VERDICT,
-                   values=dict(c3=len(T_C3), c3_timstof=int(T_C3.timstof.sum()), c2=len(T_C2),
+                   values=dict(c3=len(T_C3), c3_timstof=int(T_C3.timstof.sum()), c2=len(T_C2), ts_dec=len(T_TS),
                                train_share=shares.get("train", 0.0), gmax=GMAX),
-                   outputs_written=items["G1.4"], finished=time.strftime("%Y-%m-%d %H:%M"))
+                   outputs_written=items["G1.4'"], finished=time.strftime("%Y-%m-%d %H:%M"))
 save_gate()
 
 print("=" * 88)
 print(f"G1 VERDICT: {VERDICT}")
 print("=" * 88)
-print(f"G1.1  {GATE_RESULT['items']['G1.1']}  pseudo_c3 {len(T_C3)} (>= {MIN_C3}), timsTOF {T_C3.timstof.sum()} (>= {MIN_C3_TIMSTOF})")
-print(f"G1.2  {GATE_RESULT['items']['G1.2']}  c2_displace {len(T_C2)} (>= {MIN_C2})")
-print(f"G1.3  {GATE_RESULT['items']['G1.3']}  train share {shares.get('train', 0.0):.4f} (>= {MIN_TRAIN_SHARE})")
-print(f"G1.4  {GATE_RESULT['items']['G1.4']}  {INV}")
+G = GATE_RESULT["items"]
+g11, g14 = G["G1.1'"], G["G1.4'"]
+print(f"G1.1' {g11}  pseudo_c3 {len(T_C3)} (>= {MIN_C3}), ts_dec {len(T_TS)} (>= {MIN_TS_DEC}); "
+      f"honest timsTOF in pseudo_c3 {T_C3.timstof.sum()} (reported)")
+print(f"G1.2  {G['G1.2']}  c2_displace {len(T_C2)} (>= {MIN_C2})")
+print(f"G1.3  {G['G1.3']}  train share {shares.get('train', 0.0):.4f} (>= {MIN_TRAIN_SHARE})")
+print(f"G1.4' {g14}  {INV}")
 print(f"\nG_MAX {GMAX} (budget met {GMAX_MET}); eligible excluded by G_MAX {100 * excl:.1f} %")
-print(f"funnel timsTOF {FUNNEL_TS}")
+print(f"funnel timsTOF {FUNNEL_TS}; ts_dec funnel {TS_FUNNEL}")
 print(f"dreams_ft_risk: c3 {int(T_C3.dreams_ft_risk.sum())}, c2 {int(T_C2.dreams_ft_risk.sum())}")
-print(f"\noutputs: {OUT} (written: {items['G1.4']})\nfull report: {OUT / 'p1_gate.json'}")
+print(f"\noutputs: {OUT} (written: {GATE_RESULT['outputs_written']})\nfull report: {OUT / 'p1_gate.json'}")
