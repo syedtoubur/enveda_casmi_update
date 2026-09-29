@@ -16,8 +16,8 @@ environment and interfaces are in `tech_stack.md`.*
 
 | phase | milestone | where | status |
 |---|---|---|---|
-| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | PLANNED |
-| P1 | Honest benchmark cohorts + training split | Colab | PLANNED |
+| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | CLOSED BY DECISION 2026-09-29 (G0.1-R failed on peak tie-breaking; `emb_dbec3a0` accepted; `gate_report.md`) |
+| P1 | Honest benchmark cohorts + training split | Colab | IN PROGRESS |
 | P2 | Formula stage | Colab / local | PLANNED |
 | P3 | Decoder training | Colab (GPU) | PLANNED |
 | P4 | Offline constrained search + verification | Colab | PLANNED |

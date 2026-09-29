@@ -77,16 +77,19 @@ def dreams_peaks(mz, it, prec, floor=INT_FLOOR, n=N_PEAKS, above=DROP_ABOVE_PREC
     if not np.isfinite(mx) or mx <= 0: return None
     k = it >= floor*mx; mz, it = mz[k], it[k]
     if len(mz) < 2: return None
+    # Deterministic where cell 7 was not: its np.argsort (unstable) let the numpy build / CPU decide which
+    # tied peaks survive the top-n cut (G0.1-R). Ties at the cut go to the higher m/z; order is by m/z,
+    # then intensity, so the output does not depend on the input order either.
     if len(mz) > n:
-        keep = np.sort(np.argsort(it)[-n:]); mz, it = mz[keep], it[keep]
-    o = np.argsort(mz); mz, it = mz[o], it[o]
+        keep = np.lexsort((mz, it))[-n:]; mz, it = mz[keep], it[keep]
+    o = np.lexsort((it, mz)); mz, it = mz[o], it[o]
     return np.stack([mz, it/it.max()]).astype(np.float32)   # (2, n)
 
 
 def to_model_input(peaks, prec_mz, n=N_PEAKS, prec_intens=PREC_INTENS):
     """(2, k) peak list -> (n + 1, 2) float32: upstream SpectrumPreprocessor.__call__ with its defaults."""
     pl = np.array(peaks, copy=True)                                  # (2, k)
-    keep = np.sort(np.argsort(pl[1])[-n:])                           # su.trim_peak_list
+    keep = np.sort(np.lexsort((pl[0], pl[1]))[-n:])                  # su.trim_peak_list, ties -> higher m/z
     pl = pl[:, keep]
     if pl.shape[1] < n:                                              # su.pad_peak_list
         pl = np.pad(pl, ((0, 0), (0, n - pl.shape[1])), mode="constant", constant_values=0)

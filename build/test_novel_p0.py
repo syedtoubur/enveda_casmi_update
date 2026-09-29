@@ -123,6 +123,21 @@ def test_preprocessing():
     raw = (np.linspace(60, 590, 250), rng.uniform(0.01, 1, 250))            # > 100 peaks straight in
     spec = prepend(rel(pad(trim(np.stack(raw), 100), 100)).T, 600.0, 1.1, high=True).astype(np.float32)
     assert np.array_equal(di.to_model_input(np.stack(raw), 600.0), spec)
+
+    # ties at the top-100 cut (G0.1-R): the higher m/z wins, and input order does not matter
+    mz = np.arange(100.0, 250.0)                                            # 150 peaks
+    it = np.where(mz < 130, 1.0, 0.5)                                       # 30 at 1.0, 120 tied at 0.5
+    a = di.dreams_peaks(mz, it, 600.0)
+    assert a.shape == (2, 100) and np.array_equal(a[0], np.r_[100:130, 180:250].astype(np.float32)), a[0]
+    for seed in range(5):
+        p = np.random.default_rng(seed).permutation(len(mz))
+        assert np.array_equal(di.dreams_peaks(mz[p], it[p], 600.0), a)
+    dup_mz, dup_it = np.array([300.0, 200.0, 200.0, 100.0]), np.array([0.2, 0.9, 0.4, 1.0])  # an m/z tie
+    b = di.dreams_peaks(dup_mz, dup_it, 600.0)
+    assert np.array_equal(b, di.dreams_peaks(dup_mz[::-1], dup_it[::-1], 600.0))
+    assert np.array_equal(b[1], np.float32([1.0, 0.4, 0.9, 0.2])), b
+    flat = np.stack([np.arange(100.0, 250.0), np.full(150, 0.5)])           # > 100 tied peaks into the model
+    assert np.array_equal(di.to_model_input(flat, 600.0)[1:, 0], np.arange(150.0, 250.0, dtype=np.float32))
     print("  preprocessing: OK")
 
 
@@ -380,7 +395,110 @@ def test_walk(vocab, tt):
     print(f"  mask walk: OK (DBE prune breaks on {len(dbe_broken)}: {', '.join(dbe_broken)})")
 
 
+def nb_code(path):
+    nb = json.loads(path.read_text(encoding="utf-8"))
+    return ["".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code"]
+
+
+def test_notebooks():
+    """Generated notebooks are fresh, parse, embed the build/ sources verbatim, and replay cell 7."""
+    import mk_novel_p0 as mk
+    for src, dst, tags in mk.BUILDS:
+        before = dst.read_text(encoding="utf-8") if dst.exists() else None
+        mk.build(src, dst, tags)
+        assert before is None or before == dst.read_text(encoding="utf-8"), \
+            f"{dst.name} was stale -- it has now been regenerated; re-run the test"
+        code = nb_code(dst)
+        for i, c in enumerate(code):
+            ast.parse(c, filename=f"{dst.name}[code {i}]")
+        for tag in tags:
+            var, path = mk.SOURCES[tag]
+            lines = [ln for c in code for ln in c.split("\n") if ln.startswith(f"{var} = ")]
+            assert len(lines) == 1, (dst.name, var, len(lines))
+            assert ast.literal_eval(lines[0][len(var) + 3:]) == path.read_text(encoding="utf-8"), \
+                f"{dst.name}: {var} is not {path.name} verbatim"
+    ast.parse((HERE / "dreams_official_worker.py").read_text(encoding="utf-8"))
+
+    # the replay uses cell 1's corpus settings and cell 7's selection code
+    src_nb = json.loads((ROOT / "casmi_dreams_colab.ipynb").read_text(encoding="utf-8"))
+    cells = ["".join(c["source"]) for c in src_nb["cells"] if c["cell_type"] == "code"]
+    cfg_cell = next(c for c in cells if "class CFG" in c)
+    cfg = next(n for n in ast.parse(cfg_cell).body if isinstance(n, ast.ClassDef) and n.name == "CFG")
+    cfg = {t.id: ast.literal_eval(a.value) for a in cfg.body if isinstance(a, ast.Assign)
+           for t in a.targets if isinstance(a.value, (ast.Constant, ast.List))}
+    colab_src = (HERE / "novel_p0_colab.py").read_text(encoding="utf-8")
+    tree = ast.parse(colab_src)
+    consts = {t.id: ast.literal_eval(a.value) for a in tree.body if isinstance(a, ast.Assign)
+              for t in a.targets if isinstance(t, ast.Name) and isinstance(a.value, (ast.Constant, ast.List))}
+    two = next(a for a in tree.body if isinstance(a, ast.Assign) and isinstance(a.targets[0], ast.Tuple)
+               and [t.id for t in a.targets[0].elts] == ["CAP_ENVEDA180", "CAP_PER_LIB"])
+    caps = ast.literal_eval(two.value)
+    assert consts["TEST_ADDUCTS"] == cfg["TEST_ADDUCTS"] and cfg["ONLY_TEST_ADDUCTS"] is True
+    assert caps == (cfg["CAP_ENVEDA180"], cfg["CAP_PER_LIB"]) and cfg["MAX_SPECTRA"] is None
+    assert consts["CHUNK"] == cfg["CHUNK"]
+    assert (cfg["INT_FLOOR"], cfg["N_PEAKS"], cfg["DROP_ABOVE_PRECURSOR"]) == (0.002, 100, 2.0)
+    cell7 = next(c for c in cells if "def peak_list" in c)
+    for line in ['for lib, g in tr.groupby("ingest_lib"):', "g = g.sample(cap, random_state=0)",
+                 "tr = pd.concat(parts).reset_index(drop=True)",
+                 'tr["oob_mass"] = (tr.precursor_mz > 1000).astype(np.int8)']:
+        assert line in cell7 and line in colab_src, line
+    assert "CFG.CAP_ENVEDA180 if lib==\"enveda-180\" else CFG.CAP_PER_LIB" in cell7
+
+    # notebook helpers
+    import pandas as pd
+    ns = {"np": np, "pd": pd}
+    gather = load_func(tree, "gather_lists", ns)
+    means = load_func(tree, "list_means", ns)
+    pick = load_func(tree, "stratified_pick", ns)
+    lists = [[10.0, 20.0], [], [np.nan], [30.0, -1.0, 50.0], [5.0]]
+    offs = np.concatenate([[0], np.cumsum([len(x) for x in lists])])
+    vals = np.array([v for x in lists for v in x])
+    rows = np.array([3, 1, 0, 3, 2])
+    no, v = gather(offs, vals, rows)
+    got = [list(v[no[i]:no[i + 1]]) for i in range(len(rows))]
+    want = [lists[r] for r in rows]
+    assert all(np.array_equal(np.array(a), np.array(b), equal_nan=True) for a, b in zip(got, want)), got
+    n_fin, mean = means(no, v)
+    assert list(n_fin) == [2, 0, 2, 2, 0] and np.allclose(mean[[0, 2, 3]], [40, 15, 40]) \
+        and np.isnan(mean[[1, 4]]).all(), (n_fin, mean)
+    S = pd.DataFrame({"row": np.arange(300), "a": np.repeat(["x", "y", "z"], [250, 45, 5])})
+    P = pick(S, ["a"], 30, 0)
+    vc = P.a.value_counts().to_dict()
+    assert len(P) == 30 and vc["z"] == 5 and vc["x"] + vc["y"] == 25 and abs(vc["x"] - vc["y"]) <= 1, vc
+    assert P.row.is_monotonic_increasing and P.row.is_unique
+
+    # re-embed: same chunking as the old cache and the P0 notebook, a separate output folder
+    re_tree = ast.parse((HERE / "novel_reembed_colab.py").read_text(encoding="utf-8"))
+    re_consts = {t.id: ast.literal_eval(a.value) for a in re_tree.body if isinstance(a, ast.Assign)
+                 for t in a.targets if isinstance(t, ast.Name) and isinstance(a.value, ast.Constant)}
+    assert re_consts["CHUNK"] == consts["CHUNK"] == cfg["CHUNK"]
+    assert re_consts["DREAMS_COMMIT"] == consts["DREAMS_COMMIT"]
+    assert re_consts["COS_CACHE"] == consts["COS_CACHE"] == 0.999
+    re_src = (HERE / "novel_reembed_colab.py").read_text(encoding="utf-8")
+    assert 'OUT = ROOT / "_novel" / "emb_dbec3a0"' in re_src and "np.save(DOUT" not in re_src
+    ns = {"np": np, "pd": pd, "DIM": 4}
+    bounds = load_func(re_tree, "chunk_bounds", ns)
+    assert bounds(450_001, 200_000) == [(0, 200_000), (200_000, 400_000), (400_000, 450_001)]
+    assert bounds(400_000, 200_000) == [(0, 200_000), (200_000, 400_000)] and bounds(0, 5) == []
+    done = load_func(re_tree, "chunk_done", ns)
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "emb_0000.npy"
+        assert not done(f, 3)
+        np.save(f, np.zeros((3, 4), np.float32))
+        assert done(f, 3) and not done(f, 2)
+        np.save(f, np.zeros((3, 4), np.float64))
+        assert not done(f, 3)
+        f.write_bytes(b"truncated")
+        assert not done(f, 3)
+    summ = load_func(re_tree, "summarise", ns)
+    s = summ(np.array([1.0, 0.9985, 0.99999, 0.95]), np.array(["a", "a", "b", "c"]))
+    assert list(s.g) == ["c", "a", "b"] and list(s.n) == [1, 2, 1]
+    assert np.allclose(s.below_0999, [1.0, 0.5, 0.0]), s
+    print(f"  notebooks: OK ({', '.join(d.name for _, d, _ in mk.BUILDS)})")
+
+
 def main():
+    test_notebooks()
     test_preprocessing()
     test_network()
     vocab, tt = test_token_table()

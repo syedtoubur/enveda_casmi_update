@@ -39,7 +39,7 @@ thin wrapper, so that the Kaggle import needs no massspecgym.
 | `dreams_embed.pt` | plain `state_dict` (backbone + head, training heads dropped), backbone `args` dict, DreaMS commit, source SHA1s | P0.1a conversion | SHA1 recorded and asserted at load |
 | `parity_200.npz` | 200 stratified corpus peak lists, their row ids, and the Colab vendored embeddings | P0.1a | the G0.1 reference and a P5 test fixture |
 | `_dreams_out/emb/emb_*.npy` + `corpus_meta.parquet` | cached 1024-d float32 embeddings for the filtered train corpus | `casmi_dreams_colab.ipynb` Stage 3 | on Drive; rows **to report in P0.2** |
-| `corpus_ce.parquet` | CE per cached row, recovered by replaying Stage 3a | P0.2 | **to measure** |
+| `corpus_ce.parquet` | CE per cached row, recovered by replaying Stage 3a | P0.2 | written; 1,323,878 rows, CE missing on 23.9 % |
 | `selfies_vocab.json` | SELFIES symbol → token ID, plus the special tokens `<pad> <s> </s> <unk>`. The alphabet is the corpus alphabet ∪ the robust alphabet, with stereo stripped (A4, A9). | P0.3 | SHA1 recorded |
 | `msg_ik14.npy` | sorted ik14s of every `MassSpecGym1.5.tsv` SMILES | P0.5 | the ICEBERG `msg_all` exclusion set |
 | `pseudo_c3.parquet`, `c2_displace.parquet` | cohorts (molecule, spectra, truth, formula, Murcko scaffold) | P1 | **to measure** |
@@ -138,15 +138,15 @@ which consists of training-set examples (data page).
 | `τ_gen` | 0.75 | P6 probe | skip generation if max `lv` ≥ τ_gen |
 | `GEN_ADDUCTS` | all 10 test adducts | P4 | restricted only if P4 shows an adduct is pure cost |
 | `N_PEAKS_DREAMS` | 100 | fixed | the checkpoint's `n_highest_peaks` (`api.py:108`) |
-| `MAX_LEN` | **from P0.3** (p99.9 of corpus SELFIES lengths) | P0 | search depth limit |
+| `MAX_LEN` | **171** (p99.9 of corpus SELFIES lengths, P0.3) | P0 | search depth limit |
 | `MAX_SPEC_PER_MOL` | **to measure** | P3 | spectra per molecule, sampled per epoch in training; all spectra (up to 16) at test |
 | `D_MODEL`, `N_DEC_LAYERS`, `N_HEADS` | **to measure** | P3 | decoder size, bounded by Colab time |
-| `CE_BINS` | **from P0.2** | P0 | CE histogram bins, plus "unknown" |
+| `CE_BINS` | **[15, 23, 36, 44]** (P0.2 quantiles; 23.9 % of rows go to "unknown") | P0 | CE histogram bins, plus "unknown" |
 | `FORMULA_TOPK` | 3 | P2 / P4 | formulas searched per molecule |
 | `BRANCH` | **to measure** | P4 | tokens expanded per node |
 | `NODE_BUDGET` | **to measure** | P4 | expansions per (molecule, formula) |
 | `MAX_LEAVES` | 50 | P4 | leaves emitted per (molecule, formula) |
-| `DBE_PRUNE` | True only for formulas without S or P; set to False if P0.4 finds any DBE violation (A8) | P0.4 | plan §4.2 soundness rule |
+| `DBE_PRUNE` | **False**: P0.4 found 139 DBE violations (A8) | P0.4 | plan §4.2 soundness rule |
 | `MAX_NOVEL` | 50 | P4 | novel candidates sent to ICEBERG per molecule |
 | `SLOT_POLICY` | `"tail"` | P6 | `"tail"` (v1) or `"arena"` (v2) |
 | `K_NOVEL` | 5 | P4 / P6 | tail slots for novel candidates |
@@ -169,8 +169,8 @@ T_total = T_base + T_novel_install
 | ICEBERG offline install | 197 s | summary §5.3 |
 | `r_iceberg` | 36.6 mol/s, one T4, batch 128 | summary §5.3 |
 | ICEBERG worker start-up | 10.4 s per call | summary §5.3 |
-| `T_novel_install` (DreaMS + selfies) | **to measure** | P0.1 |
-| `T_embed` per molecule (DreaMS, T4) | **to measure** | P0.1 |
+| `T_novel_install` (DreaMS + selfies) | 3.7 s (selfies wheel; DreaMS is vendored, nothing to install) | P0.1b |
+| `T_embed` per spectrum (DreaMS, T4) | 6.68 ms at batch 64 on `cuda:1`; 5.0 s to load `dreams_embed.pt` | P0.1b |
 | `T_search(NODE_BUDGET)` per formula (T4, with KV cache) | **to measure** | P4 |
 | `N_routed` | **to measure** on the visible test; the hidden split is unknown | P5 |
 | extra ICEBERG time | at `MAX_NOVEL` = 50 and 400 molecules: ≤ 20,000 requests ≈ 9.1 min at 36.6 mol/s. This is arithmetic from the measured rate and excludes the CE count per spectrum. | derived |
