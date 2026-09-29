@@ -687,12 +687,33 @@ def _leaf(vocab, ids, target_counts):
     return (can, k[:14]) if k else None
 
 
-def _collect(out, vocab, ids, logp, target_counts):
+FUNNEL_KEYS = ("sequences", "eos", "valid", "unique", "dead", "truncated")
+
+
+def new_funnel():
+    """The G3 funnel, counted by the searches themselves (gate_report.md -> G3, recorded-not-gating).
+
+    sequences  rollouts / beams started
+    eos        sequences that reached </s>, i.e. the heavy-atom formula was satisfied exactly
+    valid      of those, the ones that decode, sanitise, are one component and match the FULL
+               formula including hydrogen
+    unique     distinct ik14 among the valid ones
+    dead       sequences abandoned because no token was legal (valence ran out)
+    truncated  sequences still unfinished at MAX_LEN
+    """
+    return dict.fromkeys(FUNNEL_KEYS, 0)
+
+
+def _collect(out, vocab, ids, logp, target_counts, fn=None):
     """Add a finished sequence to `out`, an ik14 -> (smiles, logp) dict keeping the best logp."""
+    if fn is not None:
+        fn["eos"] += 1
     leaf = _leaf(vocab, ids, target_counts)
     if leaf is None:
         return False
     smi, key = leaf
+    if fn is not None:
+        fn["valid"] += 1
     prev = out.get(key)
     if prev is None or logp > prev[1]:
         out[key] = (smi, logp)
@@ -775,8 +796,11 @@ def _nucleus(lp, top_p):
 
 @torch.no_grad()
 def search_prefix_seeded(model, memory, formula, table, *, mem_pad=None, l_seed=4, k_roots=8,
-                         m_rollout=32, temperature=0.7, top_p=0.90, max_len=None, seed=None):
-    """P3 bake-off arm A. -> [(smiles, logp)], ik14-deduped, best logp per ik14."""
+                         m_rollout=32, temperature=0.7, top_p=0.90, max_len=None, seed=None,
+                         stats=None):
+    """P3 bake-off arm A. -> [(smiles, logp)], ik14-deduped, best logp per ik14.
+
+    Pass `stats` as a dict to have the funnel counts written into it (see new_funnel)."""
     model.eval()
     max_len = max_len or model.max_len
     counts, root, sos = _prep_search(model, memory, mem_pad, formula, table)
@@ -786,8 +810,14 @@ def search_prefix_seeded(model, memory, formula, table, *, mem_pad=None, l_seed=
     prefixes = _seed_prefixes(model, memory, mem_pad, table, root, sos, l_seed, k_roots,
                               width=max(k_roots * 8, 32), prefix_cap=2)
     out = {}
+    fn = stats if stats is not None else None
+    if fn is not None:
+        fn.update({k: fn.get(k, 0) for k in FUNNEL_KEYS})
+        fn["roots"] = fn.get("roots", 0) + len(prefixes)
     if not prefixes:
         return []
+    if fn is not None:
+        fn["sequences"] += len(prefixes) * m_rollout
     ids = torch.cat([p[0].repeat(m_rollout, 1) for p in prefixes], dim=0)
     trackers = [p[1]._copy() for p in prefixes for _ in range(m_rollout)]
     logp = [p[2] for p in prefixes for _ in range(m_rollout)]
@@ -804,15 +834,20 @@ def search_prefix_seeded(model, memory, formula, table, *, mem_pad=None, l_seed=
         nxt = []
         for j, i in enumerate(alive):
             if dead[j]:
+                if fn is not None:
+                    fn["dead"] += 1
                 continue
             t = int(tok[j])
             logp[i] += float(lp[j, t])
             if t == model.eos_id:
-                _collect(out, table.vocab, ids[i, 1:-1].tolist(), logp[i], counts)
+                _collect(out, table.vocab, ids[i, 1:-1].tolist(), logp[i], counts, fn)
                 continue
             trackers[i] = trackers[i].push(t)
             nxt.append(i)
         alive = nxt
+    if fn is not None:
+        fn["truncated"] += len(alive)
+        fn["unique"] += len(out)
     return sorted(((s, lg) for s, lg in out.values()), key=lambda c: -c[1])
 
 
@@ -822,7 +857,7 @@ def search_prefix_seeded(model, memory, formula, table, *, mem_pad=None, l_seed=
 
 @torch.no_grad()
 def search_masked_beam(model, memory, formula, table, *, mem_pad=None, beam=256, max_len=None,
-                       alpha=0.0, max_leaves=None):
+                       alpha=0.0, max_leaves=None, stats=None):
     """P3 bake-off arm B (alpha = 0) and arm C (alpha > 0). -> [(smiles, logp)], ik14-deduped.
 
     With alpha > 0 the score used for *selection* is penalised by how often each ring / branch token
@@ -839,6 +874,9 @@ def search_masked_beam(model, memory, formula, table, *, mem_pad=None, beam=256,
     scaffold = torch.from_numpy(table.is_branch | table.is_ring).to(memory.device)
     live = [(sos, root, 0.0)]                      # (ids, tracker, unpenalised logp)
     out = {}
+    fn = stats if stats is not None else None
+    if fn is not None:
+        fn.update({k: fn.get(k, 0) for k in FUNNEL_KEYS})
     prev = torch.zeros(len(table.kind), device=memory.device)
     for _ in range(max_len + 1):
         if not live:
@@ -851,6 +889,8 @@ def search_masked_beam(model, memory, formula, table, *, mem_pad=None, beam=256,
         cand = []
         for i, (bi, t, base) in enumerate(live):
             if dead[i]:
+                if fn is not None:
+                    fn["dead"] += 1
                 continue
             for tok in torch.nonzero(legal[i], as_tuple=False).flatten().tolist():
                 real = base + float(lp[i, tok])
@@ -867,22 +907,27 @@ def search_masked_beam(model, memory, formula, table, *, mem_pad=None, beam=256,
             bi, t, _ = live[i]
             if tok == model.eos_id:
                 if len(out) < max_leaves:
-                    _collect(out, table.vocab, bi[0, 1:].tolist(), real, counts)
+                    _collect(out, table.vocab, bi[0, 1:].tolist(), real, counts, fn)
                 continue
             if full:
                 continue
             step = torch.tensor([[tok]], dtype=torch.long, device=bi.device)
             nxt.append((torch.cat([bi, step], dim=1), t.push(tok), real))
+            if fn is not None:
+                fn["sequences"] += 1
             taken[tok] += 1
         live, prev = nxt, taken
+    if fn is not None:
+        fn["truncated"] += len(live)
+        fn["unique"] += len(out)
     return sorted(((s, lg) for s, lg in out.values()), key=lambda c: -c[1])
 
 
 def search_diverse_beam(model, memory, formula, table, *, mem_pad=None, beam=256, alpha=0.6,
-                        max_len=None, max_leaves=None):
+                        max_len=None, max_leaves=None, stats=None):
     """P3 bake-off arm C: search_masked_beam with the cross-beam penalty switched on."""
     return search_masked_beam(model, memory, formula, table, mem_pad=mem_pad, beam=beam,
-                              max_len=max_len, alpha=alpha, max_leaves=max_leaves)
+                              max_len=max_len, alpha=alpha, max_leaves=max_leaves, stats=stats)
 
 
 SEARCHES = {"prefix_seeded": search_prefix_seeded,
