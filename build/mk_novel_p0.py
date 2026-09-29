@@ -3,6 +3,9 @@
     novel_p0_colab.py   -> casmi_novel_p0_colab.ipynb    (Colab: P0.1a, P0.2-P0.5)
     novel_p0_kaggle.py  -> casmi_novel_p0_kaggle.ipynb   (Kaggle, internet off: P0.1b)
     novel_reembed_colab.py -> casmi_novel_reembed_colab.ipynb (Colab GPU: G0.1-R corpus re-embed)
+    novel_lx_reembed_colab.py -> casmi_novel_lx_reembed_colab.ipynb (Colab GPU: G0.1-R2 fixed-code re-embed)
+    novel_lx_cpu_colab.py  -> casmi_novel_lx_cpu_colab.ipynb   (Colab CPU: G0.1-R2 peak leg)
+    novel_lx_kaggle.py     -> casmi_novel_lx_kaggle.ipynb      (Kaggle, internet off: G0.1-R2 leg)
 
 Each placeholder line `NAME = None  # @@TAG@@` becomes `NAME = <repr of the source file>`: the notebooks
 write the sources back to files, so the multiprocessing workers and the DreaMS venv can import them.
@@ -21,12 +24,16 @@ SOURCES = {   # tag -> (variable, embedded file)
     "DREAMS_INFER": ("DREAMS_INFER_SRC", HERE / "dreams_infer.py"),
     "NOVEL_DECODER": ("NOVEL_DECODER_SRC", HERE / "novel_decoder.py"),
     "DREAMS_OFFICIAL_WORKER": ("OFFICIAL_WORKER_SRC", HERE / "dreams_official_worker.py"),
+    "NOVEL_LX": ("NOVEL_LX_SRC", HERE / "novel_lx.py"),
 }
 BUILDS = [
     (HERE / "novel_p0_colab.py", ROOT / "casmi_novel_p0_colab.ipynb",
      ("DREAMS_INFER", "NOVEL_DECODER", "DREAMS_OFFICIAL_WORKER")),
     (HERE / "novel_p0_kaggle.py", ROOT / "casmi_novel_p0_kaggle.ipynb", ("DREAMS_INFER", "NOVEL_DECODER")),
     (HERE / "novel_reembed_colab.py", ROOT / "casmi_novel_reembed_colab.ipynb", ("DREAMS_INFER",)),
+    (HERE / "novel_lx_reembed_colab.py", ROOT / "casmi_novel_lx_reembed_colab.ipynb", ("DREAMS_INFER", "NOVEL_LX")),
+    (HERE / "novel_lx_cpu_colab.py", ROOT / "casmi_novel_lx_cpu_colab.ipynb", ("DREAMS_INFER", "NOVEL_LX")),
+    (HERE / "novel_lx_kaggle.py", ROOT / "casmi_novel_lx_kaggle.ipynb", ("DREAMS_INFER", "NOVEL_LX")),
 ]
 
 

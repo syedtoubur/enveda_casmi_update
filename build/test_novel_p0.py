@@ -497,8 +497,112 @@ def test_notebooks():
     print(f"  notebooks: OK ({', '.join(d.name for _, d, _ in mk.BUILDS)})")
 
 
+def test_lx():
+    """G0.1-R2 helpers (build/novel_lx.py) and the three notebooks' pinned constants."""
+    import hashlib
+    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import dreams_infer as di
+    import novel_lx as lx
+    import inspect
+
+    d = inspect.signature(lx.cut_tie).parameters
+    assert (d["floor"].default, d["n"].default, d["above"].default) == \
+        (di.INT_FLOOR, di.N_PEAKS, di.DROP_ABOVE_PRECURSOR)
+
+    # cut_tie: exactly the rows where the top-100 cut falls in a tie
+    mz = np.linspace(100, 500, 150)
+    it = np.linspace(1.0, 0.5, 150)
+    assert not lx.cut_tie(mz, it, 600.0)
+    t = it.copy(); t[99] = t[100]
+    assert lx.cut_tie(mz, t, 600.0)
+    t = it.copy(); t[1] = t[0]                                    # tie at the top, not at the cut
+    assert not lx.cut_tie(mz, t, 600.0)
+    assert not lx.cut_tie(mz[:100], np.full(100, 0.7), 600.0)     # <= 100 peaks: no cut
+    t = it.copy(); t[99] = t[100]
+    assert not lx.cut_tie(mz, t, 300.0)                           # m/z filter leaves < 100 peaks
+    t = np.concatenate([np.full(99, 1.0), np.full(51, 1e-4)])     # floor filter leaves 99
+    assert not lx.cut_tie(mz, t, 600.0)
+    assert not lx.cut_tie(mz, np.zeros(150), 600.0)
+
+    # without a tie at the cut, the old unstable argsort keeps the same peaks as the fixed code
+    rng = np.random.default_rng(7)
+    n_tie = 0
+    for trial in range(300):
+        n = int(rng.integers(90, 260))
+        mz = np.sort(rng.uniform(50, 900, n))
+        it = np.round(rng.uniform(0, 1, n), int(rng.integers(1, 4)))   # coarse levels -> ties
+        tie = lx.cut_tie(mz, it, 950.0)
+        n_tie += tie
+        k = it >= 0.002 * it.max(); m2, i2 = mz[k], it[k]
+        old = set(m2[np.argsort(i2)[-100:]]) if len(m2) > 100 else set(m2)
+        new = set(di.dreams_peaks(mz, it, 950.0)[0].astype(np.float64)) if len(m2) >= 2 else set()
+        if not tie and len(m2) >= 2:
+            assert {np.float32(x) for x in old} == {np.float32(x) for x in new}, trial
+    assert 0 < n_tie < 300, n_tie
+
+    # pick_parity
+    tie = np.zeros(1000, bool); tie[:300] = True
+    lib = np.array(["a"] * 250 + ["b"] * 45 + ["c"] * 5 + ["a"] * 700)
+    p = lx.pick_parity(tie, lib, 150, 50, 1)
+    assert len(p) == 200 and np.all(np.diff(p) > 0) and tie[p].sum() == 150
+    vc = pd.Series(lib[p][tie[p]]).value_counts().to_dict()
+    assert vc["c"] == 5 and vc["b"] == 45 and vc["a"] == 100, vc
+    assert np.array_equal(p, lx.pick_parity(tie, lib, 150, 50, 1))
+    assert not np.array_equal(p, lx.pick_parity(tie, lib, 150, 50, 2))
+    q = lx.pick_parity(tie[:20], lib[:20], 150, 50, 1)            # fewer rows than asked: all of them
+    assert len(q) == 20
+
+    # pack / unpack / digest / diffs
+    pls = [np.stack([np.sort(rng.uniform(50, 500, k)), rng.uniform(0, 1, k)]).astype(np.float32)
+           for k in (2, 7, 100)]
+    prec = np.array([300.0, 400.0, 500.0])
+    back = lx.unpack_peaks(*lx.pack_peaks(pls))
+    assert lx.peak_diffs(pls, back) == [] and lx.peaks_digest(pls, prec) == lx.peaks_digest(back, prec)
+    bump = [x.copy() for x in pls]; bump[1][1, 3] = np.nextafter(bump[1][1, 3], np.float32(2))
+    assert lx.peak_diffs(pls, bump) == [1] and lx.peaks_digest(pls, prec) != lx.peaks_digest(bump, prec)
+    assert lx.peaks_digest(pls, prec) != lx.peaks_digest(pls, prec + 1e-9)
+    assert np.allclose(lx.rowcos(np.eye(2), np.array([[2.0, 0], [1, 1]])), [1, 2 ** -0.5])
+
+    # stream_rows: requested rows in any order, across batch boundaries
+    rows = [[float(i), float(i) + 0.5] for i in range(10)]
+    with tempfile.TemporaryDirectory() as dd:
+        f = Path(dd) / "train.parquet"
+        pq.write_table(pa.table({"ms2_mzs": rows, "ms2_normalized_intensities": [[1.0, 0.1 * i] for i in range(10)],
+                                 "other": list(range(10))}), f, row_group_size=4)
+        got = {}
+        n = lx.stream_rows(f, [7, 0, 5], lambda k, m, i: got.__setitem__(k, (list(m), list(i))), batch_size=3)
+    assert n == 10 and got == {0: ([7.0, 7.5], [1.0, 0.7000000000000001]), 1: ([0.0, 0.5], [1.0, 0.0]),
+                               2: ([5.0, 5.5], [1.0, 0.5])}, got
+    assert {"numpy", "python", "cpu"} <= set(lx.host_info())
+
+    # notebooks: pinned SHA1s, new output folder, parity sizes, thresholds
+    di_sha1 = hashlib.sha1((HERE / "dreams_infer.py").read_text(encoding="utf-8").encode("utf-8")).hexdigest()
+    for name in ("novel_lx_reembed_colab.py", "novel_lx_cpu_colab.py"):
+        src = (HERE / name).read_text(encoding="utf-8")
+        c = {t.id: ast.literal_eval(a.value) for a in ast.parse(src).body if isinstance(a, ast.Assign)
+             for t in a.targets if isinstance(t, ast.Name) and isinstance(a.value, ast.Constant)}
+        assert c["DREAMS_INFER_SHA1"] == di_sha1, f"{name}: dreams_infer.py changed since G0.1-R2 was registered"
+        assert c["DREAMS_EMBED_SHA1"] == "a28488b277162f42d6361e339ffa54217a9d7381" and c["COS_MIN"] == 0.999
+    re_src = (HERE / "novel_lx_reembed_colab.py").read_text(encoding="utf-8")
+    tree = ast.parse(re_src)
+    c = {t.id: ast.literal_eval(a.value) for a in tree.body if isinstance(a, ast.Assign)
+         for t in a.targets if isinstance(t, ast.Name) and isinstance(a.value, ast.Constant)}
+    assert c["CHUNK"] == 200_000 and c["DIM"] == 1024 and 2 * c["N_TIE"] >= c["N_TIE"] + c["N_OTHER"]
+    assert 'OUT = ROOT / "_novel" / "emb_dbec3a0_lx"' in re_src and 'PREV = ROOT / "_novel" / "emb_dbec3a0"' in re_src
+    assert "np.save(PREV" not in re_src and "PREV / f\"emb_{i:04d}.npy\", E" not in re_src
+    summ = load_func(tree, "summarise", {"np": np, "pd": pd})
+    s = summ(np.array([1.0, 0.9985, 0.99999, 0.95]), np.array(["a", "a", "b", "c"]))
+    assert list(s.g) == ["c", "a", "b"] and np.allclose(s.below_0999, [1.0, 0.5, 0.0])
+    kg = (HERE / "novel_lx_kaggle.py").read_text(encoding="utf-8")
+    assert '"dreams_infer_sha1"' in kg and '"novel_lx_sha1"' in kg and 'MAN["parity_peaks_digest"]' in kg
+    print(f"  G0.1-R2 helpers: OK ({n_tie}/300 random spectra had a tie at the cut)")
+
+
 def main():
     test_notebooks()
+    test_lx()
     test_preprocessing()
     test_network()
     vocab, tt = test_token_table()
