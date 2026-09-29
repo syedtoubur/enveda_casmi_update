@@ -1,4 +1,4 @@
-"""specs_novel single source of truth for the SELFIES side (plan §4, §5.5). P0 part: no model yet.
+"""specs_novel single source of truth for the SELFIES side and the decoder (plan §4, §5.5).
 
     SelfiesVocab        token <-> id, the same ids as MassSpecGym's SelfiesTokenizer (JSON, no `tokenizers`)
     TokenTable          per-token grammar facts, precomputed with selfies' own grammar_rules
@@ -24,7 +24,16 @@ Masks (plan §4.2):
 `_form_rings_bilocally` forms them at the end (orders capped by the free valence left). It feeds the
 optional DBE prune, which is only applied where P0.4 shows it sound (A8).
 
-Needs numpy + selfies (pinned); RDKit only for reference_state / prep_structure / ik14.
+P3 part (below the P0 part, specs_novel/gate_report.md -> G3):
+    DreamsSelfiesDecoder  memory = per-spectrum tokens (+ adduct, + CE bin) plus a formula token,
+                          no positional encoding on the memory, tied in/out token embeddings
+    search_prefix_seeded  arm A: masked expansion to depth L_SEED, then sampled rollouts per prefix
+    search_masked_beam    arm B (alpha = 0) and arm C (alpha > 0, cross-beam scaffold penalty)
+    select_top25          "maxmin" (diversity, what G3 is judged on) or "logp"
+    max_tanimoto          the G3 metric, on MassSpecGym's fingerprint
+
+Needs numpy + selfies (pinned) for the P0 part; RDKit for reference_state / prep_structure / ik14 /
+the selection helpers; torch for the P3 part.
 """
 import json
 import re
@@ -488,3 +497,454 @@ def walk_truth(table, tokens, formula, max_len=None, dbe_prune=False):
     if max_len is not None and len(tokens) > max_len:
         bad.append((len(tokens), "length", None))
     return bad
+
+
+# --------------------------------------------------------------------------------------------- #
+# P3: memory, decoder, batched constrained search (torch)
+#
+# Everything below is the P3 part (specs_novel/gate_report.md -> G3). The P0 part above stays
+# torch-free; torch is imported here because every consumer of this part needs it anyway (Colab
+# training, the Kaggle worker, the local tests).
+# --------------------------------------------------------------------------------------------- #
+
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# must equal simsim_common.TEST_ADDUCTS -- test_novel_p3.check_adducts asserts it
+TEST_ADDUCTS = ("[M+H]+", "[M+NH4]+", "[M-H2O+H]+", "[M-2H2O+H]+", "[M+Na]+", "[M+K]+",
+                "[M-H]-", "[M-H2O-H]-", "[M+CH2O2-H]-", "[M+Cl]-")
+CE_BINS = (15.0, 23.0, 36.0, 44.0)       # P0.2 quantiles; 5 intervals + "unknown" = 6 rows
+N_CE_BINS = len(CE_BINS) + 2             # digitize gives 0..4, and 5 is "unknown"
+CE_UNKNOWN = len(CE_BINS) + 1
+FORMULA_SCALE = 10.0                     # counts are divided by this before the formula MLP
+
+
+def ce_bin(ce, bins=CE_BINS):
+    """Collision energy in eV -> bin index. None / NaN / <= 0 -> CE_UNKNOWN."""
+    if ce is None:
+        return CE_UNKNOWN
+    try:
+        v = float(ce)
+    except (TypeError, ValueError):
+        return CE_UNKNOWN
+    if not np.isfinite(v) or v <= 0.0:
+        return CE_UNKNOWN
+    return int(np.digitize(v, bins))
+
+
+def formula_vector(counts, elements=ALLOWED_ELEMENTS):
+    """{element: count} -> float32 vector over `elements`, hydrogen INCLUDED.
+
+    Deliberately not TokenTable.counts_vector: that one drops H (the vocabulary has no free H token),
+    but the formula token conditions on the full formula, H and all."""
+    v = np.zeros(len(elements), np.float32)
+    ix = {e: i for i, e in enumerate(elements)}
+    for e, c in counts.items():
+        if e in ix:
+            v[ix[e]] = c
+    return v
+
+
+class DreamsSelfiesDecoder(nn.Module):
+    """SELFIES decoder over frozen DreaMS embeddings (plan section 3.5).
+
+    memory = [W_e.emb_i + E_adduct[a_i] + E_ce[c_i]]_i  (+)  [MLP(formula_counts)]
+
+    There is no positional encoding on the memory: the spectra of a molecule are a set, and
+    test_novel_p3 asserts the permutation invariance. Input and output token embeddings are tied.
+    """
+
+    def __init__(self, n_vocab, *, pad_id, sos_id, eos_id, d_model=512, n_layers=8, n_heads=8,
+                 d_ff=2048, dropout=0.1, max_len=171, n_elements=len(ALLOWED_ELEMENTS),
+                 n_adducts=len(TEST_ADDUCTS), n_ce_bins=N_CE_BINS, d_emb=1024):
+        super().__init__()
+        self.hparams = dict(n_vocab=n_vocab, pad_id=pad_id, sos_id=sos_id, eos_id=eos_id,
+                            d_model=d_model, n_layers=n_layers, n_heads=n_heads, d_ff=d_ff,
+                            dropout=dropout, max_len=max_len, n_elements=n_elements,
+                            n_adducts=n_adducts, n_ce_bins=n_ce_bins, d_emb=d_emb)
+        self.pad_id, self.sos_id, self.eos_id = pad_id, sos_id, eos_id
+        self.d_model, self.max_len = d_model, max_len
+
+        # -- memory side --
+        self.emb_proj = nn.Linear(d_emb, d_model)
+        self.adduct_emb = nn.Embedding(n_adducts, d_model)
+        self.ce_emb = nn.Embedding(n_ce_bins, d_model)
+        self.formula_mlp = nn.Sequential(nn.Linear(n_elements, d_model), nn.GELU(),
+                                         nn.Linear(d_model, d_model))
+        self.mem_norm = nn.LayerNorm(d_model)
+
+        # -- token side --
+        self.tok_emb = nn.Embedding(n_vocab, d_model, padding_idx=pad_id)
+        self.pos_emb = nn.Embedding(max_len + 2, d_model)
+        self.drop = nn.Dropout(dropout)
+        layer = nn.TransformerDecoderLayer(d_model, n_heads, d_ff, dropout, activation="gelu",
+                                           batch_first=True, norm_first=True)
+        self.dec = nn.TransformerDecoder(layer, n_layers, norm=nn.LayerNorm(d_model))
+        self.out_bias = nn.Parameter(torch.zeros(n_vocab))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.normal_(self.tok_emb.weight, std=0.02)
+        with torch.no_grad():
+            self.tok_emb.weight[self.pad_id].zero_()
+        nn.init.normal_(self.pos_emb.weight, std=0.02)
+
+    # -- memory ------------------------------------------------------------------------------- #
+
+    def build_memory(self, embs, adduct_ids, ce_ids, formula_counts, spec_mask=None):
+        """embs (B, K, d_emb) float, adduct_ids / ce_ids (B, K) long, formula_counts (B, E) float,
+        spec_mask (B, K) bool with True = a real spectrum.
+
+        -> memory (B, K+1, D), mem_pad (B, K+1) bool with True = ignore (nn.Transformer convention).
+        The formula token is last and is never padded."""
+        if embs.dim() == 2:                       # a single molecule, (K, d_emb)
+            embs, adduct_ids, ce_ids = embs[None], adduct_ids[None], ce_ids[None]
+            formula_counts = formula_counts[None]
+            spec_mask = None if spec_mask is None else spec_mask[None]
+        b, k = embs.shape[0], embs.shape[1]
+        if spec_mask is None:
+            spec_mask = torch.ones(b, k, dtype=torch.bool, device=embs.device)
+        m_spec = self.emb_proj(embs) + self.adduct_emb(adduct_ids) + self.ce_emb(ce_ids)
+        m_form = self.formula_mlp(formula_counts / FORMULA_SCALE).unsqueeze(1)
+        memory = self.mem_norm(torch.cat([m_spec, m_form], dim=1))
+        mem_pad = torch.cat([~spec_mask, torch.zeros(b, 1, dtype=torch.bool, device=embs.device)],
+                            dim=1)
+        # zero the padded spectrum tokens so they cannot leak through a fully-masked attention row
+        memory = memory.masked_fill(mem_pad.unsqueeze(-1), 0.0)
+        return memory, mem_pad
+
+    # -- decoding ----------------------------------------------------------------------------- #
+
+    def forward(self, tok_ids, memory, mem_pad=None):
+        """tok_ids (B, L) long, already prefixed with <s>. -> logits (B, L, V)."""
+        b, l = tok_ids.shape
+        assert l <= self.max_len + 2, f"sequence length {l} exceeds max_len + 2"
+        pos = torch.arange(l, device=tok_ids.device)
+        x = self.drop(self.tok_emb(tok_ids) * math.sqrt(self.d_model) + self.pos_emb(pos))
+        causal = torch.triu(torch.ones(l, l, dtype=torch.bool, device=tok_ids.device), diagonal=1)
+        h = self.dec(x, memory, tgt_mask=causal, memory_key_padding_mask=mem_pad)
+        return h @ self.tok_emb.weight.T + self.out_bias
+
+    def next_logits(self, tok_ids, memory, mem_pad=None):
+        """Logits for the token after the last position of `tok_ids`. (B, V).
+
+        Recomputes the whole prefix each call: no KV cache. At this model size that is the simpler
+        correct thing; a cache is a P4 optimisation (search_plan.md v1.1 section 0.5)."""
+        return self.forward(tok_ids, memory, mem_pad)[:, -1, :]
+
+
+# --------------------------------------------------------------------------------------------- #
+# Search: shared scaffolding
+# --------------------------------------------------------------------------------------------- #
+
+NEG_INF = -1e9
+
+
+def _expand_memory(memory, mem_pad, n):
+    """A single molecule's memory -> n identical rows, so a whole beam is one forward pass."""
+    if memory.shape[0] == n:
+        return memory, mem_pad
+    assert memory.shape[0] == 1, f"expected a single-molecule memory, got {memory.shape[0]}"
+    pad = None if mem_pad is None else mem_pad.expand(n, -1)
+    return memory.expand(n, -1, -1), pad
+
+
+def _masks_to_tensor(trackers, device):
+    return torch.from_numpy(np.stack([t.legal_mask() for t in trackers])).to(device)
+
+
+def _logprobs(model, tok_ids, memory, mem_pad, trackers):
+    """Masked log-probabilities of the next token. Illegal tokens get NEG_INF, so a beam can never
+    step outside the formula. Rows with no legal token at all are reported as `dead`."""
+    logits = model.next_logits(tok_ids, memory, mem_pad).float()
+    legal = _masks_to_tensor(trackers, logits.device)
+    dead = ~legal.any(dim=1)
+    logits = logits.masked_fill(~legal, NEG_INF)
+    return torch.log_softmax(logits, dim=-1), legal, dead
+
+
+def _leaf(vocab, ids, target_counts):
+    """A finished token sequence -> (smiles, ik14), or None if it fails the plan section 3.6 filter.
+
+    The tracker already guarantees the heavy-atom counts; what is checked here is everything it
+    cannot know: that the string decodes and sanitises, that it is one component, and that the
+    FULL formula including hydrogen matches. Hydrogen is only fixed once SELFIES has filled the
+    valences, which is why this check does real work."""
+    Chem = _chem()
+    smi = sf.decoder(vocab.decode(ids))
+    if not smi:
+        return None
+    m = Chem.MolFromSmiles(smi)
+    if m is None or len(Chem.GetMolFrags(m)) > 1:
+        return None
+    if mol_formula(m) != target_counts:
+        return None
+    can = Chem.MolToSmiles(m)
+    k = Chem.MolToInchiKey(m)
+    return (can, k[:14]) if k else None
+
+
+def _collect(out, vocab, ids, logp, target_counts):
+    """Add a finished sequence to `out`, an ik14 -> (smiles, logp) dict keeping the best logp."""
+    leaf = _leaf(vocab, ids, target_counts)
+    if leaf is None:
+        return False
+    smi, key = leaf
+    prev = out.get(key)
+    if prev is None or logp > prev[1]:
+        out[key] = (smi, logp)
+    return True
+
+
+def _prep_search(model, memory, mem_pad, formula, table):
+    """Shared entry: canonical target counts, the root tracker, and the <s> row."""
+    counts = parse_formula(formula) if isinstance(formula, str) else dict(formula)
+    counts = {e: int(c) for e, c in counts.items() if c}
+    root = Tracker(table, counts)
+    assert root.missing == 0, f"formula {formula} has elements outside the vocabulary"
+    device = memory.device
+    sos = torch.full((1, 1), model.sos_id, dtype=torch.long, device=device)
+    return counts, root, sos
+
+
+# --------------------------------------------------------------------------------------------- #
+# Arm A: prefix-seeded batched sampling  (search_plan.md v1.1 Method 1, corrected)
+# --------------------------------------------------------------------------------------------- #
+
+def _seed_prefixes(model, memory, mem_pad, table, root, sos, l_seed, k_roots, width, prefix_cap):
+    """Beam-expand to depth `l_seed`, then keep `k_roots` prefixes with a spread of scaffolds.
+
+    Seeding at depth 1 would be pointless: at derivation state 0 the mask admits only atom tokens
+    ([Branch*] needs state > 1, [Ring*] needs state > 0) and next_atom_state returns order 0 for
+    every bond prefix, so [C] / [=C] / [#C] are degenerate. The distinct roots at depth 1 are just
+    the elements of the formula. Ring and branch structure -- the scaffold -- first appears a few
+    tokens in, which is why the default is l_seed = 4.
+
+    `prefix_cap` bounds how many kept prefixes may share their first two tokens, so the K roots
+    cannot all collapse into one lineage. The cap is relaxed if too few prefixes survive it."""
+    beam = [(sos, root, 0.0)]                      # (ids (1, L), tracker, logp)
+    for _ in range(l_seed):
+        ids = torch.cat([b[0] for b in beam], dim=0)
+        trackers = [b[1] for b in beam]
+        mem, pad = _expand_memory(memory, mem_pad, len(beam))
+        lp, legal, dead = _logprobs(model, ids, mem, pad, trackers)
+        cand = []
+        for i, (bi, t, base) in enumerate(beam):
+            if dead[i]:
+                continue
+            for tok in torch.nonzero(legal[i], as_tuple=False).flatten().tolist():
+                if tok == model.eos_id:            # a complete molecule this early is not a seed
+                    continue
+                cand.append((base + float(lp[i, tok]), i, tok))
+        if not cand:
+            break
+        cand.sort(key=lambda c: -c[0])
+        nxt = []
+        for score, i, tok in cand[:width]:
+            bi, t, _ = beam[i]
+            step = torch.tensor([[tok]], dtype=torch.long, device=bi.device)
+            nxt.append((torch.cat([bi, step], dim=1), t.push(tok), score))
+        beam = nxt
+    beam.sort(key=lambda b: -b[2])
+    for cap in (prefix_cap, len(beam)):            # relax the spread rule rather than return fewer
+        seen, kept = {}, []
+        for b in beam:
+            sig = tuple(b[0][0, 1:3].tolist())
+            if seen.get(sig, 0) >= cap:
+                continue
+            seen[sig] = seen.get(sig, 0) + 1
+            kept.append(b)
+            if len(kept) == k_roots:
+                break
+        if len(kept) >= min(k_roots, len(beam)):
+            return kept
+    return kept
+
+
+def _nucleus(lp, top_p):
+    """Zero out the tail of each row beyond cumulative probability `top_p` (log space in, log out)."""
+    srt, idx = torch.sort(lp, dim=-1, descending=True)
+    keep = torch.cumsum(srt.exp(), dim=-1) - srt.exp() < top_p
+    keep[:, 0] = True                              # never drop the mode
+    drop = torch.zeros_like(keep).scatter(1, idx, ~keep)
+    return torch.log_softmax(lp.masked_fill(drop, NEG_INF), dim=-1)
+
+
+@torch.no_grad()
+def search_prefix_seeded(model, memory, formula, table, *, mem_pad=None, l_seed=4, k_roots=8,
+                         m_rollout=32, temperature=0.7, top_p=0.90, max_len=None, seed=None):
+    """P3 bake-off arm A. -> [(smiles, logp)], ik14-deduped, best logp per ik14."""
+    model.eval()
+    max_len = max_len or model.max_len
+    counts, root, sos = _prep_search(model, memory, mem_pad, formula, table)
+    gen = None
+    if seed is not None:
+        gen = torch.Generator(device=memory.device).manual_seed(int(seed))
+    prefixes = _seed_prefixes(model, memory, mem_pad, table, root, sos, l_seed, k_roots,
+                              width=max(k_roots * 8, 32), prefix_cap=2)
+    out = {}
+    if not prefixes:
+        return []
+    ids = torch.cat([p[0].repeat(m_rollout, 1) for p in prefixes], dim=0)
+    trackers = [p[1]._copy() for p in prefixes for _ in range(m_rollout)]
+    logp = [p[2] for p in prefixes for _ in range(m_rollout)]
+    alive = list(range(ids.shape[0]))
+    while alive and ids.shape[1] < max_len + 1:
+        act = [trackers[i] for i in alive]
+        mem, pad = _expand_memory(memory, mem_pad, len(alive))
+        lp, legal, dead = _logprobs(model, ids[alive], mem, pad, act)
+        lp = _nucleus(lp / max(temperature, 1e-6), top_p)
+        tok = torch.multinomial(lp.exp(), 1, generator=gen).flatten()
+        step = torch.full((ids.shape[0], 1), model.pad_id, dtype=torch.long, device=ids.device)
+        step[alive] = tok[:, None]
+        ids = torch.cat([ids, step], dim=1)
+        nxt = []
+        for j, i in enumerate(alive):
+            if dead[j]:
+                continue
+            t = int(tok[j])
+            logp[i] += float(lp[j, t])
+            if t == model.eos_id:
+                _collect(out, table.vocab, ids[i, 1:-1].tolist(), logp[i], counts)
+                continue
+            trackers[i] = trackers[i].push(t)
+            nxt.append(i)
+        alive = nxt
+    return sorted(((s, lg) for s, lg in out.values()), key=lambda c: -c[1])
+
+
+# --------------------------------------------------------------------------------------------- #
+# Arms B and C: masked beam search, plain and cross-beam diversified
+# --------------------------------------------------------------------------------------------- #
+
+@torch.no_grad()
+def search_masked_beam(model, memory, formula, table, *, mem_pad=None, beam=256, max_len=None,
+                       alpha=0.0, max_leaves=None):
+    """P3 bake-off arm B (alpha = 0) and arm C (alpha > 0). -> [(smiles, logp)], ik14-deduped.
+
+    With alpha > 0 the score used for *selection* is penalised by how often each ring / branch token
+    was taken across the previous step's beams, which spreads the beams over scaffold topologies
+    instead of letting them collapse onto one core. The returned logp is always the UNPENALISED
+    cumulative log-probability, because P4 orders novel candidates on it.
+
+    This is the non-circular reading of search_plan.md Method 3: the penalty uses the previous
+    step's counts, since a penalty defined by the current step's own choices is not well posed."""
+    model.eval()
+    max_len = max_len or model.max_len
+    max_leaves = beam * 4 if max_leaves is None else max_leaves
+    counts, root, sos = _prep_search(model, memory, mem_pad, formula, table)
+    scaffold = torch.from_numpy(table.is_branch | table.is_ring).to(memory.device)
+    live = [(sos, root, 0.0)]                      # (ids, tracker, unpenalised logp)
+    out = {}
+    prev = torch.zeros(len(table.kind), device=memory.device)
+    for _ in range(max_len + 1):
+        if not live:
+            break
+        ids = torch.cat([b[0] for b in live], dim=0)
+        trackers = [b[1] for b in live]
+        mem, pad = _expand_memory(memory, mem_pad, len(live))
+        lp, legal, dead = _logprobs(model, ids, mem, pad, trackers)
+        pen = (alpha * (prev / max(len(live), 1)) * scaffold)[None, :] if alpha else 0.0
+        cand = []
+        for i, (bi, t, base) in enumerate(live):
+            if dead[i]:
+                continue
+            for tok in torch.nonzero(legal[i], as_tuple=False).flatten().tolist():
+                real = base + float(lp[i, tok])
+                rank = real - (float(pen[0, tok]) if alpha else 0.0)
+                cand.append((rank, real, i, tok))
+        if not cand:
+            break
+        cand.sort(key=lambda c: -c[0])
+        nxt, taken = [], torch.zeros_like(prev)
+        for _rank, real, i, tok in cand:
+            full = len(nxt) >= beam
+            if full and len(out) >= max_leaves:
+                break
+            bi, t, _ = live[i]
+            if tok == model.eos_id:
+                if len(out) < max_leaves:
+                    _collect(out, table.vocab, bi[0, 1:].tolist(), real, counts)
+                continue
+            if full:
+                continue
+            step = torch.tensor([[tok]], dtype=torch.long, device=bi.device)
+            nxt.append((torch.cat([bi, step], dim=1), t.push(tok), real))
+            taken[tok] += 1
+        live, prev = nxt, taken
+    return sorted(((s, lg) for s, lg in out.values()), key=lambda c: -c[1])
+
+
+def search_diverse_beam(model, memory, formula, table, *, mem_pad=None, beam=256, alpha=0.6,
+                        max_len=None, max_leaves=None):
+    """P3 bake-off arm C: search_masked_beam with the cross-beam penalty switched on."""
+    return search_masked_beam(model, memory, formula, table, mem_pad=mem_pad, beam=beam,
+                              max_len=max_len, alpha=alpha, max_leaves=max_leaves)
+
+
+SEARCHES = {"prefix_seeded": search_prefix_seeded,
+            "masked_beam": search_masked_beam,
+            "diverse_beam": search_diverse_beam}
+
+
+# --------------------------------------------------------------------------------------------- #
+# Selecting the 25 that are scored
+# --------------------------------------------------------------------------------------------- #
+
+def morgan_fps(smiles, radius=2, n_bits=2048):
+    """MassSpecGym's fingerprint (utils.morgan_fp): GetMorganFingerprintAsBitVect(r=2, 2048)."""
+    Chem = _chem()
+    from rdkit import DataStructs
+    fps = []
+    for s in smiles:
+        m = Chem.MolFromSmiles(s)
+        fps.append(None if m is None else Chem.GetMorganFingerprintAsBitVect(m, radius, nBits=n_bits))
+    return fps, DataStructs
+
+
+def max_tanimoto(cands, truth_smiles):
+    """The metric behind G3: the best Tanimoto to the truth over a candidate list. 0.0 if empty."""
+    if not cands:
+        return 0.0
+    fps, DataStructs = morgan_fps([truth_smiles] + [c[0] for c in cands])
+    if fps[0] is None:
+        return 0.0
+    ok = [f for f in fps[1:] if f is not None]
+    if not ok:
+        return 0.0
+    return float(max(DataStructs.BulkTanimotoSimilarity(fps[0], ok)))
+
+
+def select_top25(cands, mode="maxmin", k=25):
+    """Cut a candidate list to `k`. `cands` is [(smiles, logp)], already ik14-deduped.
+
+    "logp"   -- the most likely k. The honest decoder-likelihood ranking.
+    "maxmin" -- start from the most likely candidate, then repeatedly add whichever candidate is
+                furthest (in Tanimoto) from everything already chosen. G3 scores the *maximum*
+                similarity over the k, so covering chemical space beats stacking near-duplicates
+                of one mode (search_plan.md v1.1 section 0.2).
+    """
+    if mode not in ("logp", "maxmin"):
+        raise ValueError(f"unknown selection mode {mode!r}")
+    ranked = sorted(cands, key=lambda c: -c[1])
+    if mode == "logp" or len(ranked) <= k:
+        return ranked[:k]
+    fps, DataStructs = morgan_fps([c[0] for c in ranked])
+    pool = [i for i, f in enumerate(fps) if f is not None]
+    if len(pool) <= k:
+        return [ranked[i] for i in pool] or ranked[:k]
+    chosen = [pool[0]]                             # pool is logp-sorted, so this is the mode
+    rest = pool[1:]
+    best = list(DataStructs.BulkTanimotoSimilarity(fps[chosen[0]], [fps[i] for i in rest]))
+    while len(chosen) < k and rest:
+        j = min(range(len(rest)), key=lambda x: (best[x], -ranked[rest[x]][1]))
+        chosen.append(rest.pop(j))
+        best.pop(j)
+        if not rest:
+            break
+        sims = DataStructs.BulkTanimotoSimilarity(fps[chosen[-1]], [fps[i] for i in rest])
+        best = [max(b, s) for b, s in zip(best, sims)]
+    return [ranked[i] for i in chosen]
