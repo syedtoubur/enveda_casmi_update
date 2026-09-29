@@ -183,6 +183,40 @@ order-invariant.
 
 ## 5. Work breakdown
 
+*Steps 1-8 are **done** (2026-09-29, commits `e3504e4` .. `f855126`). Step 9 is the user's: run the
+three notebooks and paste the printouts back.*
+
+| # | step | state |
+|---|---|---|
+| 1 | specs synced, G3 pre-registered | done `e3504e4` |
+| 2 | `novel_decoder.py` P3 part: model, memory, three searches, `select_top25`, funnel | done `e7b49e6`, `ee28df3` |
+| 3 | `novel_p3_data.py`: structures, index, EmbeddingStore, sampler | done `ee28df3` |
+| 4 | `novel_p3_train_colab.py` -> `casmi_novel_p3_train_colab.ipynb`, per-epoch Drive resume | done `7267f41` |
+| 5 | `novel_p3_eval_colab.py` -> `casmi_novel_p3_eval_colab.ipynb` (bake-off, resumable) | done `f855126` |
+| 6 | `novel_p3_null_colab.py` -> `casmi_novel_p3_null_colab.ipynb` (RandomDeNovo, MCES, verdict) | done `f855126` |
+| 7 | `test_novel_p3.py`, in `run_all_tests.sh` | done `f855126` |
+| 8 | `novel_p3_dryrun.py`: 4 legs incl. kill-and-resume | done `7267f41`, `f855126` |
+| 9 | **run the notebooks**, record the results in `gate_report.md`, update the roadmap, commit | **user** |
+
+**Run order:** `casmi_novel_p3_train_colab.ipynb` (A100) -> `casmi_novel_p3_eval_colab.ipynb` (GPU)
+-> `casmi_novel_p3_null_colab.ipynb` (**CPU High-RAM** -- `RandomDeNovo` and MCES are CPU/ILP bound,
+so running them on an A100 would burn ~12x the compute units for nothing). Every notebook is
+re-runnable: it resumes rather than restarting.
+
+**Three environment facts worth knowing before the run:**
+
+1. `MassSpecGym`'s own `utils.morgan_fp` calls `Chem.GetMorganFingerprintAsBitVect`, which **does not
+   exist on RDKit 2026.03.3** (it moved to `AllChem` and is deprecated in favour of
+   `MorganGenerator`). `novel_decoder.morgan_fps` reuses the *definition*, not the call, and is
+   asserted bit-identical to the deprecated function.
+2. The null notebook asserts the massspecgym install did not move RDKit off the metric's pinned
+   version. If it does, the metric changes underneath the gate.
+3. `novel_cohort.label_ok` requires the neutral mass in **[157, 1159]**, so the training set is
+   implicitly mass-limited. That is inherited from G1 and matches the test's range; it is not a bug,
+   but it does mean small molecules are absent from training.
+
+### Original breakdown
+
 1. **Sync the specs and commit first.** `gate_report.md` (new G3 section), `roadmap.md` (P3 fixed
    values, P4 deferrals), `plan.md` (§1.3, §3.5, §4.3, §6), `search_plan.md` (→ v1.1),
    `tech_stack.md` (§4 interfaces, §5 parameters), and this file. **Done 2026-09-29**, one commit,
