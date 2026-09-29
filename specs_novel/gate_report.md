@@ -193,3 +193,107 @@ The G0.1-R run cost 1,892 s of embedding plus 121 s of peaks on an A100, so this
 **Recorded, not gating:** the cosine distribution of new vs `emb_dbec3a0` over all rows, overall and
 split by library, adduct, `oob_mass` and peak-count bin. This measures the accepted risk above.
 Also recorded: the share of corpus rows with a tie at the cut, the GPU, and the timings.
+
+**Where it runs** *(added 2026-09-29, before any run; the notebooks come from `build/mk_novel_p0.py`,
+and the helpers are in `build/novel_lx.py`)*:
+
+- `casmi_novel_lx_reembed_colab.ipynb` (Colab GPU) → `_novel/lx/lx_gpu.json`. It does the
+  re-embed, the tie flag, the `parity_lx` pick (150 tie rows + 50 others, seed 20260929), new vs
+  `emb_dbec3a0`, and it packages the Kaggle dataset `casmi26-novel-lx`.
+- `casmi_novel_lx_cpu_colab.ipynb` (Colab CPU runtime) → `_novel/lx/lx_cpu.json`. It is the CPU
+  peak leg.
+- `casmi_novel_lx_kaggle.ipynb` (Kaggle T4 ×2, internet off) → `lx_kaggle.json`. It rebuilds the
+  peaks from the competition `train.parquet`, embeds them on `cuda:1`, and checks the cosine.
+
+G0.1-R2 passes only if all three legs pass.
+
+---
+
+## G1 — Cohorts and the training split (P1)
+
+*Pre-registered 2026-09-29, before any P1 run. Design: `phase1_plan.md` §3–§4.*
+
+**Source, once run:** `casmi_novel_p1_colab.ipynb` (Colab CPU, High-RAM) writes
+`_novel/p1/p1_gate.json`. P1 reads no embeddings. The cohort rows are `corpus_meta` row indices,
+and those are valid in both `emb_dbec3a0` and `emb_dbec3a0_lx`.
+
+### Definitions (fixed before the run)
+
+- **Universe.** The P0 corpus: 1,323,878 `corpus_meta.parquet` rows and 194,668 unique ik14.
+- **Label-quality filter, per row.** The neutral mass comes from
+  `simsim_common.neutral_mass1(precursor_mz, adduct)`, and the truth mass from
+  `simsim_common.formula_mass(molecular_formula)`. A row is quality-OK when:
+  - |neutral − truth| ≤ max(10 ppm · truth, 0.0075 Da);
+  - the neutral mass is in [157, 1159].
+- **NP libraries.** riken, mona, msdial, massbank, gnps, enveda-np-examples, masaryk. enveda-180 is
+  excluded.
+- **Eligible molecule.**
+  - Its ik14 ∉ `msg_ik14` (28,923 ik14).
+  - It has at least one quality-OK row in an NP library.
+  - Its `src_lib` is enveda-np-examples when it has quality-OK rows there (`timstof = True`).
+    Otherwise it is the NP library with the most quality-OK rows for that molecule; a tie goes to
+    the name that sorts first.
+- **Scaffold key.** The canonical SMILES of the RDKit Murcko scaffold, computed from the
+  stereo-stripped structure. An empty scaffold (acyclic) gives `"acyclic:" + ik14`, and an
+  unparsable structure gives `"unparsable:" + ik14`. `group_size` is the number of corpus ik14 that
+  share the key.
+- **`G_MAX`.** The largest value in {200, 100, 50, 25} for which
+  `600 · m(G) + 400 + 0.03 · U ≤ 0.07 · U`. Here U is the number of corpus ik14. m(G) is the mean
+  `group_size` of eligible molecules with `group_size ≤ G`, where each molecule counts once and
+  contributes its own group's size. If no value meets the budget, `G_MAX = 25` and the shortfall is
+  reported; G1.3 then decides.
+- **`pseudo_c3`** (target 600, seed 20260929).
+  - First take every eligible timsTOF molecule with `group_size ≤ G_MAX`. If there are more than
+    600, draw 600 of them uniformly.
+  - Then draw uniformly from the other eligible molecules with `group_size ≤ G_MAX` until there are
+    600. If fewer are eligible, take them all.
+  - Decoder holdout is the **whole scaffold group**.
+  - At evaluation, `pool_ban_keys = lib_ban_keys = {truth ik14}`.
+- **`c2_displace`** (target 400).
+  - Draw uniformly from eligible molecules that are in no `pseudo_c3` scaffold group. The
+    `G_MAX` cap does not apply.
+  - Decoder holdout is the **structure only**.
+  - At evaluation, `lib_ban_keys = {truth ik14}` and `pool_ban_keys = {}`.
+- **Spectra per molecule.**
+  - n is drawn from the test's spectra-per-molecule distribution (`test.parquet` grouped by
+    `molecule_id`), capped at 16 and at the number available.
+  - Only `src_lib` rows that are quality-OK are used, with CE-known rows first.
+  - Distinct (adduct, rounded CE) pairs are taken before any repeats.
+- **`dec_split`.** Every corpus ik14 gets exactly one label:
+  - `heldout_c3`: every member of a `pseudo_c3` scaffold group;
+  - `heldout_c2`: the `c2_displace` structures;
+  - `dec_val`: whole random scaffold groups with `group_size ≤ G_MAX`, acyclic singletons included,
+    drawn up to 3 % of U;
+  - `train`: the rest.
+
+### Gate
+
+| item | pass condition | result | status |
+|---|---|---|---|
+| G1.1 | `pseudo_c3` has ≥ **300** molecules, and ≥ **30** of them are timsTOF (enveda-np-examples) | — | PENDING |
+| G1.2 | `c2_displace` has ≥ **300** molecules | — | PENDING |
+| G1.3 | the `train` label covers ≥ **90 %** of corpus ik14 (`dec_val` and both held-out labels count as removed) | — | PENDING |
+| G1.4 | every invariant holds. `dec_split` labels are disjoint and cover every corpus ik14. No member of a `pseudo_c3` group is in `train` or `dec_val`. No `c2_displace` structure is in `train` or `dec_val`. Every cohort row is a quality-OK corpus row from its `src_lib`. No cohort ik14 is in `msg_ik14`. `pseudo_c3` ∩ `c2_displace` = ∅. | — | PENDING |
+
+### Decision rules
+
+1. **All four pass.** G1 is PASS. Next is P3, once G0.1-R2 has passed (roadmap execution order).
+2. **G1.1 fails only on the timsTOF count.** Stop, then report the timsTOF funnel: rows → quality-OK
+   → ik14 ∉ `msg_ik14` → `group_size ≤ G_MAX`. Relaxing `G_MAX` for timsTOF molecules is a
+   redesign that has to be registered **before** it is re-run. It is not an automatic rescue.
+3. **Any other item fails.** Stop (protocol 2) and present the options.
+4. **Changing a definition after this section is committed** requires a dated amendment here,
+   written before the re-run.
+
+### Recorded, not gating
+
+| item | source |
+|---|---|
+| `G_MAX`, m(G) at each candidate value, and the share of eligible molecules excluded by `G_MAX` (the rare-scaffold bias) | P1 |
+| eligibility funnel, overall and for timsTOF: molecules → quality-OK in an NP library → ∉ `msg_ik14` → `group_size ≤ G_MAX` | P1 |
+| quality-OK share of rows per library (riken's 2-dp m/z) | P1 |
+| per cohort: counts by `src_lib` and by adduct, the timsTOF count, the `in_scope` share (prep `ok` and ≤ `MAX_LEN` tokens), the CE-known share of picked rows, and the spectra-per-molecule distribution | P1 |
+| per cohort: the `dreams_ft_risk` count (`src_lib == mona` with a picked `[M+H]+` row) | P1 |
+| held-out share of U, split into `heldout_c3`, `heldout_c2` and `dec_val` | P1 |
+| count of `molecular_formula` vs RDKit formula mismatches | P1 |
+| overlap with the val_scripts cohorts (`val_scripts/val_key.pkl`), for information | P1 |

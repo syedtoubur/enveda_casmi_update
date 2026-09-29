@@ -264,7 +264,7 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 ## 6. Execution order
 
 1. ~~**Commit the P0 work**~~ **done** (8bdc4dd).
-2. **Pre-register G1**: write the `gate_report.md` G1 section plus the roadmap and tech_stack
+2. **done (2026-09-29)** — **Pre-register G1**: write the `gate_report.md` G1 section plus the roadmap and tech_stack
    amendments, then commit, **before** any P1 run.
 3. Write `build/novel_cohort.py` and `build/test_novel_p1.py`, and make the tests pass locally.
    Miniconda base has RDKit and selfies 2.1.2.

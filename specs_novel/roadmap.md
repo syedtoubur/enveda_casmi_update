@@ -179,6 +179,22 @@ Build two cohorts, one molecule per ik14, with spectra grouped per molecule as i
 - **`c2_displace`.** The truth is in the pool, and its library spectra are banned. This measures the
   cost to the base.
 
+**P1 amendments (2026-09-29, before any P1 run).** The full definitions are in `gate_report.md` → G1,
+and the design is in `phase1_plan.md`.
+
+- **The universe is the P0 corpus.** Every cohort spectrum is a `corpus_meta` row.
+- **The NP libraries** are riken, mona, msdial, massbank, gnps, enveda-np-examples and masaryk.
+  enveda-180 is excluded.
+- **Label-quality filter:** |neutral − formula mass| ≤ max(10 ppm, 0.0075 Da), and the neutral mass
+  must be in [157, 1159].
+- **Scaffold groups are capped at `G_MAX`** ∈ {200, 100, 50, 25}, chosen by a 7 % held-out budget.
+  An acyclic molecule forms a group of one.
+- **Sizes:** `pseudo_c3` = 600 molecules, and it includes every eligible timsTOF molecule.
+  `c2_displace` = 400.
+- **`c2_displace` structures are also held out of decoder training,** as the structure only.
+- **Two recorded, non-gating flags:** `in_scope` and `dreams_ft_risk`.
+- **G1 gains G1.4, the invariants.** G1.3 counts only the `train` label as kept.
+
 **Training split.** Decoder training uses the corpus minus the `pseudo_c3` scaffold groups. A second
 scaffold-disjoint slice (`dec_val`) is held out from the training part for early stopping.
 
