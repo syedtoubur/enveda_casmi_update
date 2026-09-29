@@ -25,8 +25,8 @@ after G2. The phase numbers are unchanged.
 
 | phase | milestone | where | status |
 |---|---|---|---|
-| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | CLOSED BY DECISION 2026-09-29 (G0.1-R failed on peak tie-breaking; `emb_dbec3a0` accepted; `gate_report.md`). G0.1-R2 (fixed-code re-embed) PENDING, precondition for P3 |
-| P1 | Honest benchmark cohorts + training split | Colab | IN PROGRESS: run 1 FAILED G1.1 (15 timsTOF outside MassSpecGym); amendment A-G1.1 (`ts_dec`) registered, run 2 pending |
+| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | CLOSED BY DECISION 2026-09-29 (G0.1-R failed on peak tie-breaking; `emb_dbec3a0` accepted; `gate_report.md`). G0.1-R2 (fixed-code re-embed): GPU leg OK; CPU + Kaggle legs PENDING, precondition for P3 |
+| P1 | Honest benchmark cohorts + training split | Colab | **PASS** 2026-09-29 (run 2 under A-G1.1: `pseudo_c3` 600, `ts_dec` 155, `c2_displace` 400, train 94.06 %) |
 | P2 | Formula stage (runs after P4-oracle) | Colab / local | PLANNED |
 | P3 | Decoder training (needs G0.1-R2) | Colab (GPU) | PLANNED |
 | P4 | Offline constrained search + verification (oracle leg after P3, predicted leg after P2) | Colab | PLANNED |

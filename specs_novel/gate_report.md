@@ -178,7 +178,7 @@ The G0.1-R run cost 1,892 s of embedding plus 121 s of peaks on an A100, so this
 
 | check | pass condition | result | status |
 |---|---|---|---|
-| G0.1-R2 | The new cache has 1,323,878 finite 1024-d float32 rows, and its row order (`inchikey14`, `adduct`, `precursor_mz`) has 0 mismatches. The `parity_lx` peaks are **byte-identical** across Colab CPU, the GPU host and Kaggle T4. The new-cache vectors for `parity_lx` have cosine ≥ **0.999** on **every** row with the Kaggle-embedded vectors built from the Kaggle-rebuilt peaks. | — | PENDING |
+| G0.1-R2 | The new cache has 1,323,878 finite 1024-d float32 rows, and its row order (`inchikey14`, `adduct`, `precursor_mz`) has 0 mismatches. The `parity_lx` peaks are **byte-identical** across Colab CPU, the GPU host and Kaggle T4. The new-cache vectors for `parity_lx` have cosine ≥ **0.999** on **every** row with the Kaggle-embedded vectors built from the Kaggle-rebuilt peaks. | GPU leg: 1,323,878 finite rows, order 0 mismatches, cache vs fresh (batch 64) min 1 − 1.5e-12. CPU and Kaggle legs: not yet run | **PENDING** (GPU leg OK) |
 
 **Decision rules.**
 
@@ -193,6 +193,25 @@ The G0.1-R run cost 1,892 s of embedding plus 121 s of peaks on an A100, so this
 **Recorded, not gating:** the cosine distribution of new vs `emb_dbec3a0` over all rows, overall and
 split by library, adduct, `oob_mass` and peak-count bin. This measures the accepted risk above.
 Also recorded: the share of corpus rows with a tie at the cut, the GPU, and the timings.
+
+#### G0.1-R2 GPU leg — result *(2026-09-29, A100, `lx_gpu.json`)*
+
+| value | result |
+|---|---|
+| rows / chunks / order | 1,323,878 finite 1024-d rows in 7 chunks at `_novel/emb_dbec3a0_lx/`; order mismatches 0 / 0 / 0 |
+| host | Intel Xeon @ 2.20 GHz, AVX-512, numpy 2.1.3, torch 2.11.0+cu128; peaks 93 s, embedding 1,876 s |
+| rows with a tie at the cut | **31,742 (2.40 %)** |
+| `parity_lx` | 200 rows, 150 tie rows (15 per library across 10 libraries); peaks digest `cdf94fd6…` |
+| cache vs fresh embed of the parity peaks (batch 64, same host) | min 0.9999999999985 |
+| **lx vs `emb_dbec3a0`, non-tie rows** | min **0.99999999999937** (1,292,136 rows): identical |
+| lx vs `emb_dbec3a0`, tie rows | median 0.99960; 30.5 % below 0.999; min **0.495** |
+| lx vs `emb_dbec3a0`, all rows | 0.73 % below 0.999; 0.13 % below 0.99. Worst libraries: spectraverse 3.6 %, msdial 2.1 %, riken 1.3 % |
+
+**Reading.** Every row that differs is a tie-at-the-cut row, and every non-tie row is identical to
+1e-12. The diagnosis is confirmed exactly: the provisional cache differed from the fixed code only
+where the unstable tie-break decided which peaks survived. The accepted risk is now measured: 9.7k
+rows (0.73 %) differed at a cosine below 0.999, and the worst reached 0.49. It no longer applies
+once P3 trains on `emb_dbec3a0_lx`. G0.1-R2 still needs the CPU and Kaggle legs.
 
 **Where it runs** *(added 2026-09-29, before any run; the notebooks come from `build/mk_novel_p0.py`,
 and the helpers are in `build/novel_lx.py`)*:
@@ -370,3 +389,39 @@ draw order), and only `dec_split` changes. The train share drops by roughly
 
 **Recorded, not gating:** the `ts_dec` funnel (candidates → after the c3/c2 exclusions → ≤ `G_MAX`),
 and the `ts_dec` counts by adduct, CE-known share and spectra per molecule.
+
+### G1 run 2 — result *(2026-09-29, `casmi_novel_p1_colab.ipynb` under A-G1.1, `p1_gate.json`)*
+
+**Verdict: PASS.** P1 is complete.
+
+| item | result | status |
+|---|---|---|
+| G1.1′ | `pseudo_c3` 600 (≥ 300); `ts_dec` **155** (≥ 100); 15 honest timsTOF molecules in `pseudo_c3` (reported) | PASS |
+| G1.2 | `c2_displace` 400 | PASS |
+| G1.3 | train 183,102 = **94.06 %** | PASS |
+| G1.4′ | all 11 invariants true | PASS |
+
+- **`pseudo_c3` and `c2_displace` are the same as in run 1:** every recorded count is unchanged,
+  as expected before the run.
+- **`ts_dec` funnel:** 230 candidates → 163 after the c3/c2 group exclusions → 155 within
+  `G_MAX`.
+  - Spectra: 414, **CE known on 100 %**, 2.67 per molecule on average (median 2).
+  - Median group size 4. The adducts are more varied than in the other cohorts: `[M+H]+` 226,
+    `[M-H]-` 85, `[M+Na]+` 34, formate 29, `[M+NH4]+` 23.
+- **Split:** train 94.06 %, dec_val 3.00 %, heldout_c3 2.16 %, heldout_ts 0.57 % (1,114),
+  heldout_c2 0.21 %. `ts_dec` cost 1,114 structures, about half the pre-run estimate of 2,100.
+- **val_scripts overlap:** all 155 `ts_dec` molecules are in the val_scripts cohorts. This is
+  expected, since those cohorts include every enveda-np-examples molecule. It has no effect on the
+  decoder metrics.
+
+**Findings for P3/P4** (recorded, not gating):
+
+1. **`ts_dec` is the only cohort whose conditions look like the test's.** It is timsTOF, has CE
+   known on every spectrum, and has several spectra per molecule, whereas `pseudo_c3` has CE on
+   15 % of spectra and a median of 1 spectrum. Where the two disagree on decoder metrics, `ts_dec`
+   says more about the test conditions and `pseudo_c3` says more about novelty.
+2. **`dreams_ft_risk` only looks at the rows picked from `src_lib`.** `ts_dec` shows 0 because its
+   `src_lib` is enveda-np-examples. Since `ts_dec` molecules are in MassSpecGym, many probably also
+   have MoNA `[M+H]+` spectra that the DreaMS head saw during fine-tuning. P4 therefore also reports
+   a molecule-level flag: any MoNA `[M+H]+` row for that ik14 in the corpus. This is reporting only
+   and does not change G1.
