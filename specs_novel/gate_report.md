@@ -15,7 +15,7 @@ Sources, once run:
 - `casmi_novel_p0_colab.ipynb` writes `_novel/p0/phase0_colab_gate.json` (P0.1a, P0.2–P0.5).
 - `casmi_novel_p0_kaggle.ipynb` writes `phase0_kaggle.json` (P0.1b; T4, internet off).
 
-### Verdict: **CLOSED BY DECISION** — not PASS (2026-09-29)
+### Verdict: **PASS** (2026-09-29, via G0.1-R2). It was first closed by decision, which is kept below as history.
 
 G0.2–G0.5 pass. G0.1 passes its official and Kaggle legs; the cache leg failed and was put on HOLD
 (rule 1). Its closure check **G0.1-R failed** as registered (below). The cause is non-deterministic
@@ -178,7 +178,7 @@ The G0.1-R run cost 1,892 s of embedding plus 121 s of peaks on an A100, so this
 
 | check | pass condition | result | status |
 |---|---|---|---|
-| G0.1-R2 | The new cache has 1,323,878 finite 1024-d float32 rows, and its row order (`inchikey14`, `adduct`, `precursor_mz`) has 0 mismatches. The `parity_lx` peaks are **byte-identical** across Colab CPU, the GPU host and Kaggle T4. The new-cache vectors for `parity_lx` have cosine ≥ **0.999** on **every** row with the Kaggle-embedded vectors built from the Kaggle-rebuilt peaks. | GPU leg: 1,323,878 finite rows, order 0 mismatches, cache vs fresh (batch 64) min 1 − 1.5e-12. CPU and Kaggle legs: not yet run | **PENDING** (GPU leg OK) |
+| G0.1-R2 | The new cache has 1,323,878 finite 1024-d float32 rows, and its row order (`inchikey14`, `adduct`, `precursor_mz`) has 0 mismatches. The `parity_lx` peaks are **byte-identical** across Colab CPU, the GPU host and Kaggle T4. The new-cache vectors for `parity_lx` have cosine ≥ **0.999** on **every** row with the Kaggle-embedded vectors built from the Kaggle-rebuilt peaks. | All three legs produced the same peaks digest, `cdf94fd6…`, with 0 of 200 rows differing (150 of them tie rows). Kaggle `cuda:1` vs new cache: min cosine **1 − 5.3e-12** (tie rows: 1 − 2.4e-12). CPU vs new cache: min 1 − 5.7e-12. 1,323,878 finite rows, order 0 mismatches. | **PASS** |
 
 **Decision rules.**
 
@@ -211,7 +211,36 @@ Also recorded: the share of corpus rows with a tie at the cut, the GPU, and the 
 1e-12. The diagnosis is confirmed exactly: the provisional cache differed from the fixed code only
 where the unstable tie-break decided which peaks survived. The accepted risk is now measured: 9.7k
 rows (0.73 %) differed at a cosine below 0.999, and the worst reached 0.49. It no longer applies
-once P3 trains on `emb_dbec3a0_lx`. G0.1-R2 still needs the CPU and Kaggle legs.
+once P3 trains on `emb_dbec3a0_lx`.
+
+#### G0.1-R2 CPU and Kaggle legs — result and verdict *(2026-09-29, `lx_cpu.json`, `lx_kaggle.json`)*
+
+| leg | host | peaks vs GPU host | cosine vs new cache |
+|---|---|---|---|
+| GPU (Colab) | Intel Xeon 2.20 GHz, **AVX-512**, numpy 2.1.3, Python 3.13, A100 | reference, digest `cdf94fd6…` | fresh re-embed min 1 − 1.5e-12 |
+| CPU (Colab) | **AMD EPYC 7B12, no AVX-512**, numpy 2.1.3, Python 3.13 | **identical**, 0 of 200 differ; tie flags match | min 1 − 5.7e-12 (recorded) |
+| Kaggle | Intel Xeon 2.00 GHz, AVX-512, **numpy 2.0.2, Python 3.12**, T4 `cuda:1`, internet off | **identical**, 0 of 200 differ; identities match | min **1 − 5.3e-12**; tie rows 1 − 2.4e-12 (gated) |
+
+**Why this closes the question.** numpy's sort kernels dispatch on the CPU's SIMD features: the
+AVX-512 path comes from x86-simd-sort. The old unstable `argsort` was therefore expected to
+differ between these hosts, and it did in G0.1-R. The fixed `lexsort` selection gives
+byte-identical peaks on three hosts with **different CPU vendors, SIMD sets, numpy versions and
+Python versions**, and on 150 rows chosen precisely because their cut falls in a tie. The network
+agrees across A100, T4 and CPU to about 5e-12.
+
+**G0.1-R2: PASS. G0.1: PASS** (its official and Kaggle legs passed in the G0 run). **G0: PASS.**
+
+**Consequences.**
+
+- **P3 precondition met.** P3 trains on `_novel/emb_dbec3a0_lx/`. The old caches
+  (`_dreams_out/emb/`, `_novel/emb_dbec3a0/`) must not be used for any specs_novel training or
+  evaluation.
+- **P5 fixture.** `parity_lx.npz` from the Kaggle dataset `casmi26-novel-lx` is the DreaMS fixture.
+  That dataset already holds `dreams_embed.pt` for `dreams_infer` `57ce1bc1…`, so the P5 offline
+  dataset can build on it.
+- **Limit of the check.** Byte identity is shown on 200 rows, not on the full corpus. `lexsort` is
+  stable and deterministic by construction, and the tie-rich sample tested the only mechanism
+  known to differ, so this is judged sufficient.
 
 **Where it runs** *(added 2026-09-29, before any run; the notebooks come from `build/mk_novel_p0.py`,
 and the helpers are in `build/novel_lx.py`)*:

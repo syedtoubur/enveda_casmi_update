@@ -20,12 +20,12 @@ means no formula-stage work is spent if the decoder cannot reach G4.0. P4-oracle
 oracle-formula leg of P4 (G4.0 plus its funnel). P4-predicted is the rest (G4.1–G4.3), and it runs
 after G2. The phase numbers are unchanged.
 
-**P3 precondition:** G0.1-R2 (`gate_report.md`) must pass. That is the re-embed with the fixed
+**P3 precondition:** G0.1-R2 (`gate_report.md`) must pass. **Met 2026-09-29.** That is the re-embed with the fixed
 `dreams_peaks` into `_novel/emb_dbec3a0_lx/`. P1 and P2 read no embeddings, so they are not blocked.
 
 | phase | milestone | where | status |
 |---|---|---|---|
-| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | CLOSED BY DECISION 2026-09-29 (G0.1-R failed on peak tie-breaking; `emb_dbec3a0` accepted; `gate_report.md`). G0.1-R2 (fixed-code re-embed): GPU leg OK; CPU + Kaggle legs PENDING, precondition for P3 |
+| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | **PASS** 2026-09-29 via G0.1-R2 (fixed `lexsort` peaks byte-identical on 3 platforms; training cache `emb_dbec3a0_lx`). It was first closed by decision after G0.1-R |
 | P1 | Honest benchmark cohorts + training split | Colab | **PASS** 2026-09-29 (run 2 under A-G1.1: `pseudo_c3` 600, `ts_dec` 155, `c2_displace` 400, train 94.06 %) |
 | P2 | Formula stage (runs after P4-oracle) | Colab / local | PLANNED |
 | P3 | Decoder training (needs G0.1-R2) | Colab (GPU) | PLANNED |

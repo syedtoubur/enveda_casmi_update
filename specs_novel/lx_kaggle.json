@@ -1,0 +1,30 @@
+{
+    "python": "3.12.13",
+    "torch": "2.10.0+cu128",
+    "started": "2026-09-29 09:08",
+    "host": {
+        "machine": "x86_64",
+        "python": "3.12.13",
+        "numpy": "2.0.2",
+        "cpu": "Intel(R) Xeon(R) CPU @ 2.00GHz",
+        "avx2": true,
+        "avx512f": true
+    },
+    "kaggle_leg": {
+        "device": "cuda:1",
+        "n_gpu": 2,
+        "n": 200,
+        "n_tie": 150,
+        "ids_ok": true,
+        "peaks_identical": true,
+        "n_diff": 0,
+        "diff_rows": [],
+        "peaks_digest": "cdf94fd64edbd2e34628587950e6a54e5c2b3de3",
+        "cos_min": 0.9999999999946969,
+        "cos_median": 0.9999999999989501,
+        "cos_tie_min": 0.9999999999976288,
+        "threshold": 0.999,
+        "passed": true
+    },
+    "finished": "2026-09-29 09:08"
+}
