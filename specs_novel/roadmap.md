@@ -28,7 +28,7 @@ after G2. The phase numbers are unchanged.
 | P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | **PASS** 2026-09-29 via G0.1-R2 (fixed `lexsort` peaks byte-identical on 3 platforms; training cache `emb_dbec3a0_lx`). It was first closed by decision after G0.1-R |
 | P1 | Honest benchmark cohorts + training split | Colab | **PASS** 2026-09-29 (run 2 under A-G1.1: `pseudo_c3` 600, `ts_dec` 155, `c2_displace` 400, train 94.06 %) |
 | P2 | Formula stage (runs after P4-oracle) | Colab / local | PLANNED |
-| P3 | Decoder training (needs G0.1-R2) | Colab (GPU) | PLANNED |
+| P3 | Decoder training (needs G0.1-R2 — met) | Colab (GPU) | **NEXT** — start from `specs_novel/phase3_plan.md` |
 | P4 | Offline constrained search + verification (oracle leg after P3, predicted leg after P2) | Colab | PLANNED |
 | P5 | Notebook integration | `build/` + Kaggle | PLANNED |
 | P6 | LB ablation and probes | Kaggle | PLANNED |
