@@ -28,7 +28,7 @@ after G2. The phase numbers are unchanged.
 | P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | **PASS** 2026-09-29 via G0.1-R2 (fixed `lexsort` peaks byte-identical on 3 platforms; training cache `emb_dbec3a0_lx`). It was first closed by decision after G0.1-R |
 | P1 | Honest benchmark cohorts + training split | Colab | **PASS** 2026-09-29 (run 2 under A-G1.1: `pseudo_c3` 600, `ts_dec` 155, `c2_displace` 400, train 94.06 %) |
 | P2 | Formula stage (runs after P4-oracle) | Colab / local | PLANNED |
-| P3 | Decoder training (needs G0.1-R2 — met) | Colab (GPU) | **NEXT** — start from `specs_novel/phase3_plan.md` |
+| P3 | Decoder training (needs G0.1-R2 — met) | Colab (GPU) | **IN PROGRESS** — G3 pre-registered 2026-09-29 (`gate_report.md` → G3); design in `phase3_plan.md`, search in `search_plan.md` v1.1 |
 | P4 | Offline constrained search + verification (oracle leg after P3, predicted leg after P2) | Colab | PLANNED |
 | P5 | Notebook integration | `build/` + Kaggle | PLANNED |
 | P6 | LB ablation and probes | Kaggle | PLANNED |
@@ -232,34 +232,60 @@ smallest k that meets it, and it is also bounded by the P4 runtime.
 
 *Precondition: G0.1-R2 passes. Train on `_novel/emb_dbec3a0_lx/`, not on `emb_dbec3a0`.*
 
-**The model.** `DreamsSelfiesDecoder(DeNovoMassSpecGymModel)`, defined in `build/novel_decoder.py`
-(plan §3.5):
+*All values below are **fixed**, pre-registered in `gate_report.md` → G3 (2026-09-29), and no longer
+"to measure".*
 
-- memory = per-spectrum tokens plus a formula token;
+**The model.** `DreamsSelfiesDecoder`, defined in `build/novel_decoder.py` (plan §3.5). The core is
+**torch-only** so Kaggle can import it; any Lightning / massspecgym wrapper exists on Colab only.
+
+- memory = per-spectrum tokens plus a formula token, with **no positional encoding** (the spectra are
+  a set);
 - a pre-norm `nn.TransformerDecoder`;
 - tied input and output token embeddings;
 - trained with teacher forcing and cross-entropy on SELFIES, given the **true** formula.
 
 **Training.**
 
-- **Sample unit:** one molecule, with up to `MAX_SPEC_PER_MOL` of its spectra drawn at random each
-  epoch. This augments the data and matches the test's 1–16 spectra per molecule.
-- **Sizes:** `D_MODEL` and `N_DEC_LAYERS` start small (**to measure** against Colab time). There is
-  no pretraining (plan §1.3).
+- **Sample unit:** one molecule, with up to `MAX_SPEC_PER_MOL` = **4** of its spectra drawn at random
+  each epoch. This augments the data and matches the test's 1–16 spectra per molecule.
+- **Sizes (fixed):** `D_MODEL` = **512**, `N_DEC_LAYERS` = **8**, `N_HEADS` = **8**, ff 2048, dropout
+  0.1 — about 28 M parameters. There is no pretraining (plan §1.3).
+- **Rows:** all libraries, **label-quality-OK rows only**, in-scope structures only, `dec_split ==
+  "train"` only.
+- **CE dropout p = 0.3** on known CE. `pseudo_c3` has CE on 15 % of spectra while every test spectrum
+  has one, so the model must work well with CE = "unknown" (G1 finding 2).
+- **Budget:** one epoch is ≈ 715 steps at batch 256 molecules, i.e. minutes, not tens of minutes. The
+  whole run is expected inside ~1.5 h of the ~50–60 CU allotted to P3.
+- **Every epoch is durable on Drive** — model, optimizer, scheduler, epoch, patience and all four RNG
+  states — so a Colab disconnect resumes instead of restarting. Generation is checkpointed the same
+  way, in chunks of 50 molecules.
 
-**Evaluation on `dec_val`, then on `pseudo_c3`, with the oracle formula.** In each comparison, the
-null baseline receives the same formula.
+**Evaluation on `dec_val`, then on `pseudo_c3`, with the oracle formula** (from
+`prep_structure(can)`, **not** the label). In each comparison the null baseline receives the same
+formula, on the same molecules.
 
 - Teacher-forced loss and token accuracy.
 - Unconstrained sampling: the share of samples with the correct heavy-atom formula. This shows how
   much the decoder has learnt without masks.
-- **Constrained search (§4, `NODE_BUDGET` fixed):**
+- **Constrained search — a 3-method bake-off at an equal candidate budget of N = 256 sequences per
+  molecule** (plan §4.3): **A** prefix-seeded batched sampling (`L_SEED` 4, `K_ROOTS` 8, `M_ROLLOUT`
+  32, T 0.7, top-p 0.90), **B** plain masked beam (`BEAM` 256, the control), **C** diverse masked beam
+  (`BEAM` 256, `ALPHA_DIVERSE` 0.6). Batched best-first moves to **P4**.
+  - **The winner is selected on a 300-molecule `dec_val` subset, and G3 is then judged on one run of
+    that winner on `pseudo_c3`.** Selecting on the gate cohort would inflate the verdict; the losing
+    methods' `pseudo_c3` numbers are never produced.
   - top-25 **max Tanimoto** and MCES, from MassSpecGym's metrics;
   - exact top-25;
   - each compared against **`RandomDeNovo`**, the formula-constrained null baseline.
+  - The top 25 are chosen from the ~256 candidates by **`maxmin`** (logp-seeded diversity) as primary,
+    with **`logp`**-only reported beside it.
+- **G3 is decoder-only:** no ICEBERG `sv` and no MetFrag-lite `fr` enter any G3 number. G3's metrics
+  are set metrics over 25 candidates and so are order-invariant — ranking decides P4's MRR, not G3.
 
-**Gate G3:** constrained search beats `RandomDeNovo` on median top-25 max Tanimoto by ≥ 0.10
-(provisional), and the loss has converged.
+**Gate G3** (pre-registered, `gate_report.md` → G3): **G3.1** the winning search beats `RandomDeNovo`
+on median top-25 max Tanimoto by **≥ 0.10** on `pseudo_c3`; **G3.2** the loss has converged, defined as
+no `dec_val` token-CE improvement for **5 consecutive epochs** and the best epoch not being the last.
+`ts_dec` is reported separately and is not part of the verdict.
 
 **Single rescue if G3 fails.** Pretrain the decoder as a SELFIES language model on
 `MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv` (`utils.load_unlabeled_mols`), with the
@@ -272,6 +298,21 @@ cross-attention disabled. Then fine-tune as above and re-run G3 once. If it fail
 *Split in two (2026-09-29). **P4-oracle** runs right after P3: the oracle-formula leg, its funnel
 and G4.0. **P4-predicted** runs after G2: the predicted-formula legs, displacement, runtime and
 G4.1–G4.3. Hit rates are also reported split by `dreams_ft_risk` (P1).*
+
+**Deferred here from P3 (2026-09-29).**
+
+- **Batched best-first frontier expansion**, compared against the P3 bake-off winner at equal time.
+- **The spectrum rerank** (ICEBERG `sv`, MetFrag-lite `fr`). It is kept out of G3 because G3's metrics
+  are order-invariant set metrics and because an asymmetrically-equipped baseline would make the
+  comparison an artefact. In P4 it is therefore applied to **both arms** — our candidates *and*
+  `RandomDeNovo`'s — on `pseudo_c3` only, since A-G1.1 bars `ts_dec` from every ICEBERG-based metric.
+  Note that MetFrag-lite is **not** in `simsim_common.py`: `frag_scores` / `explain_score` /
+  `fragment_masses` live in the phase1 notebook and are spliced in by `build/mk_simple_sim.py`, so
+  reusing them is a porting task. Candidates are cut to `MAX_NOVEL` by the decoder's own selector
+  before simulation — reranking all ~256 per molecule is not affordable.
+- **Dropped, not deferred:** peak-guided logit steering (`search_plan.md` Method 2). A SELFIES prefix
+  has no determined H count until the leaf, so a ppm-level match of prefix mass to a fragment peak is
+  not a well-defined quantity; and a prefix is a partial derivation, not a cleavage product.
 
 Run the full novel path (plan §3.3–§3.7, §4) on `pseudo_c3` and `c2_displace`.
 
@@ -288,8 +329,10 @@ Report:
 - **displacement** on `c2_displace` under slot policy v1, for `K_NOVEL` ∈ {3, 5, 10};
 - **`sv` distributions** of true novel hits vs other novel candidates vs pool candidates, from which
   δ for slot v2 is set;
-- **search variants:** best-first vs masked beam at equal time, and the `NODE_BUDGET` sweep of hit
-  rate against time;
+- **search variants:** the P3 bake-off winner vs **batched best-first frontier expansion** at equal
+  time (best-first is deferred from P3 to here: it is not inherently unbatched, but at this model
+  size the bottleneck is `Tracker` Python overhead at 19 µs/step, not the GPU), and the
+  `NODE_BUDGET` sweep of hit rate against time;
 - **per-adduct and per-mode hit rates,** which decide whether `GEN_ADDUCTS` needs a restriction;
 - **the split by mass,** at or below 1000 m/z vs above 1000 m/z (DreaMS range);
 - **runtime per molecule:** embedding + search per formula + extra ICEBERG requests.

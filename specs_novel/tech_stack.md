@@ -44,10 +44,10 @@ thin wrapper, so that the Kaggle import needs no massspecgym.
 | `msg_ik14.npy` | sorted ik14s of every `MassSpecGym1.5.tsv` SMILES | P0.5 | the ICEBERG `msg_all` exclusion set |
 | `_novel/emb_dbec3a0_lx/emb_*.npy` + `manifest.json` | corpus embeddings rebuilt with the fixed (lexsort) `dreams_peaks`, `dreams_infer` SHA1 `57ce1bc1…`; row `i` = `corpus_meta` row `i` | G0.1-R2 (`casmi_novel_lx_reembed_colab.ipynb`) | **the P3 training cache** once G0.1-R2 passes; `emb_dbec3a0` is provisional |
 | `parity_lx.npz` | 200 parity rows (150 with an intensity tie at the top-100 cut): row ids, `train_row`, peaks, identities, new-cache vectors | G0.1-R2 | the cross-platform reference; replaces `parity_200.npz` as the P5 fixture |
-| `pseudo_c3.parquet`, `c2_displace.parquet` | one row per molecule: `molecule_id`, `inchikey14`, `smiles`, `can`, `selfies`, `formula`, `scaffold`, `group_size`, `src_lib`, `timstof`, `in_scope`, `rows` (corpus rows = embedding rows), `train_rows`, `adducts`, `ces`, `lib_ban_keys`, `pool_ban_keys`, `dreams_ft_risk` | P1 (`casmi_novel_p1_colab.ipynb`) | **to measure** (G1) |
-| `ts_dec.parquet` | same columns as `pseudo_c3`: the decoder-only timsTOF cohort (ICEBERG-seen), for G3 and G4.0 only (A-G1.1) | P1 run 2 | **to measure** |
+| `pseudo_c3.parquet`, `c2_displace.parquet` | one row per molecule: `molecule_id`, `inchikey14`, `smiles`, `can`, `selfies`, `formula`, `scaffold`, `group_size`, `src_lib`, `timstof`, `in_scope`, `rows` (corpus rows = embedding rows), `train_rows`, `adducts`, `ces`, `lib_ban_keys`, `pool_ban_keys`, `dreams_ft_risk` | P1 (`casmi_novel_p1_colab.ipynb`) | **600** / **400** molecules, 1,028 / 669 spectra (G1 run 2, PASS) |
+| `ts_dec.parquet` | same columns as `pseudo_c3`: the decoder-only timsTOF cohort (ICEBERG-seen), for G3 and G4.0 only (A-G1.1) | P1 run 2 | **155** molecules, 414 spectra, CE known on 100 % (G1 run 2, PASS) |
 | `dec_split.parquet` | `inchikey14`, `scaffold_key`, `split` ∈ {`train`, `dec_val`, `heldout_c3`, `heldout_c2`, `heldout_ts`} | P1 | — |
-| `decoder.pt` | `state_dict`, hyperparameters, vocab SHA1, adduct list, CE bins | P3 | **to measure** |
+| `decoder.pt` | `state_dict`, hyperparameters, vocab SHA1, adduct list, CE bins | P3 | **to measure** (best-so-far; rewritten whenever `dec_val` improves, alongside rotating `ckpt/epoch_*.pt` and append-only `train_log.jsonl`) |
 | `gate_report.md` | pre-registered thresholds and measured results per gate | P0–P6 | — |
 
 Existing inputs stay unchanged: the competition data, COCONUT (`coco_meta.pkl`, `coco_mass.npy`,
@@ -95,7 +95,21 @@ def build_memory(embs, adducts, ces, formula) -> torch.Tensor  # (k+1, D_MODEL),
 
 class Generator(Protocol):
     def search(self, memory, formula: str, budget: int) -> list[tuple[str, float]]
-    # (smiles, logp); SelfiesDfsGenerator now; analog decoration later (P7)
+    # (smiles, logp); analog decoration later (P7)
+
+# --- decoder + search (P3; build/novel_decoder.py, torch-only core) ---
+class DreamsSelfiesDecoder(torch.nn.Module):     # plan §3.5; tied in/out embeddings, pre-norm
+    def forward(self, tok_ids, memory, memory_pad_mask) -> torch.Tensor   # (B, L, V) logits
+
+def search_prefix_seeded(model, memory, formula, *, l_seed=4, k_roots=8, m_rollout=32,
+                         temperature=0.7, top_p=0.90) -> list[tuple[str, float]]
+def search_masked_beam(model, memory, formula, *, beam=256) -> list[tuple[str, float]]
+def search_diverse_beam(model, memory, formula, *, beam=256, alpha=0.6) -> list[tuple[str, float]]
+    # all three: (smiles, logp), leaves already formula-complete incl. H and ik14-deduped.
+    # `search_diverse_beam` returns the UNPENALISED logp, so P4 can order on it.
+
+def select_top25(cands: list[tuple[str, float]], mode: str = "maxmin") -> list[tuple[str, float]]
+    # "maxmin": logp-seeded greedy MaxMin on Morgan r2/2048.  "logp": plain sort.
 
 class Tracker:                                  # plan §4.1–4.2
     def __init__(self, table: TokenTable, formula: dict | None): ...   # {element: count} incl. H
@@ -142,8 +156,15 @@ which consists of training-set examples (data page).
 | `GEN_ADDUCTS` | all 10 test adducts | P4 | restricted only if P4 shows an adduct is pure cost |
 | `N_PEAKS_DREAMS` | 100 | fixed | the checkpoint's `n_highest_peaks` (`api.py:108`) |
 | `MAX_LEN` | **171** (p99.9 of corpus SELFIES lengths, P0.3) | P0 | search depth limit |
-| `MAX_SPEC_PER_MOL` | **to measure** | P3 | spectra per molecule, sampled per epoch in training; all spectra (up to 16) at test |
-| `D_MODEL`, `N_DEC_LAYERS`, `N_HEADS` | **to measure** | P3 | decoder size, bounded by Colab time |
+| `MAX_SPEC_PER_MOL` | **4** (fixed, G3) | P3 | spectra per molecule, sampled per epoch in training; all spectra (up to 16) at test |
+| `D_MODEL`, `N_DEC_LAYERS`, `N_HEADS` | **512 / 8 / 8**, ff 2048, dropout 0.1, tied embeddings (≈ 28 M params; fixed, G3) | P3 | decoder size, bounded by Colab time |
+| `CE_DROPOUT` | **0.3** (fixed, G3) | P3 | probability a known CE is replaced by the "unknown" bin in training |
+| `N_CANDIDATES` | **256** (fixed, G3) | P3 | sequences generated per molecule; the equal budget every bake-off method gets |
+| `L_SEED`, `K_ROOTS`, `M_ROLLOUT` | **4 / 8 / 32** (fixed, G3) | P3 | prefix-seeded sampling: masked expansion depth, distinct prefixes kept, rollouts per prefix |
+| `TEMPERATURE`, `TOP_P` | **0.7 / 0.90** (fixed, G3) | P3 | sampling entropy and nucleus cut for the rollouts |
+| `BEAM` | **256** (fixed, G3) | P3 | width of the plain and diverse masked beams |
+| `ALPHA_DIVERSE` | **0.6** (fixed, G3) | P3 | cross-beam penalty on ring / branch tokens in the diverse beam |
+| `SELECT_MODE` | **`"maxmin"`** primary, `"logp"` reported (fixed, G3) | P3 | how the top 25 are chosen from the `N_CANDIDATES` survivors |
 | `CE_BINS` | **[15, 23, 36, 44]** (P0.2 quantiles; 23.9 % of rows go to "unknown") | P0 | CE histogram bins, plus "unknown" |
 | `FORMULA_TOPK` | 3 | P2 / P4 | formulas searched per molecule |
 | `BRANCH` | **to measure** | P4 | tokens expanded per node |

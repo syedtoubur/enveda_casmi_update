@@ -454,3 +454,96 @@ and the `ts_dec` counts by adduct, CE-known share and spectra per molecule.
    have MoNA `[M+H]+` spectra that the DreaMS head saw during fine-tuning. P4 therefore also reports
    a molecule-level flag: any MoNA `[M+H]+` row for that ik14 in the corpus. This is reporting only
    and does not change G1.
+
+---
+
+## G3 — Decoder training and constrained search (P3)
+
+*Pre-registered 2026-09-29, **before any training run**. Design: `specs_novel/phase3_plan.md` §4–§5;
+search design: `specs_novel/search_plan.md` v1.1.*
+
+**Question (roadmap P3):** given the true formula, does the decoder's constrained search produce
+structures closer to the truth than a formula-constrained random generator?
+
+**Source, once run:** `casmi_novel_p3_train_colab.ipynb` (A100) writes `_novel/p3/decoder.pt` and
+`train_log.jsonl`; `casmi_novel_p3_eval_colab.ipynb` (GPU) writes the candidate parquets;
+`casmi_novel_p3_null_colab.ipynb` (CPU High-RAM) writes `_novel/p3/p3_gate.json` and prints the
+verdict.
+
+### Decisions fixed before the run (user, 2026-09-29)
+
+| # | decision | choice |
+|---|---|---|
+| 1 | training rows | all libraries; **label-quality-OK rows only** (`novel_cohort.label_ok`, 92.2 % of corpus rows); in-scope structures only (prep `ok` and ≤ `MAX_LEN`); ik14 with `dec_split == "train"` only |
+| 2 | GPU budget | Colab Pro, ~50–60 compute units for P3 (≈ 5 h A100 or 11 h L4) |
+| 3 | model | `D_MODEL` 512, `N_DEC_LAYERS` 8, `N_HEADS` 8, ff 2048, dropout 0.1, tied embeddings; `MAX_SPEC_PER_MOL` 4 (≈ 28 M params) |
+| 4 | CE dropout | **p = 0.3** applied to known CE (23.9 % of rows are already "unknown", so the effective unknown rate is ≈ 0.47) |
+| 5 | G3 cohort | **`pseudo_c3` only**. `ts_dec` is reported separately as the instrument-shift check and is **not** part of the verdict |
+| 6 | top-25 selection | **`maxmin`** (logp-seeded greedy MaxMin on Morgan r2/2048) is primary; **`logp`-only** is reported beside it from the same candidate pool |
+| 7 | rerank | G3 is **decoder-only**. No ICEBERG `sv` and no MetFrag-lite `fr` enter any G3 number; the rerank is a P4 ablation applied to **both** arms |
+
+### Search: a 3-method bake-off, selected on `dec_val`
+
+All three methods get the **same candidate budget of N = 256 sequences per molecule**, so GPU compute
+is matched by construction. All three drive `Tracker.legal_mask` / `push` from
+`build/novel_decoder.py`; none reimplements the grammar.
+
+| id | method | parameters |
+|---|---|---|
+| **A** | prefix-seeded batched sampling | masked expansion to depth `L_SEED` = 4 → top `K_ROOTS` = 8 distinct prefixes by logp → `M_ROLLOUT` = 32 rollouts each; `T` = 0.7, top-p 0.90 |
+| **B** | plain masked beam (**control**) | `BEAM` = 256, no diversity mechanism |
+| **C** | diverse (grouped) masked beam | `BEAM` = 256, cross-beam penalty `ALPHA_DIVERSE` = 0.6 on ring and branch tokens; the **unpenalised** logp is kept alongside for P4 ordering |
+
+**Selection rule (pre-registered; this is what keeps the bake-off honest).** A, B and C are run on a
+fixed random **300-molecule subset of `dec_val`**. The winner is the method with the highest **median
+top-25 max Tanimoto** on that subset; ties go to A, then C, then B. The winner is then run **once** on
+`pseudo_c3` and `ts_dec`, and **G3 is judged on that single run**. Selecting on `dec_val` and judging
+on `pseudo_c3` is what prevents "best of three on the gate cohort" from inflating the verdict. The
+losing methods' `pseudo_c3` numbers are **not** produced, so they cannot be promoted after the fact.
+
+**Null baseline.** `RandomDeNovo` from `MSGYM_novel/massspecgym/models/de_novo/random.py`, constructed
+with `formula_known=True`, `max_top_k=25`, `top_ks=(1, 10, 25)`, calling
+`generate_random_molecule_graphs_via_traversal(CalcMolFormula(mol))` per truth. It receives the
+**same oracle formula** as the decoder arm, on the **same molecules**.
+
+**Oracle formula.** `nd.prep_structure(can)`'s formula (RDKit, H included), **not** the cohort
+`formula` column: 165 corpus structures disagree with their label (G1 finding 4).
+
+### Gate
+
+| item | pass condition |
+|---|---|
+| **G3.1** | on `pseudo_c3`, the winning search beats `RandomDeNovo` on **median top-25 max Tanimoto by ≥ 0.10** (Morgan r2, 2048 bits, MassSpecGym `morgan_fp`), under the `maxmin` selection |
+| **G3.2** | **the loss has converged**: `dec_val` token cross-entropy did not improve for **5 consecutive epochs** (early-stop patience 5) **and** the best epoch is **not** the last epoch recorded in `train_log.jsonl` |
+
+Both must hold. G3.2 exists so that a G3.1 failure cannot be explained away as undertraining, and so
+that a G3.1 pass cannot come from a run that was still improving when the budget ran out.
+
+### Decision rules
+
+1. **Both pass.** G3 is PASS. Next is P4-oracle, whose G4.0 is the kill gate.
+2. **G3.1 fails.** Use the **single** pre-registered rescue, once: pretrain the decoder as a SELFIES
+   language model on `MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv`
+   (`massspecgym.utils.load_unlabeled_mols`) with cross-attention off, then fine-tune as above and
+   re-run G3 **once**. If it fails again, specs_novel ends (protocol 2).
+3. **G3.2 fails but G3.1 passes.** Not a PASS. Continue training from the last checkpoint until G3.2
+   holds, then re-read G3.1 from the resulting model. This is a continuation of the same run, not a
+   new arm, and no amendment is needed.
+4. **Changing any definition in this section** requires a dated amendment written here **before** the
+   re-run.
+
+### Recorded, not gating
+
+| item |
+|---|
+| the bake-off table: median and mean top-25 max Tanimoto for A, B and C on the `dec_val` subset, with per-method wall-clock per molecule |
+| teacher-forced `dec_val` loss and token accuracy per epoch (`train_log.jsonl`), and the measured seconds per epoch and CU burn |
+| unconstrained-sampling diagnostic: the share of samples whose heavy-atom formula is correct, with no masks |
+| the funnel per cohort: sequences → leaves → valid → single component → full formula incl. H → unique ik14 |
+| **median unique formula-valid candidates per molecule** (if this is below 25, the selector is inert and G3.1 is really a funnel measurement) |
+| `maxmin` vs `logp`-only top-25 max Tanimoto, side by side, on every cohort |
+| exact@1 / @10 / @25 by ik14 on every cohort, for both arms (the G4.0 preview) |
+| MCES (myopic, `pulp`) on a fixed random **150-molecule subset** of `pseudo_c3` and on **all 155** `ts_dec` molecules — reported only, never gating, because the ILP is slow |
+| every metric split by: `src_lib`, adduct, CE known vs unknown, and neutral mass ≤ 1000 vs > 1000 (the DreaMS range) |
+| `dreams_ft_risk`, plus the molecule-level MoNA `[M+H]+` flag (G1 finding 2) |
+| `ts_dec` results in full, as the instrument-shift check, never pooled with `pseudo_c3` |

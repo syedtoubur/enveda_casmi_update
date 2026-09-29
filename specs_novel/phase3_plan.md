@@ -1,10 +1,11 @@
 # specs_novel — Phase 3 handover (decoder training)
 
-*Written 2026-09-29 at the end of the P0/P1 session, so a fresh session can start P3 directly. Read
-this file first. Then read `roadmap.md` (the execution-order amendment at the top, then P3 and P4),
-`plan.md` §3.4–§3.5 (embedding, memory) and §4 (masks, search), and `gate_report.md` (G0 and G1
-results). **Nothing in P3 has been designed in detail, pre-registered or written yet.** §4 lists
-the decisions to take with the user before any code.*
+*Written 2026-09-29 at the end of the P0/P1 session. **Updated the same day**: the six open decisions
+in §4 have been taken with the user and G3 is now pre-registered in `gate_report.md`. Read this file
+first. Then read `gate_report.md` → **G3** (the authority on every P3 threshold and parameter),
+`roadmap.md` (the execution-order amendment at the top, then P3 and P4), `plan.md` §3.4–§3.5
+(embedding, memory) and §4.3 (masks, search), and `search_plan.md` **v1.1** (§0 is the amendment that
+corrects the v1.0 search designs).*
 
 ---
 
@@ -95,7 +96,7 @@ The Kaggle dataset **`casmi26-novel-lx`** holds `dreams_embed.pt`, `parity_lx.np
 
 ---
 
-## 2. P3 question and gate (roadmap P3; provisional until pre-registered)
+## 2. P3 question and gate *(pre-registered 2026-09-29 in `gate_report.md` → G3 — that section wins over any number below)*
 
 **Question:** given the true formula, does the decoder's constrained search produce structures
 closer to the truth than a formula-constrained random generator?
@@ -149,62 +150,84 @@ proved the recipe (`build/novel_p0_colab.py`, P0.5 cell).
 
 ---
 
-## 4. Decisions to take with the user before designing (ask; do not assume)
+## 4. Decisions taken with the user (2026-09-29)
 
-1. **Training rows.** Every corpus row of `train`-split ik14, or only **label-quality-OK** rows
-   (`novel_cohort.label_ok`: 92.2 % of rows)? Also: include non-NP libraries (enveda-180,
-   pluskal_ms2, spectraverse, drug_plus)? Recommended: all libraries, quality-OK rows only,
-   in-scope structures only (prep `ok` and ≤ `MAX_LEN` tokens).
-2. **Colab GPU budget** (A100 / L4 hours). This bounds `D_MODEL`, `N_DEC_LAYERS`, the number of
-   epochs and the 4M rescue.
-3. **Model size and `MAX_SPEC_PER_MOL`.** Start small, then measure. The roadmap says **to
-   measure**.
-4. **CE dropout probability** (finding 1).
-5. **The G3 pre-registration:**
-   - the cohort G3 is judged on: `pseudo_c3` only, or also `ts_dec`;
-   - the exact threshold (0.10 median Δ max Tanimoto);
-   - `NODE_BUDGET`, `BRANCH` and `MAX_LEAVES` for the G3 search;
-   - the convergence definition;
-   - whether MCES is computed (myopic MCES with `pulp` is slow) on everything or on a subset.
-6. **Search implementation.** Best-first with a KV cache (plan §4.3) vs masked beam search at an
-   equal time budget. Both use `Tracker.legal_mask` / `push`. P4 compares them; G3 needs one fixed
-   choice.
+*These close the six questions this section used to ask. All of them are pre-registered in
+`gate_report.md` → G3, which is the authority; this table is the summary.*
+
+| # | question | decision |
+|---|---|---|
+| 1 | **Training rows** | **All libraries** (including enveda-180, pluskal_ms2, spectraverse, drug_plus), **label-quality-OK rows only** (`novel_cohort.label_ok`, 92.2 %), **in-scope structures only** (prep `ok` and ≤ `MAX_LEN`), `dec_split == "train"` only |
+| 2 | **Colab GPU budget** | Colab Pro, ~200 CU total, **50–60 CU for P3** ≈ 5 h A100 or 11 h L4. Note the sample unit is a *molecule*, so an epoch is ≈ 715 steps at batch 256 — minutes, not tens of minutes. Training is cheap; the eval legs are the real cost |
+| 3 | **Model size and `MAX_SPEC_PER_MOL`** | `D_MODEL` **512**, `N_DEC_LAYERS` **8**, `N_HEADS` **8**, ff 2048, dropout 0.1, tied embeddings (≈ 28 M params); `MAX_SPEC_PER_MOL` **4**. A calibration cell times 50 steps and prints the projection before the real run |
+| 4 | **CE dropout probability** | **p = 0.3** on known CE. 23.9 % of corpus rows are already "unknown", so the effective unknown rate is ≈ 0.47 |
+| 5 | **G3 pre-registration** | Judged on **`pseudo_c3` only**; `ts_dec` reported separately. Threshold unchanged at **≥ +0.10** median Δ top-25 max Tanimoto. **Converged** = no `dec_val` token-CE improvement for **5 consecutive epochs** *and* the best epoch is not the last. **MCES** on a fixed random **150-molecule** subset of `pseudo_c3` and on **all 155** `ts_dec`, reported only |
+| 6 | **Search implementation** | A **3-method bake-off at an equal candidate budget of `N_CANDIDATES` = 256**: **A** prefix-seeded batched sampling (`L_SEED` 4, `K_ROOTS` 8, `M_ROLLOUT` 32, T 0.7, top-p 0.90), **B** plain masked beam (`BEAM` 256, the **control**), **C** diverse masked beam (`BEAM` 256, `ALPHA_DIVERSE` 0.6). Batched best-first moves to **P4** |
+| 6b | **Where the rerank applies** | **P4 only, to both arms.** G3 is decoder-only. G3's metrics are order-invariant set metrics, and reranking only our arm would measure the reranker |
+| 6c | **Top-25 selection** | **`maxmin`** (logp-seeded greedy MaxMin, Morgan r2/2048) primary; **`logp`**-only reported beside it from the same candidate pool |
+
+**The bake-off's selection rule is what keeps it honest.** A, B and C run on a fixed random
+**300-molecule `dec_val` subset**; the winner (highest median top-25 max Tanimoto; ties A → C → B) is
+then run **once** on `pseudo_c3` and `ts_dec`, and G3 is judged on that. The losing arms' `pseudo_c3`
+numbers are never produced, so none can be promoted after the fact.
+
+**`search_plan.md` is amended to v1.1.** Its §0 records six corrections to the v1.0 designs: depth-1
+root expansion is chemically empty (the mask admits only atom tokens at state 0, and bond-order
+prefixes are degenerate there, so seeding must be at depth ~4); ranking the final 25 by `logp`
+defeats a max-over-25 metric; peak-guided logit steering (Method 2) is **dropped as unsound** because
+SELFIES fixes H only at the leaf; Method 4's in-flight rerank would confound G3 and MetFrag-lite is
+**not** in `simsim_common.py`; best-first is not inherently unbatched; and G3's metrics are
+order-invariant.
 
 ---
 
-## 5. Suggested work breakdown (to confirm in the P3 plan)
+## 5. Work breakdown
 
-1. **Pre-register G3** in `gate_report.md` (a new section "G3 — decoder (P3)"): the thresholds,
-   the §4 decisions and the decision rules. Commit it **before** any training.
-2. **`build/novel_decoder.py`, P3 part:**
-   - `build_memory(embs, adducts, ces, formula)` → (k+1, D);
-   - `DreamsSelfiesDecoder` (torch only);
-   - greedy / sampling decode;
-   - `constrained_search(model, memory, formula, node_budget, branch, max_leaves)`, returning
-     `[(smiles, logp)]`: best-first over `Tracker`, with a KV cache or recompute to start with;
-   - a leaf check: the full formula including H.
-3. **`build/novel_p3_data.py`** (or a section of the training notebook):
-   - builds the training index: ik14 → corpus rows, SELFIES ids, formula vector, from `dec_split`
-     + `corpus_meta` + `corpus_ce` + `emb_dbec3a0_lx`;
-   - memory-maps the embedding chunks;
-   - per-epoch spectrum sampling with CE dropout.
-4. **`build/novel_p3_train_colab.py` → `casmi_novel_p3_train_colab.ipynb`** (GPU): trains, early
-   stops on `dec_val` loss, saves `decoder.pt` (`state_dict`, hparams, vocab SHA1, adduct list,
-   `CE_BINS`) to `_novel/p3/`.
-5. **`build/novel_p3_eval_colab.py` → `casmi_novel_p3_eval_colab.ipynb`**: runs the constrained
-   search and `RandomDeNovo` on `dec_val` (a subset), `pseudo_c3` and `ts_dec`, computes the
-   metrics, writes `p3_gate.json` and prints the G3 verdict.
-6. **`build/test_novel_p3.py`** on synthetic data:
-   - memory shapes; the set-invariance of the spectrum tokens (no positional encoding);
-   - the tied embeddings;
-   - search leaves always satisfy the heavy-atom formula and are ≤ `MAX_LEN`;
-   - on a tiny overfit model the search finds the memorised molecule;
-   - the metric helpers against MassSpecGym's definitions;
-   - the notebooks are fresh and embed their sources verbatim.
-
-   Add it to `build/run_all_tests.sh`.
-7. The user runs the notebooks. Record the results in `gate_report.md`, update the roadmap status
-   and commit.
+1. **Sync the specs and commit first.** `gate_report.md` (new G3 section), `roadmap.md` (P3 fixed
+   values, P4 deferrals), `plan.md` (§1.3, §3.5, §4.3, §6), `search_plan.md` (→ v1.1),
+   `tech_stack.md` (§4 interfaces, §5 parameters), and this file. **Done 2026-09-29**, one commit,
+   before any code.
+2. **`build/novel_decoder.py`, P3 part** (appended; the P0 part is not modified):
+   - `build_memory(embs, adducts, ces, formula)` → `(k+1, D)`, no positional encoding;
+   - `DreamsSelfiesDecoder` (**torch only**, so Kaggle can import it);
+   - greedy / sampling decode, for the unconstrained formula-rate diagnostic;
+   - `search_prefix_seeded`, `search_masked_beam`, `search_diverse_beam` — one signature returning
+     `[(smiles, logp)]`, all driving `Tracker.legal_mask` / `push`; the diverse beam returns the
+     **unpenalised** `logp`;
+   - `select_top25(cands, mode)` — `"maxmin"` or `"logp"`;
+   - a leaf check on the **full** formula including H, then ik14 dedupe.
+3. **`build/novel_p3_data.py`:** the training index (ik14 → corpus rows, SELFIES ids, formula vector)
+   from `dec_split` + `corpus_meta` + `corpus_ce` + `emb_dbec3a0_lx`; memory-mapped embedding chunks
+   (`chunk = row // 200_000`, `offset = row % 200_000`); per-epoch spectrum sampling with CE dropout;
+   the oracle formula from `prep_structure(can)`, **not** the label.
+4. **`build/novel_p3_train_colab.py` → `casmi_novel_p3_train_colab.ipynb`** (A100): trains, early
+   stops on `dec_val` loss with patience 5, saves `decoder.pt` (`state_dict`, hparams, vocab SHA1,
+   adduct list, `CE_BINS`) to `_novel/p3/`.
+   - **Every epoch is durable on Drive.** `ckpt/epoch_{n:03d}.pt` holds the model, optimizer, LR
+     scheduler, epoch, global step, best loss, patience counter **and all four RNG states** (torch CPU
+     and CUDA, numpy, python `random`) — without the RNG the resumed run silently trains on a
+     different sampling stream. Writes are atomic (local `.tmp` → `os.replace`), the newest two
+     checkpoints are kept, and `train_log.jsonl` is append-only so per-epoch numbers survive a failed
+     checkpoint write. A resume cell runs first and prints `resumed from epoch N` loudly.
+5. **`build/novel_p3_eval_colab.py` → `casmi_novel_p3_eval_colab.ipynb`** (GPU): teacher-forced loss
+   and token accuracy, the unconstrained formula rate, the bake-off on the `dec_val` subset, then the
+   winner on `pseudo_c3` and `ts_dec`. Candidates are flushed to Drive every **50 molecules** with a
+   `done_*.json` skip-list, so generation resumes too — it is the longest leg of P3.
+6. **`build/novel_p3_null_colab.py` → `casmi_novel_p3_null_colab.ipynb`** (**CPU High-RAM**):
+   `RandomDeNovo` on the same molecules with the same oracle formulas, plus Tanimoto / MCES /
+   exact@25 and the G3 verdict → `p3_gate.json`. Both `RandomDeNovo` and myopic-MCES are CPU/ILP
+   bound, so this leg costs ~1 CU/h instead of ~12. `RandomDeNovo` needs `max_top_k=25`; the default
+   10 is too small for top-25.
+7. **`build/test_novel_p3.py`** on synthetic data: memory shapes and the **set-invariance** of the
+   spectrum tokens; the tied embeddings; search leaves always satisfy the full formula and are
+   ≤ `MAX_LEN`; a tiny overfit model is recovered by all three searches; `select_top25` behaviour;
+   the metric helpers against MassSpecGym's definitions; **checkpoint round-trip including RNG**;
+   **atomic-write survival**; **generation resume idempotence**; and that the notebooks are fresh and
+   embed their sources verbatim. Add it to `build/run_all_tests.sh`.
+8. **Dry-run all three notebooks locally** on a fake Drive with a stubbed `google.colab`, a tiny model
+   and a small corpus, including a **kill-and-resume rehearsal**, before handing them over.
+9. The user runs the notebooks. Record the bake-off table and the G3 verdict in `gate_report.md`,
+   update the roadmap status and commit.
 
 ---
 

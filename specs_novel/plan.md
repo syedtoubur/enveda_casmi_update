@@ -93,6 +93,8 @@ measurement, and the project stops at the first gate that fails.
 | Memory | **One token per spectrum** (DreaMS vector + adduct + CE) **plus a formula token** | Handles 1–16 spectra per molecule and adds the adduct and CE conditioning that MassSpecGym's model lacks. |
 | Formula at test | **Top-k from our formula stage** | Training uses the true formula. At test, the formula both conditions the decoder and supplies the DFS masks. |
 | Stereo and isotopes (A9) | **Stripped** before SELFIES encoding (`RemoveStereochemistry`, isotope labels to 0) | ik14 ignores both, so they cannot score. Stripping shrinks the vocabulary and keeps one atom token = one element. The round-trip is judged on ik14. |
+| Search strategy (P3) | **A 3-method bake-off at an equal candidate budget**: prefix-seeded batched sampling, plain masked beam (control), diverse masked beam. Winner selected on `dec_val`, G3 judged once on `pseudo_c3` | Batched generation keeps the gate cheap and the control arm shows whether diversity engineering earns anything. Seeding must be at depth `L_SEED` ≈ 4: at depth 1 the mask leaves only "which element", so there are no distinct roots to spread over (§4.3) |
+| Where the rerank applies | **P4 only, to both arms.** G3 is decoder-only | G3's metrics (top-25 max Tanimoto, exact@25) are **set** metrics, so reordering the 25 cannot change them; and giving only our arm a reranker would measure the reranker, not the decoder |
 | DreaMS on Kaggle (A2) | **Vendored and converted** | The real package loads the head once on Colab and saves `dreams_embed.pt` (plain `state_dict` + args dict). Kaggle runs the torch-only `build/dreams_infer.py`: no pip, no pickled `dreams.*` classes, no `ssl_model.ckpt`. |
 
 ---
@@ -236,8 +238,13 @@ For each spectrum *i* of the molecule:
 m_i = W_e · emb_i  +  E_adduct[adduct_i]  +  E_ce[bin(ce_i)]
 ```
 
-- `W_e` is a linear projection from 1024 to `D_MODEL`.
-- `ce_i` is the mean of `collision_energy_ev`, binned, with an "unknown" bin for missing values.
+- `W_e` is a linear projection from 1024 to `D_MODEL`. **`D_MODEL` = 512, `N_DEC_LAYERS` = 8,
+  `N_HEADS` = 8, ff 2048, dropout 0.1** (fixed in P3; `gate_report.md` → G3).
+- `ce_i` is the mean of `collision_energy_ev`, binned, with an "unknown" bin for missing values, so
+  `E_ce` has **6 rows**: the 5 `CE_BINS` intervals plus "unknown". Training applies **CE dropout
+  p = 0.3** to known CE, because `pseudo_c3` has CE on only 15 % of spectra while every test spectrum
+  has one.
+- `E_adduct` has 10 rows, the `simsim_common.TEST_ADDUCTS`.
 
 One more token carries the formula:
 
@@ -339,15 +346,39 @@ incremental tracker used in search must match the reference on 10k molecules (P0
 
 ### 4.3 Search
 
-Best-first search over cumulative `logp`, run per (molecule, formula):
+**What the metric rewards.** G3 and G4.0 score **top-25 max Tanimoto** and **exact@25** — a *max* and
+a *membership* over a set of 25. They are **order-invariant**: reordering the 25 cannot change either
+number. So the search's job is to make the 25 *cover* chemical space, and ranking is a P4 concern
+(MRR@25, top-1, top-10). Twenty-five isomers of one wrong core all score ~0.25; twenty-five distinct
+scaffold families give a real chance that one matches.
 
-1. Pop the best node.
-2. Expand its top-`BRANCH` legal tokens.
-3. When `</s>` becomes legal, complete the node (**DFS completion**) and emit a leaf.
-4. Stop at `NODE_BUDGET` expansions, or when `MAX_LEAVES` leaves have been emitted.
+**P3 runs three searches at an equal candidate budget of N = 256 sequences per molecule**, so GPU
+compute is matched. All three drive `Tracker.legal_mask` / `push`; none reimplements the grammar.
 
-Plain beam search with the same masks is the fallback if best-first is too slow on a T4. P4 compares
-the two at an equal time budget. Leaves then go through §3.6 and §3.7.
+| id | method | parameters |
+|---|---|---|
+| **A** | prefix-seeded batched sampling | masked expansion to depth `L_SEED` = 4 → top `K_ROOTS` = 8 distinct prefixes by `logp` → `M_ROLLOUT` = 32 sampled rollouts each; `T` = 0.7, top-p 0.90 |
+| **B** | plain masked beam (**control**) | `BEAM` = 256, no diversity mechanism |
+| **C** | diverse (grouped) masked beam | `BEAM` = 256, cross-beam penalty `ALPHA_DIVERSE` = 0.6 on ring and branch tokens; the **unpenalised** `logp` is kept for P4 ordering |
+
+**Seeding must be deep, not at depth 1.** At the first position the derivation state is 0, so the mask
+admits only atom tokens (`is_branch` needs `state > 1`, `is_ring` needs `state > 0`), and
+`next_atom_state(bond, cap, 0)` returns order 0 for every bond prefix — `[C]`, `[=C]` and `[#C]` are
+*degenerate* there. The distinct roots available at depth 1 are therefore just the elements in the
+formula, 2–4 in practice. Scaffold topology is decided over the first ~4 tokens, which is where A
+seeds.
+
+**The 25 are then chosen from the ~256 survivors** by `maxmin` (take the highest-`logp` candidate, then
+greedily add whichever candidate maximises the minimum Tanimoto distance to those already chosen;
+Morgan r2, 2048 bits), with plain `logp` reported beside it.
+
+**Best-first is deferred to P4, not rejected.** It is *not* inherently unbatched — the top-`B` frontier
+can be popped and expanded in one forward pass. The reason it is not in P3 is that at this model size
+the bottleneck is not the GPU but `Tracker.push` + `legal_mask` at 19 µs/step in Python (B = 256 ×
+L = 171 ≈ 0.8 s per molecule of pure Python). More *samples* is cheap; more sequential *depth* is not.
+P4 compares it against the P3 winner at an equal time budget.
+
+Leaves then go through §3.6 and §3.7.
 
 Hydrogens stay implicit throughout. SELFIES fills valences, so the H count is fixed only at the leaf,
 which is why the §3.6 full-formula check does real work.
@@ -401,6 +432,8 @@ which is why the §3.6 full-formula check does real work.
 | timsTOF domain shift | Neither DreaMS nor the decoder has much timsTOF | Pseudo-C3 on enveda-np-examples vs other libraries | Report both; the non-timsTOF number is an upper bound |
 | Negative-mode or rare adducts | Few training examples | P4 per-adduct hit rate | `GEN_ADDUCTS` restriction only on evidence |
 | SELFIES longer than `MAX_LEN` | Large molecules unreachable | P0 length distribution | Set `MAX_LEN` at the corpus p99.9; report the excluded share |
+| Beam / scaffold collapse | All 25 candidates share one wrong core, so max Tanimoto stays near the random baseline | The P3 bake-off's **control arm B** (plain masked beam) against arms A and C; and the recorded count of unique ik14 per molecule | Prefix-seeded diversity (A), cross-beam penalty (C), `maxmin` selection over `logp` |
+| Too few formula-valid leaves | Fewer than 25 candidates, so the selector is inert and the gate silently measures the funnel instead of the search | Recorded median unique formula-valid candidates per molecule (G3, recorded-not-gating) | Raise N; report the funnel beside every hit rate |
 | Unsound mask | The truth is pruned silently | P0 soundness test (0 violations) | The DBE prune applies only to formulas without S or P |
 | Tracker disagrees with SELFIES | Wrong counts, lost truths | P0 parity test | Fall back to the reference tracker (slower) |
 | Displacement | Correct pool answers lose rank | P4 C2-displace cohort | v1 tail policy; small `K_NOVEL` |
