@@ -14,13 +14,22 @@ environment and interfaces are in `tech_stack.md`.*
    - end specs_novel.
 3. Every recorded number cites the notebook or cell that produced it.
 
+**Execution order (amended 2026-09-29).** The order is P1 → P3 → P4-oracle → P2 → P4-predicted → P5 → P6.
+G3 and the kill gate G4.0 use the **oracle** formula, so they do not need P2. Running them first
+means no formula-stage work is spent if the decoder cannot reach G4.0. P4-oracle is the
+oracle-formula leg of P4 (G4.0 plus its funnel). P4-predicted is the rest (G4.1–G4.3), and it runs
+after G2. The phase numbers are unchanged.
+
+**P3 precondition:** G0.1-R2 (`gate_report.md`) must pass. That is the re-embed with the fixed
+`dreams_peaks` into `_novel/emb_dbec3a0_lx/`. P1 and P2 read no embeddings, so they are not blocked.
+
 | phase | milestone | where | status |
 |---|---|---|---|
-| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | CLOSED BY DECISION 2026-09-29 (G0.1-R failed on peak tie-breaking; `emb_dbec3a0` accepted; `gate_report.md`) |
+| P0 | Feasibility: DreaMS offline, SELFIES, tracker and mask soundness | Colab + Kaggle T4 | CLOSED BY DECISION 2026-09-29 (G0.1-R failed on peak tie-breaking; `emb_dbec3a0` accepted; `gate_report.md`). G0.1-R2 (fixed-code re-embed) PENDING, precondition for P3 |
 | P1 | Honest benchmark cohorts + training split | Colab | IN PROGRESS |
-| P2 | Formula stage | Colab / local | PLANNED |
-| P3 | Decoder training | Colab (GPU) | PLANNED |
-| P4 | Offline constrained search + verification | Colab | PLANNED |
+| P2 | Formula stage (runs after P4-oracle) | Colab / local | PLANNED |
+| P3 | Decoder training (needs G0.1-R2) | Colab (GPU) | PLANNED |
+| P4 | Offline constrained search + verification (oracle leg after P3, predicted leg after P2) | Colab | PLANNED |
 | P5 | Notebook integration | `build/` + Kaggle | PLANNED |
 | P6 | LB ablation and probes | Kaggle | PLANNED |
 | P7 | Deferred extensions | Colab | ONLY IF P4 PASSES AND BUDGET REMAINS |
@@ -183,6 +192,8 @@ scaffold-disjoint slice (`dec_val`) is held out from the training part for early
 
 ## P2 — Formula stage
 
+*Runs after P4-oracle passes G4.0 (execution-order amendment, 2026-09-29).*
+
 Steps:
 
 1. Implement `enumerate_formulas` and `score_formulas` (tech_stack §4).
@@ -198,6 +209,8 @@ smallest k that meets it, and it is also bounded by the P4 runtime.
 ---
 
 ## P3 — Decoder training
+
+*Precondition: G0.1-R2 passes. Train on `_novel/emb_dbec3a0_lx/`, not on `emb_dbec3a0`.*
 
 **The model.** `DreamsSelfiesDecoder(DeNovoMassSpecGymModel)`, defined in `build/novel_decoder.py`
 (plan §3.5):
@@ -235,6 +248,10 @@ cross-attention disabled. Then fine-tune as above and re-run G3 once. If it fail
 ---
 
 ## P4 — Offline constrained search + verification
+
+*Split in two (2026-09-29). **P4-oracle** runs right after P3: the oracle-formula leg, its funnel
+and G4.0. **P4-predicted** runs after G2: the predicted-formula legs, displacement, runtime and
+G4.1–G4.3. Hit rates are also reported split by `dreams_ft_risk` (P1).*
 
 Run the full novel path (plan §3.3–§3.7, §4) on `pseudo_c3` and `c2_displace`.
 
@@ -297,7 +314,8 @@ Steps:
      duplicate entries;
    - vocabulary JSON parity with `SelfiesTokenizer` token ids;
    - tracker and mask fixtures from P0.4;
-   - the DreaMS preprocessing fixture (P0.1 parity rows);
+   - the DreaMS preprocessing fixture (`parity_lx` from G0.1-R2; this replaces `parity_200.npz`,
+     which was built with the old `dreams_peaks`);
    - the constraint filter;
    - slot policy v1;
    - the watchdog cut-off;

@@ -22,7 +22,8 @@ G0.2–G0.5 pass. G0.1 passes its official and Kaggle legs; the cache leg failed
 peak selection, not the network. Read literally, rule 5 would stop the project. **The user decided on
 2026-09-29 to proceed to P1 with the `emb_dbec3a0` cache as built** and to make peak selection
 deterministic for all future inference. G0 is therefore recorded as closed by that decision, with
-the accepted risk stated under G0.1-R. It is **not** a PASS.
+the accepted risk stated under G0.1-R. It is **not** a PASS. G0.1-R2 (below, pre-registered) re-embeds
+with the fixed code; if it passes, G0 becomes PASS. It must pass before P3.
 
 | gate | pass condition (pre-registered) | result | status |
 |---|---|---|---|
@@ -152,3 +153,43 @@ The measured proxy is 0.80 % of rows below 0.999 against the old cache, with a w
   fails by design. P5 builds a new offline dataset and manifest.
 - The re-embed notebook would skip every chunk already in `emb_dbec3a0/`. Any future re-embed must
   write to a new folder.
+- The accepted risk rests on an argument, not a measurement. G0.1-R2 below measures it. It is a
+  **precondition for P3**, the first phase that reads embeddings. It does not block P1 or P2.
+
+### G0.1-R2 — fixed-code re-embed *(pre-registered 2026-09-29, before any run; precondition for P3)*
+
+**Why.** Two things are still unverified after the fix:
+
+- (a) that the lexsort `dreams_peaks` gives the same peaks on every platform. The Kaggle leg passed
+  only because it embedded the stored `parity_200.npz` peaks; the offline tests ran on one machine.
+- (b) how far the `emb_dbec3a0` training cache is from what the fixed code produces.
+
+The G0.1-R run cost 1,892 s of embedding plus 121 s of peaks on an A100, so this check is cheap.
+
+**Run.**
+
+- Re-embed all 1,323,878 rows in the P0.2 replay order (`corpus_ce.parquet` `train_row`).
+- Use `dreams_infer.py` at SHA1 `57ce1bc1…` (lexsort) and `dreams_embed.pt` `a28488b2…`.
+- Write to a **new** folder, `casmi_2026/_novel/emb_dbec3a0_lx/`, in 200,000-row chunks. Leave
+  `emb_dbec3a0/` untouched.
+- Choose a fixed set of **tie-rich parity rows**, `parity_lx`: about 200 corpus rows, at least half
+  of them with an intensity tie at the top-100 cut. Rebuild their peaks from `train.parquet` with
+  the fixed `dreams_peaks` on three platforms: Colab CPU, the GPU host and Kaggle T4 (offline).
+
+| check | pass condition | result | status |
+|---|---|---|---|
+| G0.1-R2 | The new cache has 1,323,878 finite 1024-d float32 rows, and its row order (`inchikey14`, `adduct`, `precursor_mz`) has 0 mismatches. The `parity_lx` peaks are **byte-identical** across Colab CPU, the GPU host and Kaggle T4. The new-cache vectors for `parity_lx` have cosine ≥ **0.999** on **every** row with the Kaggle-embedded vectors built from the Kaggle-rebuilt peaks. | — | PENDING |
+
+**Decision rules.**
+
+1. **Pass.** G0.1 becomes **PASS**, since its official and Kaggle legs already pass, and G0 becomes
+   **PASS**. P3 trains on `emb_dbec3a0_lx`. `parity_lx` (peaks and vectors) replaces
+   `parity_200.npz` as the P5 DreaMS fixture.
+2. **The peaks differ across platforms.** The fix is incomplete. Diagnose it, fix `dreams_peaks`,
+   and re-run into another new folder. P3 does not start.
+3. **The peaks are identical but the cosine fails.** The network is not deterministic across
+   hardware at this tolerance. Record the distribution and stop before P3 (protocol 2).
+
+**Recorded, not gating:** the cosine distribution of new vs `emb_dbec3a0` over all rows, overall and
+split by library, adduct, `oob_mass` and peak-count bin. This measures the accepted risk above.
+Also recorded: the share of corpus rows with a tie at the cut, the GPU, and the timings.

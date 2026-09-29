@@ -55,9 +55,9 @@ have no CE), vocab 81 tokens (`selfies_vocab.json` SHA1 `3046040b…`), selfies 
 
 A local copy of the re-embed report is at `specs_novel/re_embed_gate.json`.
 
-### Repository state (branch `specs-novel-p0`, NOT yet committed)
+### Repository state (branch `specs-novel-p0`) — **committed in 8bdc4dd**
 
-Uncommitted work from P0, which should be committed first (§6 step 1):
+§6 step 1 is **done**. The P0 work below was committed in 8bdc4dd, without `__pycache__`:
 
 - modified: `build/dreams_infer.py` (lexsort tie-break), `build/test_novel_p0.py`,
   `specs_novel/gate_report.md`, `roadmap.md`, `tech_stack.md`
@@ -108,6 +108,11 @@ Decisions taken by the planner, to record in the roadmap as P1 amendments:
 - **Libraries:** the val builder's `NP_LIBS` = riken, mona, msdial, massbank, gnps,
   enveda-np-examples, masaryk. enveda-180 is excluded (synthetic, drug-like). This is a superset of
   roadmap's list and matches the existing val cohorts.
+- **`dreams_ft_risk` is recorded, not an eligibility rule** (amended 2026-09-29). The DreaMS head
+  was fine-tuned on MoNA `[M+H]+`, so for those spectra the encoder may have seen the molecule. The
+  lesson that the exclusion set is the model's training set applies to the encoder too. A molecule
+  is flagged when `src_lib == "mona"` and at least one of its picked cohort rows is `[M+H]+`. The
+  count is reported in `p1_gate.json`, and P4 reports hit rates split by the flag.
 - **`in_scope` is recorded, not an eligibility rule.** It means prep status `ok` and token length
   ≤ `MAX_LEN`. Out-of-scope `pseudo_c3` molecules stay and count as misses in P4, which keeps the
   measure honest.
@@ -183,7 +188,7 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 - `pseudo_c3.parquet`, `c2_displace.parquet`, one row per molecule. Columns: `molecule_id`,
   `inchikey14`, `smiles` (normalized), `can` (stereo-stripped), `selfies`, `formula`, `scaffold`,
   `group_size`, `src_lib`, `timstof`, `in_scope`, `rows` (list of corpus rows = embedding rows),
-  `train_rows`, `adducts`, `ces`, `lib_ban_keys`, `pool_ban_keys`.
+  `train_rows`, `adducts`, `ces`, `lib_ban_keys`, `pool_ban_keys`, `dreams_ft_risk`.
 - `dec_split.parquet`: `inchikey14`, `scaffold_key`, `split`.
 - `p1_gate.json`: the G1 items, verdict and every recorded value.
 
@@ -191,7 +196,7 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 
 - `G_MAX` and the share of eligible molecules it excludes (the scaffold bias);
 - per cohort: counts by library and by adduct, the timsTOF count, the in-scope share, the CE-known
-  share, and the spectra-per-molecule distribution;
+  share, the `dreams_ft_risk` count, and the spectra-per-molecule distribution;
 - the held-out share, split into c3 groups, c2 and dec_val;
 - the count of mismatches between `molecular_formula` and the RDKit formula;
 - overlap with the val_scripts cohorts (`val_scripts/val_key.pkl`), for information only.
@@ -202,7 +207,7 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 
 | file | role |
 |---|---|
-| `build/novel_cohort.py` (new) | Pure helpers: numpy/pandas, RDKit imported lazily. `scaffold_key`, `label_ok`, `choose_gmax`, `sample_cohort`, `pick_spectra`, `assign_splits`. Embedded verbatim into the notebook (like `dreams_infer`) and imported directly by the tests. |
+| `build/novel_cohort.py` (new) | Pure helpers: numpy/pandas, RDKit imported lazily. `scaffold_key`, `label_ok`, `choose_gmax`, `sample_cohort`, `pick_spectra`, `assign_splits`, `dreams_ft_risk`. Embedded verbatim into the notebook (like `dreams_infer`) and imported directly by the tests. |
 | `build/novel_p1_colab.py` (new) → `casmi_novel_p1_colab.ipynb` | Colab CPU High-RAM, ~20–30 min. Drive mount, RDKit 2026.03.3 install cell (copy from `novel_p0_colab.py` lines 104–139), embedded sources, structure pass (fork Pool), cohorts, split, invariants, G1 verdict, outputs of §4.6. |
 | `build/mk_novel_p0.py` | Add to `SOURCES`: `NOVEL_COHORT` (`build/novel_cohort.py`) and `SIMSIM_COMMON` (`build/simsim_common.py`, numpy/pandas/pyarrow only). Add the build `(novel_p1_colab.py → casmi_novel_p1_colab.ipynb, ("NOVEL_DECODER", "NOVEL_COHORT", "SIMSIM_COMMON"))`. The placeholder convention is `VAR = None  # @@TAG@@`, and the notebook writes each source to a file so Pool workers can import it. |
 | `build/test_novel_p1.py` (new) | Plain-assert script ending in `test_novel_p1: OK`, in the style of `build/test_novel_p0.py`. |
@@ -240,6 +245,10 @@ Record the chosen value, and the share of eligible molecules that it excludes.
   - scaffold groups are never split across labels;
   - `dec_val` ≈ 3 %;
   - the held-out sets are disjoint.
+- `dreams_ft_risk`:
+  - true only when `src_lib` is mona and a picked row is `[M+H]+`;
+  - false for mona with only other adducts;
+  - false for `[M+H]+` from other libraries.
 - Notebooks: regenerated, not stale; every cell parses; the embedded sources are verbatim.
   `test_novel_p0.py` still passes, because `mk_novel_p0.BUILDS` grew.
 
@@ -254,8 +263,7 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 
 ## 6. Execution order
 
-1. **Commit the P0 work** on `specs-novel-p0` (the files in §1, not `__pycache__`), with the
-   session's attribution trailer.
+1. ~~**Commit the P0 work**~~ **done** (8bdc4dd).
 2. **Pre-register G1**: write the `gate_report.md` G1 section plus the roadmap and tech_stack
    amendments, then commit, **before** any P1 run.
 3. Write `build/novel_cohort.py` and `build/test_novel_p1.py`, and make the tests pass locally.
@@ -268,8 +276,12 @@ Record the chosen value, and the share of eligible molecules that it excludes.
 6. Fill in the G1 results in `gate_report.md`, update the roadmap status and tech_stack, and commit.
    If G1 fails, follow protocol 2: stop and present the options.
 
-After G1: **P2 formula stage** (roadmap P2: `enumerate_formulas` / `score_formulas`, top-k recall on
-`pseudo_c3`).
+**In parallel, any time before P3:** run G0.1-R2 (`gate_report.md`). Point the re-embed notebook at
+`_novel/emb_dbec3a0_lx/` and add the `parity_lx` cross-platform peak leg (Colab CPU, GPU host,
+Kaggle). About 35 min on an A100.
+
+After G1: **P3 decoder training**, which needs G0.1-R2. Then **P4-oracle** (G3, G4.0). **P2** comes
+only after G4.0 passes (roadmap execution-order amendment, 2026-09-29).
 
 ---
 
@@ -281,8 +293,12 @@ After G1: **P2 formula stage** (roadmap P2: `enumerate_formulas` / `score_formul
   relative guides; the LB is the arbiter.
 - **riken reports m/z to 2 dp**, which puts a query outside its own ppm window. The §4.2 filter
   handles it; report the per-library usable share.
-- **The DreaMS head** was fine-tuned on MoNA `[M+H]+` (Murcko split). This is a caveat only
-  (plan §5.3).
+- **The DreaMS head** was fine-tuned on MoNA `[M+H]+` (Murcko split). This is not an exclusion
+  rule (plan §5.3). The cohorts flag it with `dreams_ft_risk` (§3), and P4 reports results split
+  by the flag.
+- **The training cache is provisional.** `emb_dbec3a0` was built with the unstable tie-break. P3
+  trains on `emb_dbec3a0_lx` once G0.1-R2 passes. Row indices are the same in both caches, so P1
+  outputs stay valid.
 - **Any future re-embed must write to a new folder.** The re-embed notebook skips chunks that already
   exist. P5 needs a new Kaggle offline dataset and manifest, because the `dreams_infer.py` SHA1
   changed to `57ce1bc1…`.
