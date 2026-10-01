@@ -361,7 +361,7 @@ def evaluate():
         d = to_dev(b)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=BF16):
             loss, nt, nc = batch_loss(d)
-        tot += float(loss) * nt
+        tot += loss.detach().item() * nt
         ntok += nt
         ncor += nc
     MODEL.train()
@@ -462,50 +462,77 @@ else:
     print("=" * 88)
 
 # %% [markdown]
-# ## Calibration: time 50 steps and project the run before committing the budget
+# ## Calibration: two passes, because the first read of the embedding cache is not the steady state
+#
+# The embedding chunks are memory-mapped off Google Drive. The **first** pass over a set of rows pays
+# Drive's fuse latency on scattered 4 KB reads (a few MB/s); afterwards those rows sit in the OS page
+# cache and the same steps run roughly an order of magnitude faster. A single-pass calibration
+# therefore measures the one pass that can never repeat, and over-projects the whole run by ~10x.
+#
+# So both numbers are measured over the **same** batches — the cold pass, which is what epoch 0 will
+# cost, and the warm pass, which is what every later epoch costs. The projection uses the warm one.
 
 # %%
 N_CAL = 52
-CAL_WARMUP = 2                                   # the first steps pay for cuDNN autotuning
-crng = np.random.default_rng(SEED + 999)
-CAL = p3d.epoch_order(len(IDX), crng, BATCH, LENGTHS)[:N_CAL] if START == 0 else []
-if START == 0 and len(CAL) <= CAL_WARMUP:
+CAL_SEED = SEED + 1234                            # both passes draw the SAME spectra, so pass 2 is
+                                                  # genuinely warm rather than fetching new rows
+CAL = (p3d.epoch_order(len(IDX), np.random.default_rng(SEED + 999), BATCH, LENGTHS)[:N_CAL]
+       if START == 0 else [])
+if START == 0 and len(CAL) < 4:
     # too few batches to time anything; skip rather than divide by zero, and leave the freshly
     # initialised model untouched so no re-init is needed below
     print(f"only {len(CAL)} batches available -- skipping calibration")
     CAL = []
 if CAL:
     MODEL.train()
-    cal = CAL
-    t0 = None
-    for i, ids in enumerate(cal):
-        b = to_dev(p3d.make_batch(IDX, ids, STORE, crng, max_spec=MAX_SPEC_PER_MOL,
-                                  ce_dropout=CE_DROPOUT, pad_id=VOCAB.pad_id,
-                                  sos_id=VOCAB.sos_id, eos_id=VOCAB.eos_id))
-        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=BF16):
-            loss, _, _ = batch_loss(b)
-        OPT.zero_grad(set_to_none=True)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(MODEL.parameters(), GRAD_CLIP)
-        OPT.step()
-        if i == CAL_WARMUP - 1:                   # start the clock after the warmup steps
-            torch.cuda.synchronize()
-            t0 = time.time()
-    torch.cuda.synchronize()
-    per_step = (time.time() - t0) / (len(cal) - CAL_WARMUP)
+
+    def cal_pass():
+        """One pass over CAL, returning seconds per step. Re-seeded so the rows are identical."""
+        rng = np.random.default_rng(CAL_SEED)
+        torch.cuda.synchronize()
+        t0 = time.time()
+        for ids in CAL:
+            b = to_dev(p3d.make_batch(IDX, ids, STORE, rng, max_spec=MAX_SPEC_PER_MOL,
+                                      ce_dropout=CE_DROPOUT, pad_id=VOCAB.pad_id,
+                                      sos_id=VOCAB.sos_id, eos_id=VOCAB.eos_id))
+            with torch.autocast("cuda", dtype=torch.bfloat16, enabled=BF16):
+                loss, _, _ = batch_loss(b)
+            OPT.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(MODEL.parameters(), GRAD_CLIP)
+            OPT.step()
+        torch.cuda.synchronize()
+        return (time.time() - t0) / len(CAL)
+
+    cold_step = cal_pass()                        # includes the first Drive read and cuDNN autotuning
+    warm_step = cal_pass()                        # steady state: rows now in the page cache
     t_ck = time.time()
     save_ckpt(-1, 0, float("inf"), 0, [])
     t_ck = time.time() - t_ck
     (CKPT / "epoch_-01.pt").unlink(missing_ok=True)
-    epoch_s = per_step * STEPS_PER_EPOCH + t_ck
-    GATE["calibration"] = dict(per_step_s=per_step, checkpoint_s=t_ck, epoch_s=epoch_s,
-                               projected_h_40=40 * epoch_s / 3600)
-    print(f"{per_step * 1000:.0f} ms/step  ->  {epoch_s / 60:.1f} min/epoch "
-          f"(incl. {t_ck:.0f}s checkpoint)")
-    print(f"projected: 20 epochs {20 * epoch_s / 3600:.2f} h, 40 epochs {40 * epoch_s / 3600:.2f} h")
-    print(f"at ~11.8 CU/h on A100 that is ~{40 * epoch_s / 3600 * 11.8:.0f} CU for 40 epochs")
-    print("\nP3's budget is ~50-60 CU. If the projection above is far over that, stop and "
-          "reduce COSINE_EPOCHS / MAX_EPOCHS rather than letting it run.")
+    epoch_s = warm_step * STEPS_PER_EPOCH + t_ck
+    first_epoch_s = cold_step * STEPS_PER_EPOCH + t_ck
+    bytes_per_step = BATCH * min(MAX_SPEC_PER_MOL, float(np.mean(np.minimum(
+        SPEC_PER_MOL, MAX_SPEC_PER_MOL)))) * STORE.dim * 4
+    GATE["calibration"] = dict(cold_step_s=cold_step, warm_step_s=warm_step, checkpoint_s=t_ck,
+                               epoch_s=epoch_s, first_epoch_s=first_epoch_s,
+                               speedup=cold_step / max(warm_step, 1e-9),
+                               mb_per_step=bytes_per_step / 1e6,
+                               cold_read_mb_s=bytes_per_step / 1e6 / max(cold_step, 1e-9),
+                               warm_read_mb_s=bytes_per_step / 1e6 / max(warm_step, 1e-9),
+                               projected_h_40=39 * epoch_s / 3600 + first_epoch_s / 3600)
+    c = GATE["calibration"]
+    print(f"cold pass {cold_step * 1000:7.0f} ms/step  ({c['cold_read_mb_s']:5.1f} MB/s of "
+          f"embeddings) -> first epoch {first_epoch_s / 60:.1f} min")
+    print(f"warm pass {warm_step * 1000:7.0f} ms/step  ({c['warm_read_mb_s']:5.1f} MB/s) "
+          f"-> later epochs {epoch_s / 60:.1f} min  (incl. {t_ck:.0f}s checkpoint)")
+    print(f"page cache is worth {c['speedup']:.1f}x; {c['mb_per_step']:.1f} MB of embeddings per step")
+    for n in (20, 40, 100):
+        h = first_epoch_s / 3600 + (n - 1) * epoch_s / 3600
+        print(f"projected {n:3d} epochs: {h:5.2f} h  (~{h * 11.8:3.0f} CU on A100)")
+    print("\nP3's budget is ~50-60 CU. Judge it on the **warm** projection above: the cold number is "
+          "the first epoch only. If even the warm projection is far over budget, stop and reduce "
+          "COSINE_EPOCHS / MAX_EPOCHS rather than letting it run.")
     # the calibration mutated the model and the optimizer: start the real run from scratch
     torch.manual_seed(SEED)
     MODEL = nd.DreamsSelfiesDecoder(len(VOCAB), pad_id=VOCAB.pad_id, sos_id=VOCAB.sos_id,
@@ -541,7 +568,7 @@ for epoch in range(START, MAX_EPOCHS):
         OPT.step()
         SCHED.step()
         STEP += 1
-        run += float(loss) * nt
+        run += loss.detach().item() * nt
         ntok += nt
         ncor += nc
     tr_loss, tr_acc = run / max(ntok, 1), ncor / max(ntok, 1)

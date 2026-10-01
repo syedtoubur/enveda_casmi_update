@@ -120,6 +120,39 @@ def query_memory(model, query, store, device, torch):
 # Resumable generation
 # --------------------------------------------------------------------------------------------- #
 
+def randomdenovo_smiles(rd, formula):
+    """One RandomDeNovo draw -> [smiles].
+
+    `generate_random_molecule_graphs_via_traversal` is typed `-> list[Mol]`
+    (MSGYM_novel/massspecgym/models/de_novo/random.py:746-750) and returns up to `max_top_k`
+    molecules per call, never a single Mol. Handing that list straight to `Chem.MolToSmiles` raises
+    `ArgumentError`, which a caller's `except Exception` silently turns into "this molecule produced
+    no candidates" -- and a null arm of exactly zero is not a baseline, it hands G3.1 a free pass at
+    delta = the treatment's own score. So the unpacking lives here, in the module both notebooks
+    import, and is covered by a test.
+
+    Note also that `RandomDeNovo.__init__` sets `cache_results=True` by default, so repeat calls for
+    the same formula return the identical list object: a bigger pool needs `cache_results=False`,
+    not more calls."""
+    from rdkit import Chem
+    got = rd.generate_random_molecule_graphs_via_traversal(formula)
+    if got is None:
+        return []
+    if not isinstance(got, (list, tuple)):
+        got = [got]
+    out = []
+    for g in got:
+        if g is None:
+            continue
+        try:
+            smi = g if isinstance(g, str) else Chem.MolToSmiles(g)
+        except Exception:
+            continue
+        if smi:
+            out.append(smi)
+    return out
+
+
 class ChunkStore:
     """Candidates flushed to Drive every `chunk` molecules, with a done-list beside them.
 
@@ -144,7 +177,10 @@ class ChunkStore:
             return set()
 
     def parts(self):
-        return sorted(self.dir.glob(f"cands_{self.tag}_*.parquet"))
+        # The chunk index is anchored to digits because tags nest: a plain `_*` glob on tag
+        # "randomdenovo_pseudo_c3" also matches "cands_randomdenovo_pseudo_c3_pool_0000.parquet",
+        # which silently merged the pool null's 300 candidates into the gated null's 25.
+        return sorted(self.dir.glob(f"cands_{self.tag}_[0-9]*.parquet"))
 
     def add(self, molecule_id, cands, funnel, seconds):
         for rank, (smi, logp) in enumerate(cands):

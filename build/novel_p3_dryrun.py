@@ -197,15 +197,16 @@ def train_subs(drive_dir, facts, chunk):
          '            loss, nt, nc = batch_loss(d)',
          'if True:\n            loss, nt, nc = batch_loss(d)'),
         ('with torch.autocast("cuda", dtype=torch.bfloat16, enabled=BF16):\n'
-         '            loss, _, _ = batch_loss(b)',
-         'if True:\n            loss, _, _ = batch_loss(b)'),
+         '                loss, _, _ = batch_loss(b)',
+         'if True:\n                loss, _, _ = batch_loss(b)'),
         ('with torch.autocast("cuda", dtype=torch.bfloat16, enabled=BF16):\n'
          '            loss, nt, nc = batch_loss(b)',
          'if True:\n            loss, nt, nc = batch_loss(b)'),
-        ('        if i == CAL_WARMUP - 1:                   # start the clock after the warmup steps\n'
-         '            torch.cuda.synchronize()\n            t0 = time.time()\n'
-         '    torch.cuda.synchronize()',
-         '        if i == CAL_WARMUP - 1:\n            t0 = time.time()\n    pass'),
+        # cal_pass() brackets its timing with cuda.synchronize(); there is no CUDA here
+        ('        torch.cuda.synchronize()\n        t0 = time.time()',
+         '        pass\n        t0 = time.time()'),
+        ('        torch.cuda.synchronize()\n        return (time.time() - t0) / len(CAL)',
+         '        pass\n        return (time.time() - t0) / len(CAL)'),
         ('                cuda=torch.cuda.get_rng_state_all(),', '                cuda=None,'),
     ]
 

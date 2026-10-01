@@ -384,6 +384,21 @@ def check_chunkstore():
     (tmp / "done_arm_cohort.json").write_text("{not json")
     assert p3e.ChunkStore(tmp, "arm_cohort").done() == set()
     print("  ChunkStore: flush, resume, no duplication, corrupt done-list tolerated: OK")
+    # A tag that is a prefix of another tag must not read the other's parts. `randomdenovo_X` and
+    # `randomdenovo_X_pool` coexist in one directory, and a `cands_{tag}_*` glob matched both, so
+    # the gated null silently loaded the pool null's candidates too (25 -> 325 per molecule) and the
+    # recorded G3.1 null was not the registered one.
+    with tempfile.TemporaryDirectory() as d:
+        base = p3e.ChunkStore(d, "randomdenovo_pseudo_c3", chunk=1)
+        pool = p3e.ChunkStore(d, "randomdenovo_pseudo_c3_pool", chunk=1)
+        base.add("m1", [("CCO", 0.0)], dict(sequences=1, unique=1), 0.1)
+        pool.add("m1", [("CCO", 0.0), ("CCC", 0.0), ("CCN", 0.0)], dict(sequences=3, unique=3), 0.1)
+        base.flush(); pool.flush()
+        assert len(base.load()["m1"]) == 1, base.load()["m1"]
+        assert len(pool.load()["m1"]) == 3, pool.load()["m1"]
+        assert len(base.parts()) == 1 and len(pool.parts()) == 1
+    print("  ChunkStore: a prefix tag does not read a longer tag's parts: OK")
+
 
 
 def check_eval_helpers():
@@ -420,6 +435,53 @@ def check_eval_helpers():
     v = p3e.g3_verdict({"median_maxtan_maxmin": 0.40}, {"median_maxtan_maxmin": 0.20}, 0.10, False)
     assert v["verdict"] == "FAIL" and v["items"]["G3.1"] == "PASS" and v["items"]["G3.2"] == "FAIL", v
     print("  eval helpers: scoring symmetry, summaries, winner rule, G3 verdict: OK")
+
+
+def check_randomdenovo_unpacking():
+    """The null arm must survive `generate_random_molecule_graphs_via_traversal` returning a LIST.
+
+    It is typed `-> list[Mol]` and yields up to `max_top_k` molecules per call. An earlier version of
+    the notebook passed that list straight to `Chem.MolToSmiles`, which raises `ArgumentError`; the
+    worker's `except Exception` turned every raise into "0 candidates", so all 755 molecules of the
+    null arm came back empty and the G3.1 delta was just the treatment's own score. A null of exactly
+    zero is a code fault, never a measurement."""
+    from rdkit import Chem
+    mols = [Chem.MolFromSmiles(s) for s in ("CCO", "c1ccccc1", "CC(=O)O")]
+
+    class Gen:
+        def __init__(self, ret):
+            self.ret, self.calls = ret, 0
+
+        def generate_random_molecule_graphs_via_traversal(self, formula):
+            self.calls += 1
+            return self.ret
+
+    # the real shape: a list of Mols
+    got = p3e.randomdenovo_smiles(Gen(mols), "C2H6O")
+    assert got == [Chem.MolToSmiles(m) for m in mols], got
+
+    # tolerated shapes: a bare Mol, a SMILES string, None, an empty list, a list holding a None
+    assert p3e.randomdenovo_smiles(Gen(mols[0]), "C2H6O") == ["CCO"]
+    assert p3e.randomdenovo_smiles(Gen(["CCO"]), "C2H6O") == ["CCO"]
+    assert p3e.randomdenovo_smiles(Gen(None), "C2H6O") == []
+    assert p3e.randomdenovo_smiles(Gen([]), "C2H6O") == []
+    assert p3e.randomdenovo_smiles(Gen([mols[0], None, mols[1]]), "X") == ["CCO", "c1ccccc1"]
+
+    # one call per invocation: the caller controls the draw count, not the helper
+    g = Gen(mols)
+    p3e.randomdenovo_smiles(g, "C2H6O")
+    assert g.calls == 1, g.calls
+
+    # and the notebook must not have grown a second, unguarded unpacking
+    src = (HERE / "novel_p3_null_colab.py").read_text(encoding="utf-8")
+    assert "p3e.randomdenovo_smiles" in src, "the null notebook stopped using the shared helper"
+    assert "MolToSmiles(g)" not in src and "MolToSmiles(got)" not in src, (
+        "the null notebook converts a generator return value to SMILES itself again; that is the "
+        "bug that zeroed the whole null arm")
+    # an all-zero null must be refused, not scored
+    assert "cannot be judged against an empty null" in src, (
+        "the guard against scoring an empty null arm is gone")
+    print("  RandomDeNovo return-value unpacking + the empty-null guard: OK")
 
 
 def check_checkpoint_roundtrip():
@@ -526,6 +588,7 @@ if __name__ == "__main__":
     check_data_path()
     check_chunkstore()
     check_eval_helpers()
+    check_randomdenovo_unpacking()
     check_checkpoint_roundtrip()
     check_notebooks()
     print("test_novel_p3: OK")

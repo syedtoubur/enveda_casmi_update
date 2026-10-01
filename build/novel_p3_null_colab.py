@@ -49,7 +49,15 @@ MSGYM_COMMIT = "f259fe3780d5bd227fc6ece36ce6f397c2eef716"
 
 # ---- G3 (pre-registered) ----
 G3_THRESHOLD = 0.10                  # Δ median top-25 max Tanimoto vs RandomDeNovo, on pseudo_c3
-NULL_N = 256                         # null candidates generated per molecule, matching N_CANDIDATES
+# `generate_random_molecule_graphs_via_traversal` returns a *list* of up to `max_top_k` Mols, and
+# `RandomDeNovo.__init__` clamps `max_top_k = min(max(top_ks), max_top_k)` -> 25 under the registered
+# `top_ks=(1, 10, 25)`. So the registered null is 25 candidates from ONE call; an earlier NULL_N=256
+# "matching N_CANDIDATES" was unreachable through that constructor. 25 is also what a top-25 metric
+# asks for, and it is the published MassSpecGym baseline configuration.
+NULL_N = 1                           # calls per molecule for the GATED null (25 candidates)
+# Recorded, not gating: a pool null on the same 256-sequence budget as the decoder arm, so that
+# `select_top25("maxmin")` does real work on BOTH arms instead of being a no-op on the null only.
+POOL_DRAWS = 11                      # 11 x 25 = 275 >= 256; caching is switched off for these
 MCES_C3_SUBSET = 150                 # fixed random subset; the ILP is slow
 MCES_TIMEOUT = 60
 CHUNK_MOL = 50
@@ -219,67 +227,117 @@ print({k: len(v) for k, v in QUERIES.items()})
 
 # %%
 _RD = None
+_RD_POOL = None
 
 
 def _null_one(args):
-    """(molecule_id, formula, n) -> (molecule_id, [smiles], seconds). One worker, one molecule."""
-    global _RD
-    mid, formula, n = args
+    """(molecule_id, formula, n_calls) -> (molecule_id, [gated smiles], [pool smiles], seconds, err).
+
+    Two nulls from one worker, because the second is nearly free at ~0.03 s/draw:
+      * gated: ONE call under the registered constructor -> up to 25 candidates;
+      * pool:  `POOL_DRAWS` calls with `cache_results=False` -> a >=256 candidate pool, so that the
+               registered `maxmin` selector selects on both arms rather than only on the decoder's.
+    """
+    global _RD, _RD_POOL
+    mid, formula, n_calls = args
+    from massspecgym.models.de_novo.random import RandomDeNovo as _R
     if _RD is None:
-        from massspecgym.models.de_novo.random import RandomDeNovo as _R
         _RD = _R(formula_known=True, max_top_k=25, top_ks=(1, 10, 25))
+    if _RD_POOL is None:
+        # same constructor, caching off: with it on, every later call returns the first list object
+        _RD_POOL = _R(formula_known=True, max_top_k=25, top_ks=(1, 10, 25), cache_results=False)
     t = time.time()
-    out = []
     try:
-        for _ in range(n):
-            g = _RD.generate_random_molecule_graphs_via_traversal(formula)
-            if g is None:
-                continue
-            from rdkit import Chem
-            smi = g if isinstance(g, str) else Chem.MolToSmiles(g)
-            if smi:
-                out.append(smi)
+        gated = []
+        for _ in range(max(1, n_calls)):
+            gated.extend(p3e.randomdenovo_smiles(_RD, formula))
+        pool = list(gated)
+        for _ in range(POOL_DRAWS):
+            pool.extend(p3e.randomdenovo_smiles(_RD_POOL, formula))
     except Exception as e:
-        return mid, [], time.time() - t, f"{type(e).__name__}: {e}"[:200]
-    return mid, out, time.time() - t, None
+        return mid, [], [], time.time() - t, f"{type(e).__name__}: {e}"[:200]
+    return mid, gated, pool, time.time() - t, None
+
+
+def _dedupe(smis):
+    """[smiles] -> [(smiles, 0.0)] deduped by ik14, exactly as the decoder arm dedupes.
+
+    The score is flat because RandomDeNovo has none; `select_top25("logp")` therefore keeps
+    generation order, which for exchangeable random draws is an unbiased 25."""
+    seen, cands = set(), []
+    for s in smis:
+        k = nd.ik14(s)
+        if k and k not in seen:
+            seen.add(k)
+            cands.append((s, 0.0))
+    return cands
 
 
 def run_null(queries, tag):
+    """Writes two stores: `tag` (the gated 25-candidate null) and `tag`_pool (the >=256 pool null)."""
     store = p3e.ChunkStore(CANDS, tag, chunk=CHUNK_MOL)
-    done = store.done()
+    pstore = p3e.ChunkStore(CANDS, f"{tag}_pool", chunk=CHUNK_MOL)
+    done = store.done() & pstore.done()
     todo = [q for q in queries if q["molecule_id"] not in done]
     if done:
         print(f"[{tag}] resuming: {len(done)} done, {len(todo)} to go")
+    ok_ids, zero = [], 0
     if todo:
         args = [(q["molecule_id"], q["formula"], NULL_N) for q in todo]
         ctx = mp.get_context("fork")
         t0, errs = time.time(), 0
         with ctx.Pool(max(1, NCPU - 1)) as pool:
-            for i, (mid, smis, secs, err) in enumerate(pool.imap_unordered(_null_one, args,
-                                                                          chunksize=1), 1):
+            for i, (mid, smis, psmis, secs, err) in enumerate(pool.imap_unordered(_null_one, args,
+                                                                                 chunksize=1), 1):
                 errs += int(err is not None)
                 if err and errs <= 3:
                     print(f"[{tag}] {mid}: {err}", flush=True)
-                # dedupe by ik14 exactly as the decoder arm does, and give a flat score
-                seen, cands = set(), []
-                for s in smis:
-                    k = nd.ik14(s)
-                    if k and k not in seen:
-                        seen.add(k)
-                        cands.append((s, 0.0))
+                cands, pcands = _dedupe(smis), _dedupe(psmis)
                 store.add(mid, cands, dict(sequences=NULL_N, unique=len(cands)), secs)
+                pstore.add(mid, pcands, dict(sequences=NULL_N + POOL_DRAWS,
+                                             unique=len(pcands)), secs)
+                # A molecule that ERRORED must not be recorded as done, or the resume skips it
+                # forever and the zero stands as if it were a measurement. Only clean ones count.
+                if err is None:
+                    ok_ids.append(mid)
+                zero += int(err is None and not cands)
                 if i % 25 == 0 or i == len(todo):
                     el = time.time() - t0
                     print(f"[{tag}] {i}/{len(todo)}  {el / i:.2f}s/mol  "
                           f"eta {(len(todo) - i) * el / i / 60:.1f} min", flush=True)
-        print(f"[{tag}] {errs} molecules errored")
-    store.flush(extra_done=[q["molecule_id"] for q in todo])
-    return store
+        print(f"[{tag}] {errs} molecules errored, {zero} generated 0 candidates without erroring")
+        if errs == len(todo) and todo:
+            raise RuntimeError(
+                f"[{tag}] EVERY molecule errored -- this is a code fault, not a null of zero. "
+                f"A null arm that generates nothing is not a valid baseline: it would hand G3.1 a "
+                f"free pass at delta = the treatment's own score. Fix the worker and re-run.")
+    store.flush(extra_done=ok_ids)
+    pstore.flush(extra_done=ok_ids)
+    return store, pstore
 
 
-NULL_STORES = {}
+# Any store left over from the run whose worker mis-unpacked the Mol list holds 755 molecules with
+# zero candidates AND a complete done-list, so a plain re-run would skip every one of them. Clear
+# those stores before generating, but only the ones that really are all-zero.
+def purge_if_all_zero(tag):
+    st = p3e.ChunkStore(CANDS, tag, chunk=CHUNK_MOL)
+    loaded = st.load()
+    if not st.done() or (loaded and any(v for v in loaded.values())):
+        return False
+    for f in list(st.parts()) + [st.done_path, CANDS / f"funnel_{tag}.jsonl"]:
+        if Path(f).exists():
+            Path(f).unlink()
+    print(f"[{tag}] purged an all-zero store ({len(st.done())} molecules) so it can be regenerated")
+    return True
+
+
+for label in QUERIES:
+    for tg in (f"randomdenovo_{label}", f"randomdenovo_{label}_pool"):
+        purge_if_all_zero(tg)
+
+NULL_STORES, POOL_STORES = {}, {}
 for label, queries in QUERIES.items():
-    NULL_STORES[label] = run_null(queries, f"randomdenovo_{label}")
+    NULL_STORES[label], POOL_STORES[label] = run_null(queries, f"randomdenovo_{label}")
 save_gate()
 
 # %% [markdown]
@@ -290,23 +348,35 @@ RESULTS, SCORED = {}, {}
 for label, queries in QUERIES.items():
     treat = p3e.ChunkStore(CANDS, f"{WINNER}_{label}").load()
     null = NULL_STORES[label].load()
+    npool = POOL_STORES[label].load()
     assert treat, f"no {WINNER} candidates for {label} -- run the eval notebook"
+    # A null that generated nothing is a broken baseline, not a strong result. Refuse to score it:
+    # the delta would simply be the treatment's own score, and G3.1 would pass for free.
+    n_nonempty = sum(1 for q in queries if null.get(q["molecule_id"]))
+    assert n_nonempty >= 0.5 * len(queries), (
+        f"{label}: RandomDeNovo produced candidates for only {n_nonempty}/{len(queries)} molecules. "
+        f"G3.1 cannot be judged against an empty null. Read the generation cell's error lines.")
     t_sc = [p3e.score_molecule(q, treat.get(q["molecule_id"], [])) for q in queries]
     n_sc = [p3e.score_molecule(q, null.get(q["molecule_id"], [])) for q in queries]
+    p_sc = [p3e.score_molecule(q, npool.get(q["molecule_id"], [])) for q in queries]
     RESULTS[label] = dict(treatment=p3e.summarise(t_sc, f"{label}|{WINNER}"),
-                          null=p3e.summarise(n_sc, f"{label}|randomdenovo"))
-    SCORED[label] = (t_sc, n_sc)
+                          null=p3e.summarise(n_sc, f"{label}|randomdenovo"),
+                          null_pool=p3e.summarise(p_sc, f"{label}|randomdenovo_pool"))
+    SCORED[label] = (t_sc, n_sc, p_sc)
     pd.DataFrame(n_sc).to_parquet(CANDS / f"scored_randomdenovo_{label}.parquet", index=False)
-    t, n = RESULTS[label]["treatment"], RESULTS[label]["null"]
+    t, n, pl = (RESULTS[label][k] for k in ("treatment", "null", "null_pool"))
     print(f"\n{label}")
-    print(f"  {WINNER:16} median maxTan {t['median_maxtan_maxmin']:.4f}  "
-          f"exact@25 {t['exact25_maxmin']:.4f}  cands/mol {t['median_n_cands']:.0f}")
-    print(f"  {'RandomDeNovo':16} median maxTan {n['median_maxtan_maxmin']:.4f}  "
-          f"exact@25 {n['exact25_maxmin']:.4f}  cands/mol {n['median_n_cands']:.0f}")
-    print(f"  delta {t['median_maxtan_maxmin'] - n['median_maxtan_maxmin']:+.4f} "
-          f"(G3.1 needs >= +{G3_THRESHOLD})")
+    for name, s in ((WINNER, t), ("RandomDeNovo", n), ("RandomDeNovo pool", pl)):
+        print(f"  {name:18} median maxTan {s['median_maxtan_maxmin']:.4f} (maxmin) / "
+              f"{s['median_maxtan_logp']:.4f} (logp)  exact@25 {s['exact25_maxmin']:.4f}  "
+              f"cands/mol {s['median_n_cands']:.0f}")
+    d_gate = t["median_maxtan_maxmin"] - n["median_maxtan_maxmin"]
+    d_pool = t["median_maxtan_maxmin"] - pl["median_maxtan_maxmin"]
+    print(f"  delta vs registered null {d_gate:+.4f}   (G3.1 needs >= +{G3_THRESHOLD})")
+    print(f"  delta vs pool null       {d_pool:+.4f}   (recorded, not gating: the conservative "
+          f"read, because maxmin then selects on both arms rather than on the decoder's only)")
 GATE["results"] = RESULTS
-GATE["splits"] = {label: p3e.split_summaries(t_sc, label) for label, (t_sc, _) in SCORED.items()}
+GATE["splits"] = {label: p3e.split_summaries(sc[0], label) for label, sc in SCORED.items()}
 save_gate()
 
 # %% [markdown]
@@ -332,7 +402,7 @@ def mces_best(truth, cands, timeout=MCES_TIMEOUT):
 
 
 MCES_OUT = {}
-for label, (t_sc, n_sc) in SCORED.items():
+for label, (t_sc, n_sc, p_sc) in SCORED.items():
     queries = QUERIES[label]
     if label == "pseudo_c3" and len(queries) > MCES_C3_SUBSET:
         rng = np.random.default_rng(SEED)
@@ -374,7 +444,12 @@ save_gate()
 # %%
 V = p3e.g3_verdict(RESULTS["pseudo_c3"]["treatment"], RESULTS["pseudo_c3"]["null"],
                    threshold=G3_THRESHOLD, converged=GATE.get("g32_converged"))
-GATE.update(verdict=V["verdict"], items=V["items"], g3=V, finished=time.strftime("%Y-%m-%d %H:%M"))
+# The same verdict computed against the pool null. Recorded, never gating: G3.1 is registered against
+# the 25-candidate RandomDeNovo, and this says whether that choice is what carried the result.
+V_POOL = p3e.g3_verdict(RESULTS["pseudo_c3"]["treatment"], RESULTS["pseudo_c3"]["null_pool"],
+                        threshold=G3_THRESHOLD, converged=GATE.get("g32_converged"))
+GATE.update(verdict=V["verdict"], items=V["items"], g3=V, g3_vs_pool_null=V_POOL,
+            finished=time.strftime("%Y-%m-%d %H:%M"))
 save_gate()
 
 print("=" * 88)
@@ -399,6 +474,10 @@ if ts:
     print(f"ts_dec (reported)     median maxTan {ts['treatment']['median_maxtan_maxmin']:.4f} vs "
           f"null {ts['null']['median_maxtan_maxmin']:.4f}, exact@25 "
           f"{ts['treatment']['exact25_maxmin']:.4f}")
+print(f"pool null (reported)  median maxTan "
+      f"{RESULTS['pseudo_c3']['null_pool']['median_maxtan_maxmin']:.4f} over "
+      f"{RESULTS['pseudo_c3']['null_pool']['median_n_cands']:.0f} cands/mol -> delta "
+      f"{V_POOL['delta']:+.4f}, which would be {V_POOL['verdict']}")
 print(f"MCES (reported)       {GATE['mces']}")
 if c3t["median_n_cands"] < 25:
     print("\n[NOTE] the median molecule yields fewer than 25 candidates, so the selector is largely "
