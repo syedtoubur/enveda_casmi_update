@@ -1,0 +1,99 @@
+========================================================================================
+P3 TRAINING DONE -- stop reason: early_stop
+========================================================================================
+epochs run              25  (from epoch 0)
+best dec_val loss       0.41023 at epoch 19
+last epoch              24
+wall clock this session 0.37 h
+projected CU (A100)     ~4
+
+G3.2 (converged: patience 5 reached AND best epoch != last epoch): PASS
+
+decoder.pt   /content/drive/MyDrive/casmi_2026/_novel/p3/decoder.pt
+checkpoints  /content/drive/MyDrive/casmi_2026/_novel/p3/ckpt (2 kept)
+log          /content/drive/MyDrive/casmi_2026/_novel/p3/train_log.jsonl
+meta         /content/drive/MyDrive/casmi_2026/_novel/p3/train_meta.json
+
+Next: casmi_novel_p3_eval_colab.ipynb (GPU) for the bake-off, then casmi_novel_p3_null_colab.ipynb (CPU) for RandomDeNovo, MCES and the G3 verdict.
+
+
+Validation 
+[prefix_seeded_dec_val] 25/300  1.97s/mol  eta 9.0 min
+[prefix_seeded_dec_val] 50/300  2.00s/mol  eta 8.3 min
+[prefix_seeded_dec_val] 75/300  2.06s/mol  eta 7.7 min
+[prefix_seeded_dec_val] 100/300  2.08s/mol  eta 6.9 min
+[prefix_seeded_dec_val] 125/300  2.14s/mol  eta 6.2 min
+[prefix_seeded_dec_val] 150/300  2.14s/mol  eta 5.4 min
+[prefix_seeded_dec_val] 175/300  2.12s/mol  eta 4.4 min
+[prefix_seeded_dec_val] 200/300  2.12s/mol  eta 3.5 min
+[prefix_seeded_dec_val] 225/300  2.13s/mol  eta 2.7 min
+[prefix_seeded_dec_val] 250/300  2.16s/mol  eta 1.8 min
+[prefix_seeded_dec_val] 275/300  2.16s/mol  eta 0.9 min
+[prefix_seeded_dec_val] 300/300  2.18s/mol  eta 0.0 min
+
+prefix_seeded  median maxTan 0.2910 (maxmin) / 0.3467 (logp)  exact@25 0.0133  cands/mol 76  2.17s/mol
+
+
+
+
+[prefix_seeded_dec_val] resuming: 300 done, 0 to go
+
+prefix_seeded  median maxTan 0.2910 (maxmin) / 0.3467 (logp)  exact@25 0.0133  cands/mol 76  2.17s/mol
+[masked_beam_dec_val] resuming: 200 done, 100 to go
+[masked_beam_dec_val] 25/100  16.12s/mol  eta 20.1 min
+[masked_beam_dec_val] 50/100  16.86s/mol  eta 14.0 min
+[masked_beam_dec_val] 75/100  17.10s/mol  eta 7.1 min
+[masked_beam_dec_val] 100/100  16.75s/mol  eta 0.0 min
+
+masked_beam    median maxTan 0.3067 (maxmin) / 0.3852 (logp)  exact@25 0.0233  cands/mol 332  15.85s/mol
+[diverse_beam_dec_val] 25/300  21.29s/mol  eta 97.6 min
+[diverse_beam_dec_val] 50/300  20.63s/mol  eta 86.0 min
+[diverse_beam_dec_val] 75/300  20.68s/mol  eta 77.5 min
+[diverse_beam_dec_val] 100/300  20.76s/mol  eta 69.2 min
+[diverse_beam_dec_val] 125/300  21.13s/mol  eta 61.6 min
+[diverse_beam_dec_val] 150/300  21.18s/mol  eta 52.9 min
+[diverse_beam_dec_val] 175/300  20.99s/mol  eta 43.7 min
+[diverse_beam_dec_val] 200/300  21.04s/mol  eta 35.1 min
+[diverse_beam_dec_val] 225/300  21.12s/mol  eta 26.4 min
+[diverse_beam_dec_val] 250/300  21.33s/mol  eta 17.8 min
+[diverse_beam_dec_val] 275/300  21.50s/mol  eta 9.0 min
+[diverse_beam_dec_val] 300/300  21.50s/mol  eta 0.0 min
+
+diverse_beam   median maxTan 0.3067 (maxmin) / 0.3852 (logp)  exact@25 0.0267  cands/mol 333  21.49s/mol
+
+========================================================================================
+BAKE-OFF WINNER: masked_beam  (median top-25 max Tanimoto 0.3067 on dec_val, maxmin)
+========================================================================================
+
+
+
+
+
+pseudo_c3
+  masked_beam        median maxTan 0.3092 (maxmin) / 0.3624 (logp)  exact@25 0.0817  cands/mol 304
+  RandomDeNovo       median maxTan 0.1206 (maxmin) / 0.1141 (logp)  exact@25 0.0000  cands/mol 325
+  RandomDeNovo pool  median maxTan 0.1206 (maxmin) / 0.1216 (logp)  exact@25 0.0000  cands/mol 300
+  delta vs registered null +0.1885   (G3.1 needs >= +0.1)
+  delta vs pool null       +0.1885   (recorded, not gating: the conservative read, because maxmin then selects on both arms rather than on the decoder's only)
+
+ts_dec
+  masked_beam        median maxTan 0.2955 (maxmin) / 0.3108 (logp)  exact@25 0.0258  cands/mol 316
+  RandomDeNovo       median maxTan 0.1220 (maxmin) / 0.1165 (logp)  exact@25 0.0000  cands/mol 325
+  RandomDeNovo pool  median maxTan 0.1220 (maxmin) / 0.1231 (logp)  exact@25 0.0000  cands/mol 300
+  delta vs registered null +0.1735   (G3.1 needs >= +0.1)
+  delta vs pool null       +0.1735   (recorded, not gating: the conservative read, because maxmin then selects on both arms rather than on the decoder's only)
+
+
+  ========================================================================================
+G3.1 PASS  pseudo_c3 median top-25 max Tanimoto: masked_beam 0.3092 vs RandomDeNovo 0.1206 -> delta +0.1885 (need >= +0.1)
+G3.2 PASS  converged (patience 5 reached and the best epoch is not the last), from train_meta.json
+
+winner                masked_beam (selected on the dec_val subset, not on pseudo_c3)
+bake-off (dec_val)    prefix_seeded 0.2910, masked_beam 0.3067, diverse_beam 0.3067
+exact@1/10/25         0.0767 / 0.0800 / 0.0817   (null 0.0000)
+cands/mol median      304  zero-candidate share 0.002
+ts_dec (reported)     median maxTan 0.2955 vs null 0.1220, exact@25 0.0258
+pool null (reported)  median maxTan 0.1206 over 300 cands/mol -> delta +0.1885, which would be PASS
+
+
+so these are the results as the Gate mces was taking much time i have not run that

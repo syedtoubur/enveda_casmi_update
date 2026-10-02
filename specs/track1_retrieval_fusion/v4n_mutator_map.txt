@@ -1,0 +1,11 @@
+This file was created empty and never filled. The mutator channel's map now lives in:
+
+    specs/track1_retrieval_fusion/c3_routing.md
+
+  section 6  "Code map"   - every file, its role, and what to edit for what
+  section 6  "Data flow"  - cell 5 -> 7 -> 9 -> 14 -> 17, and what each one writes
+  section 2               - why the two mutator submissions scored 0.399 and 0.397
+  section 4               - what was measured on the p1_novel Class-3 cohorts
+  section 10 "Traps"      - the eight things that will bite you
+
+Kept as a pointer rather than deleted, because specs/README.md and earlier notes reference it.

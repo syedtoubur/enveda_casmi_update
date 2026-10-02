@@ -350,12 +350,15 @@ print(f"[SIM] {len(SIM):,}/{len(REQ):,} predicted in {TIMES['sim_s']:.0f}s; ok s
 
 # %%
 def take_slots(order, cand, smis, seen):
-    """Append ranked candidates, InChIKey14-deduplicated, until TOPN slots are full."""
+    """Append ranked candidates, strictly InChIKey14-deduplicated, until TOPN slots are full."""
     for idx in order:
         c_idx = cand[idx]
-        k = pool.keys[c_idx]
-        if k is not None and k not in seen and len(str(k)) >= 14:
-            seen.add(k)
+        raw_k = pool.keys[c_idx]
+        if raw_k is None:
+            continue
+        k14 = str(raw_k)[:14]
+        if len(k14) == 14 and k14 not in seen:
+            seen.add(k14)
             smis.append(pool.smiles[c_idx])
             if len(smis) == CFG.TOPN:
                 break

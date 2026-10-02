@@ -565,7 +565,10 @@ def check_notebooks():
             assert ast.literal_eval(lines[0][len(var) + 3:]) == path.read_text(encoding="utf-8"), \
                 f"{dst.name}: {var} is not {path.name} verbatim"
     # the pre-registered G3 numbers must match what the notebooks actually run
-    gr = (ROOT / "specs_novel" / "gate_report.md").read_text(encoding="utf-8")
+    # specs_novel was moved to specs/track2_novel_generation in the repo reorg; accept both
+    _gr = next(q for q in (ROOT / "specs" / "track2_novel_generation" / "gate_report.md",
+                           ROOT / "specs_novel" / "gate_report.md") if q.exists())
+    gr = _gr.read_text(encoding="utf-8")
     ev = (HERE / "novel_p3_eval_colab.py").read_text(encoding="utf-8")
     tr = (HERE / "novel_p3_train_colab.py").read_text(encoding="utf-8")
     assert "## G3 — Decoder training and constrained search (P3)" in gr, "G3 is not pre-registered"

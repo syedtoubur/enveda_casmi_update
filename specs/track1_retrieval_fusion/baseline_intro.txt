@@ -1,0 +1,200 @@
+================================================================================
+CASMI 2026: BASELINE SOTA ARCHITECTURE & PIPELINE AUDIT (v4n - 0.384 LB)
+================================================================================
+Directory: specs_v4n_update/
+File:      baseline_intro.txt
+Author:    Pair Programming Agent & User
+Target:    Architectural foundation for pushing the 0.384 baseline higher.
+================================================================================
+
+1. EXECUTIVE OVERVIEW & COMPETITION OBJECTIVE
+--------------------------------------------------------------------------------
+- Competition: Enveda CASMI 2026 - Molecule ID From Mass Spectra.
+- Core Objective: Predict 2D molecular structures (as SMILES) directly from tandem
+  mass spectrometry data (LC-MS/MS: precursor m/z, adduct, collision energy, 
+  and fragment peak m/z and intensities).
+- Official Metric: Mean Reciprocal Rank at 25 (MRR@25).
+    * Rank 1  -> 1.000
+    * Rank 2  -> 0.500
+    * Rank 25 -> 0.040
+    * Rank > 25 or absent -> 0.000
+- Scoring Equivalence:
+    * Predictions and answers are stripped of stereochemistry and tautomer forms.
+    * Evaluated strictly via RDKit tautomer canonicalization (pinned to 2026.03.3) 
+      reduced to the first 14 characters of the InChIKey (InChIKey14).
+    * Submitting duplicates or stereoisomers of the same connectivity wastes 
+      candidate slots without extra credit.
+- Submission Constraints:
+    * Kaggle Notebook submission (Internet disabled, offline only).
+    * Runtime <= 9 hours (32,400s) on single GPU (Nvidia T4/P100).
+    * Output format: `submission.csv` with exactly 400 test molecules, up to 25 
+      semicolon-separated candidate SMILES per row.
+
+
+2. THE SOTA BASELINE (v4n - 0.384 LB) END-TO-END PIPELINE
+--------------------------------------------------------------------------------
+The current state-of-the-art solution (`casmi26-v4n-inference (1).ipynb`) is a 
+7-cell modular engine structured into 5 sequential operational stages:
+
+Stage 1: Precursor Mass & Neutral Mass Estimation
+- Extracts precursor m/z and adduct string (e.g., [M+H]+, [M-H]-, [M+Na]+, [2M+H]+).
+- Computes exact neutral monoisotopic mass via calibrated adduct equation offsets.
+- Narrow mass search window: +/- 10 ppm (fallback to 30 ppm only if 0 candidates found).
+
+Stage 2: External Giant-Scale PubChem Search Channel (Isolated Subprocess)
+- Why: The training set and natural product databases (COCONUT) do not contain 
+  every molecule. PubChem contains >100M structures.
+- How: Runs as an isolated background subprocess (`pc_runner.py`) using memory-mapped
+  NumPy arrays (>6 GB) to avoid RAM/GPU memory collisions.
+- Step 1: Precursor mass filtering narrows millions of PubChem structures to a few
+  thousand candidates within +/- 10 ppm.
+- Step 2 (Pass 1 Coarse Screen): Rapid matrix multiplication against standard 4,096-bit 
+  ECFP4 fingerprints to keep the top PC_N1 = 5,000 candidates (expanded from 1,000 in v4h).
+- Step 3 (Pass 2 Fine Scoring): Computes full 10,226-bit fingerprints and evaluates the 
+  exact Bayes log-likelihood dot product:
+      Score = f . z
+  where f is the candidate's actual fingerprint and z is the FPNet consensus logit vector.
+- Step 4 (Deduplication): Sorts descending, converts to InChIKey14, discards structures 
+  already present in the Main Pool (Train + COCONUT), and outputs top 25 novel PubChem structures.
+
+Stage 3: High-Speed Reference Cache Construction
+- Reads `train.parquet` (2,539,608 spectra, 275,810 structures, 133,228,108 peaks).
+- Builds memory-mapped index in `/kaggle/working/work/` for sub-millisecond spectral cosine matching.
+
+Stage 4: Main Pool Candidate Retrieval & Analogue Generation
+- Candidate Universe: Main Pool of 710,701 structures (274,186 from Training set + 
+  436,515 from COCONUT 2.0 natural products).
+- On-The-Fly Analogue Derivations: When exact library matches are absent, the engine 
+  derives modified candidate graphs from spectral analogues to match the exact precursor mass.
+
+Stage 5: 160-Feature Extraction & LightGBM Ranking
+- Extracts 160 engineered tabular features across 5 families (`fe_v4`):
+    1. `derivation`: Structure generation priors & Class-3 generation flags.
+    2. `frag2`: Fragmentation 2.0 (subformula matching, peak explainability, neutral losses).
+    3. `analog_struct`: Scaffold relations to spectral analogues in the training library.
+    4. `model_views`: Consensus across single vs merged spectra and polarity views.
+    5. `fragnet`: Learned fragment scores and training library cosine similarity (`lib_max`).
+- Scored by an ensemble of 4 LightGBM Boosters:
+      rank_score = mean(Booster_1..4(160 features))
+- Retains top 60 best candidates (`TOPN = 60`).
+
+Stage 6: Forward Physics Spectrum Simulation (Isomer Disambiguation)
+- Problem: Constitutional isomers sharing the exact same formula have identical mass 
+  and nearly identical 2D fingerprints; tree models struggle to distinguish them.
+- Solution: Two physical forward spectrum simulators predict expected MS/MS peaks:
+    1. ICEBERG: GNN-based fragmentation model (from `ms-pred`, budget 2,700s).
+    2. GLACIER: 15.1M-parameter Transformer model trained on MassSpecGym (budget 2,400s).
+- Equal-Weight Rescoring Formula (v4n update): Within each molecular formula group:
+      Score_formula = z(LightGBM) + 1.0 * z(ICEBERG) + 1.0 * z(GLACIER)
+  where z() is within-formula z-score normalization.
+
+Stage 7: Confident Decision Gate & Interleaved Submission Merge
+- Compares Main Pool candidates with PubChem candidates using two key signals:
+    1. `lib_max`: Peak cosine match against the measured training library.
+    2. `Delta`: Score gap between PubChem top FPNet score and Main Pool top FPNet score.
+- Decision Rules:
+    * If `lib_max >= 0.90`: Strong library hit -> Keep Main Pool list exclusively.
+    * If `lib_max < 0.90` and `Delta > 600`: Aggressive PubChem insertion at ranks 2, 4, 6, 8, 10.
+    * If `lib_max < 0.90` and `Delta <= 600`: Gentle PubChem insertion at ranks 4, 8, 12, 16, 20.
+- Outputs top 25 deduplicated InChIKey14 SMILES into `submission.csv`.
+
+
+3. COMPLETE INVENTORY OF MODELS & ARTIFACTS IN v4n
+--------------------------------------------------------------------------------
+1. FPNet Models (Neural Fingerprint Transformers):
+   - Main Engine Backbone: `fpnet_full1.pt` (Dataset: `casmi26-fpnet-full1`).
+     Predicts 10,226 fingerprint bits from MS/MS spectra and metadata.
+   - PubChem Screening Ensemble: `fpnet_0.pt` and `fpnet_1.pt` (Dataset: `casmi26-v3-models`).
+     Averaged in `ModelBank` to rank PubChem structures via dot product.
+
+2. Primary Ranker:
+   - Framework: LightGBM (`lightgbm.Booster`).
+   - Architecture: 4 Boosters averaged together.
+   - Package: `casmi26-v4b-models` (loaded via manifest).
+   - Input: 160 engineered features from `fe_v4`.
+
+3. Forward Isomer Simulators:
+   - ICEBERG: GNN forward fragmentation predictor (`casmi26-iceberg`, weight = 1.0).
+   - GLACIER: Transformer forward spectrum predictor (`casmi26-glacier`, weight = 1.0, 
+     15,108,154 parameters).
+
+4. Reference Datasets & Caches:
+   - Main Pool: `pool_meta.parquet`, `pool_fp.npy`, `pool_frag_*.npy` (`casmi26-v2-pool`, 710k).
+   - PubChem Tier: `pc_mass.npy`, `pc_off.npy`, `pc_smiles.npy` (`casmi26-pubchem-tier`, >6 GB).
+   - Training Library: Competition `train.parquet` (2.54M spectra).
+
+
+4. ABLATION HISTORY & PROVEN SCORE TRAJECTORY
+--------------------------------------------------------------------------------
+- v13 (LB 0.341): Two-ranker blend + PubChemLite.
+- v14 (LB 0.326): Overfitting local GNPS/Enveda validation split led to regression.
+- v17 (LB 0.366): v4g baseline (FPNet A + 160 features + 4 LightGBM + PubChem + ICEBERG).
+- v4h (LB 0.373): Added GLACIER forward model with weight 0.5:
+      z(LightGBM) + 0.5 * z(ICEBERG) + 0.5 * z(GLACIER)
+- v4i (Unscored intermediate): Deepened PubChem Pass 1 screen from N1 = 1,000 to 5,000.
+- v4l (LB 0.380): Doubled forward physical simulation weights:
+      ICE_LAM = GL_LAM = 1.0 (gave forward physics equal voice with LightGBM).
+- v4m (LB 0.378): Upgraded main engine FPNet backbone from `fpnet_0` to `fpnet_full1`.
+- v4n (LB 0.384): Unified combination of v4i + v4l + v4m:
+      5,000 PubChem depth + lambda=1.0 forward simulators + fpnet_full1 backbone.
+      Runtime: ~5,538 seconds (~92 min) on single GPU.
+
+
+5. DIAGNOSTIC LEVERS FROM ALTERNATIVE ARCHITECTURES (TIER-1 PATCHED)
+--------------------------------------------------------------------------------
+Analysis of `enveda-casmi-2026-tier1-patched.ipynb` revealed four high-value 
+empirical physics/data corrections that have NOT yet been integrated into v4n:
+
+1. Systematic Precursor Offset Re-Centering (+1.45 ppm):
+   - Finding: timsTOF instruments run systematically +1.45 ppm high relative to exact 
+     formula mass.
+   - Tier-1 fix: Centered the query mass `target / (1 + 1.45e-6)`.
+   - Benefit: Allows shrinking search window from 10 ppm to 6–8.5 ppm with 95%+ recall, 
+     drastically shedding decoy false positives.
+
+2. Exact Structural Mass Indexing (`STRUCT_MASS = True`):
+   - Finding: Upstream reference sources (e.g. RIKEN, 341k spectra) truncated precursor m/z 
+     to 2 decimal places, causing 30% of their spectra to fall outside +/- 8.5 ppm.
+   - Tier-1 fix: Indexed the reference cache on the label's exact formula mass.
+   - Benefit: +0.006 MRR boost; recovered 2,401 previously unreachable natural products.
+
+3. Peak Filtering Optimization (`MAX_PEAKS = 64` vs 256):
+   - Finding: Truncating MS2 peaks to the top 64 cleanest peaks improved spectral entropy 
+     similarity by +0.003 MRR by cutting instrument noise floor.
+
+4. Mass-Shifted Analogue Propagation:
+   - Implemented wide (+/- 200 Da) mass-shifted spectral entropy matching ($sim^4 \times \text{Tanimoto}$).
+   - Could be engineered into v4n's feature matrix.
+
+
+6. ARCHITECTURAL BOTTLENECKS & STRATEGIC DIRECTIONS TO EXCEED 0.384
+--------------------------------------------------------------------------------
+To push beyond 0.384, improvements must target the 3 official novelty classes:
+
+Class 1: Known in Training Library
+- Status: Solved (>90% accuracy). Protected by `lib_max >= 0.90`.
+- Opportunity: RIKEN exact mass indexing and +1.45 ppm re-centering can squeeze extra 
+  recall out of borderline library matches.
+
+Class 2: Known in External Databases (PubChem/COCONUT), Unmeasured
+- Status: Partially solved (MRR ~0.50-0.65). Powered by FPNet and PubChem channel.
+- Opportunities:
+  * Integrate additional natural product databases into the fast pool (ChEBI, NPAtlas, 
+    LIPID MAPS) so they don't have to compete for the 25 PubChem slots.
+  * Deepen PubChem Pass 2 or refine Pass 1 filtering.
+  * Improve FPNet ensembling (combining multiple diverse FPNet checkpoints).
+
+Class 3: Truly Novel Natural Products (Absent from PubChem and Training)
+- Status: Major current bottleneck (MRR < 0.20).
+- Opportunities:
+  * De novo structure generation: Incorporating diffusion / generative models 
+    (e.g., MADGEN, MSNovelist, or expanded derivation engines).
+  * In-silico scaffold propagation: Propagating Murcko scaffolds from mass-shifted 
+    spectral analogues (as described in MADGEN / MassSpecGym).
+  * Enhancing forward simulation: Negative-mode forward simulation (currently ICEBERG 
+    only runs on positive mode) and tuning forward simulation weights or blending 
+    DreaMS spectral embeddings.
+
+================================================================================
+END OF BASELINE AUDIT — READY FOR SPEC-DRIVEN DEVELOPMENT
+================================================================================

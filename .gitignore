@@ -1,0 +1,75 @@
+# ==============================================================================
+# Git Ignore Configuration for CASMI 2026 Kaggle Project
+# ==============================================================================
+
+# --- Python Environment & Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Jupyter Notebook Artifacts ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# --- Heavy Model Weights & Neural Checkpoints ---
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+*.safetensors
+*.h5
+*.hdf5
+
+# --- Large Arrays, Matrices, & Data Tables ---
+*.npz
+*.npy
+*.parquet
+*.feather
+*.arrow
+*.pkl
+*.pickle
+*.csv.gz
+
+# --- Compressed Archives ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# --- Generated Shard & Cache Directories ---
+rank_shard_*/
+_fpnet/
+_dreams_out/
+_novel/
+build/tmp/
+scratch/
+
+# --- Local Third-Party Code, Submodules, & Large Mirrors ---
+MADGEN/
+MSGYM_novel/
+DreamS/
+Starting Point/
+
+# --- OS & Editor Specific Files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- Temporary Logs & Debug Runs ---
+*.log
+logs.txt
