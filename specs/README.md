@@ -11,6 +11,7 @@
 
 | Track | Directory | SOTA / Status | Focus |
 |---|---|---|---|
+| **specs_scratch: own pipeline** | [`specs_scratch/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/specs_scratch) | **Active (10-05)**: S0 done, R0 ready to submit | Our own tested package (`scratch_pkg/`) built rung by rung from the Track 3 base; Tracks 1–4 are its read-only knowledge base. |
 | **Track 1: Retrieval & Fusion** | [`track1_retrieval_fusion/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion) | **0.399 LB** (Current Best) | Class 1 & 2 retrieval, candidate expansion (PubChem/BIO), dual-engine rank fusion, and scaffold mutation. |
 | **Track 2: Novel De Novo** | [`track2_novel_generation/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation) | **Phase 3 (G3.1 PASS)** | Class 3 de novo molecule generation via SELFIES decoder on frozen DreaMS embeddings. |
 | **Track 3: Forward MS Simulator** | [`track3_ms_simulator/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track3_ms_simulator) | **Validated (+0.035 LB)** | Physical MS/MS forward spectrum prediction (ICEBERG/GLACIER) for candidate re-ranking. |

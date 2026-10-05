@@ -1,0 +1,82 @@
+# CASMI 2026 — specs_scratch Master Architecture & Implementation Plan
+**Date**: 2026-10-05  
+**Status**: Approved Specification (Decisions finalized via Grill-Me Session)  
+**Location**: `specs/specs_scratch_draft.txt`
+
+---
+
+## 1. Executive Mission & Background
+- **Objective**: Move away from forking, monkey-patching, and reverse-engineering bloated legacy notebooks (`v4n`, `v29`, `supernext`). Build a clean, modular, transparent, and tested pipeline from scratch under `specs_scratch/`.
+- **Knowledge Base Foundation**:
+  - The true reproducible Kaggle baseline is **~0.400 LB** (`evenda-casmi-inferencesupernext.ipynb` / `v4n-engine-fusion-union` at 0.399–0.401 LB). The author's 0.415 relied on private popularity arrays (scoring 0.393 with public arrays).
+  - Proven core wins: Forward physics simulation (ICEBERG + GLACIER, +0.035 to +0.042 LB), BIO candidate expansion (ChEBI + LIPID MAPS, +0.009 LB), neural diversity (GNN + Transformer on [M+H]+, +0.007 LB), and popularity priors as tie-breakers.
+- **Constraints**:
+  - Kaggle offline environment: single GPU (Nvidia T4), runtime $\le$ 9 hours.
+  - Test set: 400 molecules, ~1,500 spectra, all Bruker timsTOF with systematic +1.45 ppm offset.
+  - Metric: `MRR@25` on tautomer-canonical `InChIKey14` (RDKit 2026.03.3). Zero duplicate connectivities in top 25.
+
+---
+
+## 2. Settled Core Architecture & Decisions
+
+### A. Repository Structure & Notebook Delivery
+- **Modular Python Architecture**: Build clean, tested Python modules in `specs_scratch/`:
+  - `specs_scratch/core/preprocessing.py`: Precursor m/z +1.45 ppm timsTOF correction, adduct decomposition, neutral monoisotopic mass calculation.
+  - `specs_scratch/retrieval/cascade.py`: Hierarchical cascade across Library, Curated Pool, and PubChem.
+  - `specs_scratch/features/scaffold_priors.py`: Analog neighbor extraction, Murcko scaffold frequency, and NPClassifier superclass consensus.
+  - `specs_scratch/features/tabular.py`: High-importance explainability features (subformula coverage, neutral losses, library cosine, polarity agreement).
+  - `specs_scratch/ranker/lgbm.py`: 4-booster LightGBM ensemble.
+  - `specs_scratch/physics/forward_sim.py`: Unified ICEBERG + GLACIER + MetFrag-lite forward simulation runner.
+  - `specs_scratch/compiler/build_kaggle_notebook.py`: Automated compiler generating a clean, self-contained single Jupyter Notebook for Kaggle.
+
+### B. Retrieval: Hierarchical Cascade Waterfall
+- **Tier 1 (Class 1 Library Search)**: Fast spectral entropy and cosine similarity search against the ~2.54M spectra in `train.parquet`.
+- **Tier 2 (Class 2 Curated Natural Products Pool)**: In-memory candidate search within $\pm 10$ ppm across COCONUT 2.0 (436k), ChEBI, and LIPID MAPS (~150k).
+- **Tier 3 (PubChem External Tier)**: Streaming memory-mapped $\pm 10$ ppm search over 100M+ structures for candidates missing from curated databases.
+
+### C. Class 1 Gating & Slot Allocation
+- **High-Confidence Gate ($\tau \ge 0.90$)**:
+  - **Rank 1**: Strictly locked to the top direct library match (InChIKey14).
+  - **Ranks 2–25 (Full Hedge)**: Populated by secondary library hits + Curated Pool same-formula isomers, re-ranked by our forward physics simulation ensemble (`z(retrieval) + 1.0 * z(sim)`).
+  - **Hedge Value**: If Rank 1 is the exact compound, score = 1.000. If Rank 1 is a close structural isomer (false positive), the true structure at Rank 2 or 3 earns MRR = 0.500 or 0.333 (instead of 0.000).
+  - **Strict Deduplication**: All 25 slots strictly deduplicated on tautomer-canonical InChIKey14.
+
+### D. Scaffold & Natural Product Family Prior (from `draft.txt`)
+- **Concept**: When query spectra match multiple training library spectra (e.g. 10 spectra) with moderate cosine, extract their shared structural consensus.
+- **Dual Application**:
+  1. **Class 2 Ranking Feature**: Compute the frequency of the majority Murcko scaffold and NPClassifier superclass among the top-10 analog neighbors. Feed this agreement score into the LightGBM ranker across the shortlisted candidates.
+  2. **Class 3 Structural Anchor (Phase 2)**: Use the detected consensus scaffold/family as an anchor to constrain de novo generation.
+
+### E. Physical Forward MS Simulation Ensemble
+- **Ensemble Setup**:
+  - **ICEBERG**: Run on all 6 covered adducts (`[M+H]+`, `[M-H]-`, `[M+Na]+`, `[M+CH2O2-H]-`, `[M+Cl]-`, `[M+NH4]+`).
+  - **GLACIER Transformer**: Run strictly on `[M+H]+` spectra.
+  - **MetFrag-lite Fallback**: Applied to the 4 uncovered adducts (`[M-H2O+H]+`, `[M-2H2O+H]+`, `[M+K]+`, `[M-H2O-H]-`).
+- **Reranking Mechanics**: Rescore top-60 candidates strictly within same-formula groups with balanced weight ($\lambda = 1.0$):
+  $$\text{Score}_{\text{formula}} = z(\text{retrieval}) + 1.0 \cdot z(\text{ICEBERG}) + 1.0 \cdot z(\text{GLACIER})$$
+
+### F. Tabular Ranker: Streamlined LightGBM Ensemble
+- **Model**: Ensemble of 4 LightGBM boosters trained with pairwise ranking loss.
+- **Streamlined 50–70 Features**:
+  - Subformula fragment peak explainability & intensity coverage.
+  - Precursor monoisotopic mass delta (`ppm`, `|ppm|`, `|ppm - 1.45|`).
+  - Neutral loss distribution matching.
+  - Spectral analog cosine and graph similarity.
+  - Single-CE vs Merged-CE and polarity-view consensus.
+  - **NEW**: Scaffold & NP-family consensus agreement score.
+- **Gain**: Reduces feature extraction latency by ~60%, reserving GPU time for simulation.
+
+### G. Offline Validation: Double-Blind LOTUS Holdout
+- **Benchmark Cohort**: 500–1,000 diverse natural products from LOTUS Knowledge Table (`natural_products.parquet`) with spectra in `train.parquet`.
+- **Strict Double-Blind Exclusion**:
+  - Completely excluded from neural model training (FPNet, GBDT rankers).
+  - Completely withheld from the Tier 1 library index.
+  - Structures remain in candidate pools (Tier 2/3).
+- **Result**: Provides a 100% leak-free, realistic offline test of Class 2 retrieval accuracy.
+
+### H. Phased Implementation Roadmap
+- **Phase 1 (Current Focus)**:
+  - Implement and validate Class 1 (Library) and Class 2 (Curated Pool + PubChem) retrieval, streamlined LightGBM ranking, and physical forward simulation.
+  - Establish a reproducible, clean Kaggle benchmark $\ge 0.400$ LB.
+- **Phase 2 (Novel Generation)**:
+  - Benchmark and integrate Class 3 generation options (Track 2 DreaMS SELFIES decoder, anchored $\Delta M$ mutator v2, and hybrid ensembles), routed into reserved slots (Ranks 2–4).

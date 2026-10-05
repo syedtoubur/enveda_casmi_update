@@ -28,6 +28,7 @@ python build/test_novel_p3.py      | tail -1
 run build/test_c3_gate.py
 run build/test_delta_m_mutator.py
 run build/test_mut_runner.py
+run scratch_pkg/tests/run.py
 for _nb in casmi26-v4n-mutator-submit.ipynb casmi26-v4n-mutator-bio-submit.ipynb casmi26-v4n-mutator-c3-submit.ipynb; do
   [ -f "$_nb" ] && run build/test_mut_cell.py "$_nb"
 done
