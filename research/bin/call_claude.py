@@ -25,7 +25,7 @@ from _common import REPO, idea_dir, load_config, read_status, write_status
 
 STALE_LOCK_S = 12 * 3600
 LIMIT_RE = re.compile(r"usage limit|limit reached|rate[_ ]limit|hit your limit", re.I)
-WAITING_STATES = {"ready-for-judge", "approved", "implementing", "g1", "g2", "g3a", "g3b",
+WAITING_STATES = {"ready-for-judge", "approved", "implementing", "g1", "g2", "g3a", "g3b", "g4",
                   "paused-quota", "judging"}
 
 

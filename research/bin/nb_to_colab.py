@@ -20,13 +20,17 @@ from pathlib import Path
 from _common import REPO, idea_dir, load_config
 
 SHIM = '''# ---- research/bin/nb_to_colab.py shim: Drive -> /kaggle/input ----
-import os, json, shutil
+import os, json, shutil, time
 _DRIVE = {drive_root!r}
 _COMP = {competition!r}
 _OWNERS = {owners!r}
 _KIND = {kind!r}
 _VAL = {val!r}
-assert os.path.exists('/content/drive/MyDrive'), 'Drive not mounted (colab_run.py mounts it)'
+for _ in range(24):  # colab_run mounts Drive; the mount can lag the CLI by a minute
+    if os.path.isdir(_DRIVE):
+        break
+    time.sleep(5)
+assert os.path.isdir(_DRIVE), f'Drive not mounted: {{_DRIVE}} missing (colab_run.py mounts it)'
 for _d in ('/kaggle/input/datasets', '/kaggle/input/competitions', '/kaggle/working', '/kaggle/tmp'):
     os.makedirs(_d, exist_ok=True)
 for _name in sorted(os.listdir(_DRIVE)):

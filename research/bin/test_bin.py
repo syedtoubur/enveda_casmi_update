@@ -18,6 +18,7 @@ import colab_run  # noqa: E402
 import kaggle_push  # noqa: E402
 import nb_to_colab  # noqa: E402
 import poll_lb  # noqa: E402
+import run_tests  # noqa: E402
 
 
 def repo(tmp_path, monkeypatch):
@@ -29,19 +30,22 @@ def repo(tmp_path, monkeypatch):
     cfg = _common.load_config()
     cfg["claude"]["settings"] = ".claude/settings.headless.json"
     cfg["lines"]["exploit"]["worktree"] = str(tmp_path / "no_worktree")
+    cfg["lines"]["exploit"]["control"] = None
+    cfg["lines"]["exploit"]["g4_required"] = []
     cfg["catalog"] = "catalog.json"
     (tmp_path / "catalog.json").write_text(json.dumps({"presets": {
         "p": {"enable_gpu": "true", "competition_sources": ["wrong-slug"],
               "dataset_sources": ["a/b", "c/d"]}}}))
     import yaml
     (research / "config.yaml").write_text(yaml.safe_dump(cfg))
-    for mod in (_common, call_claude, colab_run, kaggle_push, poll_lb, nb_to_colab):
+    for mod in (_common, call_claude, colab_run, kaggle_push, poll_lb, nb_to_colab, run_tests):
         for name, val in (("REPO", tmp_path), ("RESEARCH", research)):
             if hasattr(mod, name):
                 monkeypatch.setattr(mod, name, val)
     monkeypatch.setattr(_common, "load_config", lambda path=None: yaml.safe_load((research / "config.yaml").read_text()))
-    for mod in (call_claude, colab_run, kaggle_push, poll_lb, nb_to_colab):
+    for mod in (call_claude, colab_run, kaggle_push, poll_lb, nb_to_colab, run_tests):
         monkeypatch.setattr(mod, "load_config", _common.load_config)
+    monkeypatch.setattr(colab_run, "login_problem", lambda shell=None: "")  # never read the real token
     idea = research / "exploit" / "20261010-foo"
     idea.mkdir(parents=True)
     (idea / "STATUS").write_text("ready-for-judge\nline: exploit\ncu_used: 0.0\n")
@@ -143,11 +147,15 @@ def test_run_one_skips_wrong_state(repo):
 
 
 # ---------------- colab_run
-def _fake_runner(calls, fail_on=None):
+def _fake_runner(calls, fail_on=None, mount_ok=True, exec_out="exec out"):
     def run(cli, args, timeout=None):
         calls.append(args[0])
         rc = 1 if args[0] == fail_on else 0
-        return types.SimpleNamespace(returncode=rc, stdout=f"{args[0]} out", stderr="")
+        if args[0] == "exec" and any("_mount_probe" in x for x in args):
+            return types.SimpleNamespace(returncode=0, stdout="MOUNT_OK" if mount_ok else "MOUNT_MISSING",
+                                         stderr="")
+        out = exec_out if args[0] == "exec" else f"{args[0]} out"
+        return types.SimpleNamespace(returncode=rc, stdout=out, stderr="")
     return run
 
 
@@ -161,6 +169,79 @@ def test_colab_always_stops_even_on_failure(repo):
     calls.clear()
     colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=_fake_runner(calls, fail_on="new"))
     assert calls == ["new", "stop"]
+
+
+def test_colab_error_in_output_is_fail_even_with_rc0(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    calls = []
+    err = "\x1b[0;31mAssertionError\x1b[0m: Drive not mounted"
+    rc = colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=_fake_runner(calls, exec_out=err))
+    assert rc == 3 and "| G3a |" in (idea / "gates.md").read_text()
+    assert "| FAIL |" in (idea / "gates.md").read_text()
+
+
+def test_colab_missing_script_starts_no_session(repo):
+    _, idea = repo
+    calls = []
+    assert colab_run.main([str(idea), "nope.py", "--kind", "smoke"], runner=_fake_runner(calls)) == 1
+    assert calls == []
+
+
+def test_colab_remounts_once_then_fails(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    calls = []
+    rc = colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=_fake_runner(calls, mount_ok=False))
+    assert rc == 1 and calls.count("drivemount") == 2 and calls[-1] == "stop"
+    assert calls.count("exec") == 2  # two probes, the real script never ran
+
+
+def test_colab_drivemount_error_fails_fast(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    calls = []
+    base = _fake_runner(calls)
+
+    def run(cli, args, timeout=None):
+        if args[0] == "drivemount":
+            calls.append("drivemount")
+            return types.SimpleNamespace(returncode=0, stdout="<p><b>400.</b>",
+                                         stderr="\x1b[0;31mValueError\x1b[0m: mount failed\n")
+        return base(cli, args, timeout)
+    assert colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=run) == 1
+    assert calls == ["new", "drivemount", "stop"]
+    assert "Drive scope" in (idea / "colab_smoke.log").read_text(encoding="utf-8")
+
+
+def test_login_problem_reads_scopes():
+    def shell(out):
+        return lambda *a, **k: types.SimpleNamespace(stdout=out, returncode=0)
+    full, narrow = colab_run.DRIVE_SCOPE, colab_run.DRIVE_SCOPE + ".file"
+    assert colab_run.login_problem(shell(json.dumps({"scopes": [full, "openid"]}))) == ""
+    assert "drive.file" in colab_run.login_problem(shell(json.dumps({"scopes": [narrow]})))
+    assert "not logged in" in colab_run.login_problem(shell("cat: no such file"))
+
+
+def test_colab_login_needed_asks_and_starts_no_session(repo, monkeypatch):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    monkeypatch.setattr(colab_run, "login_problem", lambda shell=None: "token lacks the full Drive scope")
+    calls = []
+    assert colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=_fake_runner(calls)) == 7
+    assert calls == []
+    q = (idea / "questions.md").read_text(encoding="utf-8")
+    assert "Colab login needed" in q and "token.json.bak" in q
+    assert "| G3a |" in (idea / "gates.md").read_text() and "BLOCKED" in (idea / "gates.md").read_text()
+
+
+def test_colab_retries_used_up_falls_back(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    (idea / "gates.md").write_text("| gate |\n| G3a | t | FAIL | x | 0.07 |\n| G3a | t | FAIL | y | 0.07 |\n")
+    calls = []
+    assert colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=_fake_runner(calls)) == 4
+    assert calls == []
 
 
 def test_colab_cu_cap_blocks(repo):
@@ -209,6 +290,155 @@ def test_push_never_submits_and_logs_g4(repo):
     assert not any("submit" in a for c in calls for a in c)
     assert "TRACK4 fired 37" in (idea / "gates.md").read_text()
     assert _common.read_status(idea)[0] == "ready-to-submit"
+
+
+def _kaggle_run(calls, log):
+    def run(args, timeout=600):
+        calls.append(args)
+        out = 'has status "KernelWorkerStatus.COMPLETE"' if args[1] == "status" else "ok"
+        if args[1] == "output":
+            assert "--file-pattern" in args
+            d = Path(args[args.index("-p") + 1]); d.mkdir(parents=True, exist_ok=True)
+            (d / "k.log").write_text(log)
+        return types.SimpleNamespace(returncode=0, stdout=out, stderr="")
+    return run
+
+
+def test_g4_fails_on_engine_failed_even_if_complete(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    log = json.dumps([{"stream_name": "stdout", "time": 1, "data": "ENGINE FAILED -> v4g lists kept\n"},
+                      {"stream_name": "stdout", "time": 2, "data": "TRACK4 fired 3\n"}])
+    rc = kaggle_push.main([str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "TRACK4"],
+                          run=_kaggle_run([], log), sleep=lambda s: None)
+    assert rc == 2
+    assert "FAIL (complete; marker 'ENGINE FAILED'" in (idea / "gates.md").read_text()
+    assert _common.read_status(idea)[0] != "ready-to-submit"
+
+
+def test_g4_requires_line_health_lines(repo):
+    root, idea = repo
+    import yaml
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text())
+    cfg["lines"]["exploit"]["g4_required"] = [r"CLAW STAGE SCORED \| ice=[1-9]"]
+    cfgp.write_text(yaml.safe_dump(cfg))
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    args = [str(idea), str(nb), "--preset", "p", "--wait", "100"]
+    assert kaggle_push.main(args, run=_kaggle_run([], "CLAW STAGE SCORED | ice=0 gl=0\n"),
+                            sleep=lambda s: None) == 2
+    assert kaggle_push.main(args, run=_kaggle_run([], "CLAW STAGE HEALTH | ICE NOT RUN\n"
+                                                      "CLAW STAGE SCORED | ice=11 gl=11\n"),
+                            sleep=lambda s: None) == 0
+
+
+def test_g4_fails_when_counter_never_prints(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    rc = kaggle_push.main([str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "TRACK4"],
+                          run=_kaggle_run([], "all fine\n"), sleep=lambda s: None)
+    assert rc == 2 and "counter 'TRACK4' not printed" in (idea / "gates.md").read_text()
+
+
+def test_check_finalizes_only_finished_kernels(repo):
+    root, idea = repo
+    _common.write_status(idea, "g4-pushed", kernel="syedtoubur/casmi-foo")
+    (idea / "kaggle_push").mkdir()
+    (idea / "kaggle_push" / "counters.txt").write_text("TRACK4\n")
+    status = {"s": "RUNNING"}
+
+    def run(args, timeout=600):
+        if args[1] == "status":
+            return types.SimpleNamespace(returncode=0, stdout=f'has status "KernelWorkerStatus.{status["s"]}"',
+                                         stderr="")
+        return _kaggle_run([], "TRACK4 fired 3\n")(args, timeout)
+    assert kaggle_push.main(["--check"], run=run) == 0
+    assert _common.read_status(idea)[0] == "g4-pushed"
+    status["s"] = "COMPLETE"
+    assert kaggle_push.main(["--check", str(idea)], run=run) == 0
+    assert _common.read_status(idea)[0] == "ready-to-submit"
+    assert "| G4 | " in (idea / "gates.md").read_text() and "TRACK4 fired 3" in (idea / "gates.md").read_text()
+
+
+def test_probe_refused_until_control_passes(repo):
+    root, idea = repo
+    import yaml
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text())
+    cfg["lines"]["exploit"]["control"] = "research/exploit/ctl"
+    cfgp.write_text(yaml.safe_dump(cfg))
+    ctl = root / "research" / "exploit" / "ctl"
+    ctl.mkdir()
+    (ctl / "gates.md").write_text("| gate |\n| G4 | t | FAIL (error) | x | |\n")
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    calls = []
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 6
+    assert calls == []
+    (ctl / "gates.md").write_text("| gate |\n| G4 | t | PASS | x | |\n")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 0
+    _common.write_status(idea, None, kind="control")  # a control push is never blocked
+    (ctl / "gates.md").write_text("| gate |\n")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 0
+
+
+def test_push_with_dropped_source_fails(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+
+    def run(args, timeout=600):
+        out = ("The following are not valid dataset sources and could not be added to the kernel: "
+               "['a/b']\nKernel version 2 successfully pushed.")
+        return types.SimpleNamespace(returncode=0, stdout=out, stderr="")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=run) == 1
+    assert _common.read_status(idea)[0] == "g4-failed"
+
+
+def test_source_audit(repo):
+    cat = {"datasets": {"g": {
+        "rows": {"slug": "ahmed/casmi26-simulated-ranker-rows", "key_files": ["sim_rank_rows_nofp.npz"]},
+        "fp2": {"slug": "prv/casmi26-fp-models-v2", "key_files": ["fp_0.pt"]}}}}
+    code = ("subs = E.main(E.find('sim_rank_rows_nofp.npz'), E.find('test.parquet'))\n"
+            "fp = [p for p in glob.glob('/kaggle/input/**/fp_*.pt', recursive=True) "
+            "if 'casmi26-fp-models-v2' in p]\nx = find('mystery.npy')\n")
+    missing, unresolved = kaggle_push.audit_sources(code, cat, ["a/b"])
+    assert any("sim_rank_rows_nofp.npz -> needs ahmed/casmi26-simulated-ranker-rows" in m for m in missing)
+    assert any("prv/casmi26-fp-models-v2" in m for m in missing)
+    assert unresolved == ["mystery.npy"]
+    missing, _ = kaggle_push.audit_sources(code, cat, ["ahmed/casmi26-simulated-ranker-rows",
+                                                       "prv/casmi26-fp-models-v2"])
+    assert missing == []
+
+
+def test_audit_blocks_push(repo):
+    root, idea = repo
+    (root / "catalog.json").write_text(json.dumps({"presets": {"p": {"dataset_sources": ["a/b"]}},
+        "datasets": {"g": {"r": {"slug": "x/rows", "key_files": ["rows.npz"]}}}}))
+    nb = root / "probe.ipynb"
+    nb.write_text(json.dumps({"cells": [{"cell_type": "code", "source": "z = find('rows.npz')"}]}))
+    calls = []
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 5
+    assert calls == [] and "needs x/rows" in (idea / "gates.md").read_text()
+
+
+# ---------------- run_tests
+def test_run_tests_uses_worktree_cwd(repo):
+    root, idea = repo
+    wt = root / "no_worktree"
+    (wt / "build").mkdir(parents=True)
+    (wt / "build" / "run_all_tests.sh").write_text("echo ok")
+    seen = {}
+
+    def run(cmd, **kw):
+        seen.update(kw, cmd=cmd)
+        return types.SimpleNamespace(returncode=0, stdout="12 passed\n", stderr="")
+    assert run_tests.main(["exploit", "--idea", str(idea)], run=run) == 0
+    assert Path(seen["cwd"]) == wt and seen["cmd"][-1] == "build/run_all_tests.sh"
+    assert "| G2 suite | " in (idea / "gates.md").read_text()
 
 
 # ---------------- nb_to_colab

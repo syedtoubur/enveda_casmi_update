@@ -41,3 +41,7 @@ Sources: `EXPERIMENTS.md` rows (`E#21`) and specs files.
 - **L29** Another agent may edit the same repo: work in the line worktree, write intermediates to your own idea folder, and re-check mtimes before you report numbers.
 
 ## Appended by the Reporter (newest last)
+- **L30** A catalog preset is not proof that a notebook's data is mounted. The 0.433 preset listed 10 of 16 sources (one with the wrong owner), so control v1/v2 died at `ENGINE FAILED: sim_rank_rows_nofp.npz`. `kaggle_push.py` now audits every `find()`/`glob` file against the pushed sources and fails a push Kaggle answers with "not valid dataset sources". Src: research/exploit/20261010-control-0433/gates.md.
+- **L31** A line's control must reach G4 PASS before any probe on that line is pushed: a broken base kills the probe too and wastes a cycle. `kaggle_push.py` refuses probe pushes until then. Src: 20261010-adduct-iceberg-rerank.
+- **L32** In the 0.433 base, ICEBERG already re-ranks the PubChem-only list of every low-`lib_max` molecule for every adduct; it is off only on the base and fused lists, and GLACIER sees only `[M+H]+` (BASE.md §2). "Zero physical modelling" premises must cite BASE.md. Src: 20261010-adduct-iceberg-rerank/verdict.md.
+- **L33** A headless Claude session must never wait in the background: its background jobs die when the session ends. Kaggle waits run outside Claude via `kaggle_push.py --check`. Src: 20261010-adduct-iceberg-rerank/claude_run.jsonl.

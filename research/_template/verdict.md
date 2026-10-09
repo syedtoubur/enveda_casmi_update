@@ -6,3 +6,6 @@
 ## Minor fixes applied to spec.md
 ## Pass 2: non-blocking risks
 ## For the Ideator (REVISE only) / for the human (ESCALATE only)
+
+## Lesson candidates
+- <at most 3 cited, general lessons from what had to be fixed or bounced, or "none">

@@ -11,6 +11,11 @@ lines:
     kaggle_preset: sota_0433_inference_preset
     code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (base .ipynb -> probe .ipynb)"
     keep_bar: null          # = own-account control LB + 0.004; set after the control run
+    control: research/exploit/20261010-control-0433   # probes are refused until its G4 PASS (L31)
+    g4_required:            # regexes the G4 log must contain (the HEALTH line's "NOT RUN" is a stale default label)
+      - 'engine lists \d+'
+      - 'ICE meta \{"status": "ok".*"device": "cuda"'
+      - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
   explore:
     worktree: C:/casmi/lines/explore
     branch: line/explore
@@ -18,6 +23,7 @@ lines:
     kaggle_preset: scratch_r1_to_r3_preset
     code_form: "scratch_pkg/casmi_scratch modules + tests, notebook via scratch_pkg/tools/mk_notebook.py"
     keep_bar: 0.350         # 0.346 + 0.004; replace with a paired-control mean when one exists
+    control: null           # set to the explore control idea once one exists (L31)
 
 judge:
   max_bounces: 3            # REVISE rounds before ESCALATE
@@ -29,6 +35,12 @@ gates:
     projected_runtime_h_gt: 8.0
     counters_unmoved: true
     crash: true
+  g4_fail_markers:          # a COMPLETE Kaggle run still FAILs G4 if its log matches any of these
+    - "ENGINE FAILED"
+    - "ICE FAILED"
+    - 'Traceback .most recent call last.'
+    - "FileNotFoundError"
+  colab_infra_retries: 1    # Colab infra failures per gate before falling back to the Kaggle draft run
 
 colab:
   cli: "~/.local/bin/colab"          # run through: wsl -- bash -lc
