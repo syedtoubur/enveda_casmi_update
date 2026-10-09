@@ -242,6 +242,138 @@ def test_worker_resource_matches_build():
         sim.WORKER_SRC.read_text(encoding="utf-8"), "resources/iceberg_worker.py drifted from build/"
 
 
+def test_setup_ice_pkg_zenith_layout():
+    """casmi26-iceberg layout: package rdkit wheel swapped for the cp-tag build, *.whl.ice renamed, shim/src/site
+    on the worker's PYTHONPATH, our worker run by this interpreter; the second call reuses the site."""
+    import os
+    import subprocess
+    import tempfile
+    tag = sim.py_tag()
+    with tempfile.TemporaryDirectory() as d:
+        inp, work = Path(d) / "input", Path(d) / "work"
+        pkg = inp / "datasets" / "o" / "casmi26-iceberg"
+        for sub in ("wheels", "ckpt", "src/ms_pred", "shim"):
+            (pkg / sub).mkdir(parents=True)
+        (pkg / "ice_runner.py").write_text("")
+        for n in ("dgl-2.4-cp313-cp313-linux.whl.ice", "rdkit-2025.3.6-cp312-cp312-linux.whl.ice"):
+            (pkg / "wheels" / n).write_bytes(b"w")
+        (pkg / "ckpt" / "gen.pt").write_bytes(b"g")
+        (pkg / "ckpt" / "inten.pt").write_bytes(b"i")
+        rw = inp / "rdkit-wheels"
+        rw.mkdir(parents=True)
+        for n in (f"rdkit-2025.3.6-{tag}-{tag}-linux.whl", f"rdkit-2024.9.1-{tag}-{tag}-linux.whl",
+                  "rdkit-2025.3.6-cp39-cp39-linux.whl"):
+            (rw / n).write_bytes(b"r")
+        assert [Path(w).name for w in sim.rdkit_wheels(str(inp), prefer="2026.3.3")] == \
+            [f"rdkit-2024.9.1-{tag}-{tag}-linux.whl", f"rdkit-2025.3.6-{tag}-{tag}-linux.whl"]
+        calls, real = [], subprocess.run
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        sim.subprocess.run = fake_run
+        try:
+            w = sim.setup_iceberg(str(inp), work, Config())
+            n_first = len(calls)
+            sim.setup_iceberg(str(inp), work, Config())
+        finally:
+            sim.subprocess.run = real
+        assert n_first == 1 and len(calls) == 1, calls
+        names = sorted(Path(c).name for c in calls[0] if str(c).endswith(".whl"))
+        assert names == ["dgl-2.4-cp313-cp313-linux.whl", f"rdkit-2025.3.6-{tag}-{tag}-linux.whl"], names
+        assert "--target" in calls[0] and "--no-index" in calls[0]
+        assert w.py == sys.executable and Path(w.gen).name == "gen.pt" and Path(w.inten).name == "inten.pt"
+        pp = w.env["PYTHONPATH"].split(os.pathsep)
+        assert [Path(p).name for p in pp] == ["shim", "src", "ice_site"], pp
+
+
+def test_sim_adducts_glacier():
+    assert sim.sim_adducts(CFG) == CFG.covered
+    assert sim.sim_adducts(CFG.with_(sim_model="glacier")) == ("[M+H]+", "[M+Na]+")
+    pool, lib, mols = toy_run_inputs()
+    t = 500.0
+    neg = pd.DataFrame([spectrum_row("[M-H]-", chem.precursor_of(t, "[M-H]-"), [20.0], mode="negative"),
+                        spectrum_row("[M+NH4]+", chem.precursor_of(t, "[M+NH4]+"), [30.0])])
+    mols = mols + [("m2", neg)]
+    cfg = CFG.with_(ppm_center=0.0, chunk=4)
+    _, rep_i, aux_i = pipeline.run(mols, lib, pool, cfg, call=fake_worker([], False), frag_fn=no_frag,
+                                   log=lambda s: None)
+    calls = []
+    ranked, rep_g, aux_g = pipeline.run(mols, lib, pool, cfg.with_(sim_model="glacier"), call=fake_worker(calls, False),
+                                        frag_fn=no_frag, log=lambda s: None)
+    assert aux_i["plans"]["m2"]["conds"] == [("[M+NH4]+", 30.0), ("[M-H]-", 20.0)]
+    assert aux_g["plans"]["m2"]["conds"] == [] and aux_g["plans"]["m2"]["qs"] == []
+    assert aux_g["plans"]["m0"]["conds"] == aux_i["plans"]["m0"]["conds"]          # [M+H]+ untouched
+    assert set(aux_g["sim"]) and {a for _, a, _ in aux_g["sim"]} == {"[M+H]+"}
+    assert rep_g["sim_model"] == "glacier" and rep_i["sim_model"] == "iceberg"
+    assert (rep_i["n_covered_spec"], rep_g["n_covered_spec"]) == (3, 1)
+    assert rep_g["n_requests"] == 12 and len(ranked["m2"]) == 25                     # m2 still ranked (fr / ppm)
+
+
+def test_setup_glacier_layout():
+    """casmi26-glacier (gl_runner.py, ckpt/glacier.pt, shim/, src/, MANIFEST sha256) + the casmi26-iceberg wheels:
+    GLACIER's shim/src then the preseeded site on PYTHONPATH, our glacier worker with --pkg, GL batch sizes."""
+    import hashlib
+    import json
+    import os
+    import subprocess
+    import tempfile
+    tag = sim.py_tag()
+    with tempfile.TemporaryDirectory() as d:
+        inp, work = Path(d) / "input", Path(d) / "work"
+        ice = inp / "datasets" / "o" / "casmi26-iceberg"
+        (ice / "wheels").mkdir(parents=True)
+        (ice / "ice_runner.py").write_text("")
+        (ice / "wheels" / "rdkit-2025.3.6-cp312-cp312-linux.whl.ice").write_bytes(b"w")
+        (ice / "wheels" / "einops-0.8-py3-none-any.whl.ice").write_bytes(b"w")
+        (inp / "rw").mkdir()
+        (inp / "rw" / f"rdkit-2025.3.6-{tag}-{tag}-linux.whl").write_bytes(b"r")
+        cfg = Config().with_(sim_model="glacier")
+        calls, real = [], subprocess.run
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        sim.subprocess.run = fake_run
+        try:
+            try:
+                sim.setup_sim(str(inp), work, cfg)
+                raise AssertionError("missing casmi26-glacier must raise")
+            except FileNotFoundError as e:
+                assert "casmi26-glacier" in str(e)
+            gl = inp / "datasets" / "a" / "casmi26-glacier"
+            for sub in ("ckpt", "shim", "src/ms_pred"):
+                (gl / sub).mkdir(parents=True)
+            (gl / "gl_runner.py").write_text("")
+            (gl / "ckpt" / "glacier.pt").write_bytes(b"weights")
+            sha = hashlib.sha256(b"weights").hexdigest()
+            (gl / "MANIFEST.json").write_text(json.dumps({"files": {"ckpt/glacier.pt": {"sha256": sha}}}))
+            w = sim.setup_sim(str(inp), work, cfg)
+            (gl / "MANIFEST.json").write_text(json.dumps({"files": {"ckpt/glacier.pt": {"sha256": "0" * 64}}}))
+            try:
+                sim.setup_glacier(str(inp), work, cfg)
+                raise AssertionError("a checkpoint sha256 mismatch must fail")
+            except AssertionError as e:
+                assert "sha256" in str(e), e
+        finally:
+            sim.subprocess.run = real
+        assert len(calls) == 1, calls                                   # site installed once, then reused
+        names = sorted(Path(c).name for c in calls[0] if str(c).endswith(".whl"))
+        assert names == ["einops-0.8-py3-none-any.whl", f"rdkit-2025.3.6-{tag}-{tag}-linux.whl"], names
+        assert isinstance(w, sim.GlacierWorker) and w.py == sys.executable and w.batch_retry == cfg.gl_batch_retry
+        pp = [Path(p) for p in w.env["PYTHONPATH"].split(os.pathsep)]
+        assert [p.name for p in pp] == ["shim", "src", "ice_site"] and pp[0].parent == gl, pp
+        cmd = w._cmd("req.tsv", "resp.npz", None)
+        assert Path(cmd[1]).name == "glacier_worker.py" and (work / "glacier_worker.py").exists()
+        assert cmd[2:4] == ["--pkg", str(gl)] and cmd[cmd.index("--batch-size") + 1] == str(cfg.gl_batch)
+        assert "--gen" not in cmd
+        try:
+            sim.setup_glacier(str(inp), work, cfg.with_(ce_mode="nce"))
+            raise AssertionError("GLACIER must refuse a non-eV CE convention")
+        except AssertionError as e:
+            assert "eV" in str(e), e
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
 
 if __name__ == "__main__":

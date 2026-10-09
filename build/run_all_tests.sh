@@ -28,10 +28,20 @@ python build/test_novel_p3.py      | tail -1
 run build/test_c3_gate.py
 run build/test_delta_m_mutator.py
 run build/test_mut_runner.py
+run build/test_patch_supernext.py
+run build/test_patch_zenith.py
+run build/test_patch_v29.py
+run build/test_c3v2.py
+run build/test_mut_runner_v2.py
+run build/test_patch_c3v2.py
+run build/test_patch_c3cal.py
+run build/test_np_signals_core.py
 run scratch_pkg/tests/run.py
 for _nb in casmi26-v4n-mutator-submit.ipynb casmi26-v4n-mutator-bio-submit.ipynb casmi26-v4n-mutator-c3-submit.ipynb; do
   [ -f "$_nb" ] && run build/test_mut_cell.py "$_nb"
 done
+
+run research/bin/test_bin.py         # multi-agent research bus scripts
 
 if [ -n "$_SOFT_FAILED" ]; then
   echo

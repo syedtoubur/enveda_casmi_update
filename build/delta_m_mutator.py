@@ -365,6 +365,317 @@ def mutate(hit_smiles, reach, max_scaffolds=25, max_formulas=6, cap=MAX_PRODUCTS
     return out
 
 
+# ================================================================== mutator v2 (Track 4 c3v2)
+#   Everything below is additive: the defaults above are untouched, so `build_reach()`, `grow()`
+#   and `mutate_sources()` behave exactly as they did for the 0.399 c3 notebook.
+#
+#   v2 seeds from the *whole* structure of a spectral analog (I1), may remove groups as well as add
+#   them (I2), finds the edit from the exact precursor-mass delta (I3) instead of a PubChem formula,
+#   and lets a caller-supplied score (f.z against the query's predicted fingerprint) rank and prune
+#   the frontier (I0 / I0b) instead of the alphabetical truncation in `_apply`.
+
+# Plant natural-product decorations missing from the v1 palette (knowledge base C, "NP modification
+# grammar").  All attach at an existing hydroxyl, which a whole-molecule anchor has; the scaffold path
+# never had one, which is why v1 needed the +O socket ordering.
+EXTRA_PALETTE = {
+    "+pentose":     (_v(C=5, H=8, O=4),            ["[OX2H:1]>>[O:1]C1OCC(O)C(O)C1O"]),
+    "+glucuronide": (_v(C=6, H=8, O=6),            ["[OX2H:1]>>[O:1]C1OC(C(=O)O)C(O)C(O)C1O"]),
+    "+malonyl":     (_v(C=3, H=2, O=3),            ["[OX2H:1]>>[O:1]C(=O)CC(=O)O"]),
+    "+coumaroyl":   (_v(C=9, H=6, O=2),            ["[OX2H:1]>>[O:1]C(=O)C=Cc1ccc(O)cc1"]),
+    "+caffeoyl":    (_v(C=9, H=6, O=3),            ["[OX2H:1]>>[O:1]C(=O)C=Cc1ccc(O)c(O)c1"]),
+    "+feruloyl":    (_v(C=10, H=8, O=3),           ["[OX2H:1]>>[O:1]C(=O)C=Cc1ccc(O)c(OC)c1"]),
+    "+galloyl":     (_v(C=7, H=4, O=4),            ["[OX2H:1]>>[O:1]C(=O)c1cc(O)c(O)c(O)c1"]),
+}
+
+# Macro-transforms: a socket-creating step fused with the step that uses it.  Needed by the I0b
+# pruning rule -- scored on its own, the free-OH intermediate of "+O then +hexose" carries hydroxyl
+# bits the O-glycoside truth does not have, so it can fall below the anchor and take the glycoside
+# path down with it.  One step, one meaningful structure.
+MACRO_PALETTE = {
+    "+O-hexose":    (_v(C=6, H=10, O=6),           ["[cH:1]>>[c:1]OC1OC(CO)C(O)C(O)C1O"]),
+    "+O-dhexose":   (_v(C=6, H=10, O=5),           ["[cH:1]>>[c:1]OC1OC(C)C(O)C(O)C1O"]),
+    "+O-acetyl":    (_v(C=2, H=2, O=2),            ["[cH:1]>>[c:1]OC(C)=O"]),
+    "+O-prenyl":    (_v(C=5, H=8, O=1),            ["[cH:1]>>[c:1]OCC=C(C)C"]),
+}
+
+# Reverse moves that a reaction SMARTS expresses cleanly.  Every other inverse ("-X" for an
+# additive "+X" that hangs a group on a single bond) is done by `_excise`.
+REVERSE_SMARTS = {
+    "+2H":  (_v(H=2),         ["[C;!a:1]=[C;!a:2]>>[C:1]-[C:2]"]),
+    "-H2O": (_v(H=-2, O=-1),  ["[C;!a;!H0:1]-[C;!a:2]-[OX2H1]>>[C:1]=[C:2]"]),
+}
+_NO_EXCISE = {"-2H", "+H2O"}      # ring/unsaturation moves; their inverses live in REVERSE_SMARTS
+
+# Extra attachment sites, v2 only.  `_excise` can take a group off ANY acyclic single bond, so a
+# forward move limited to aromatic CH / OH / NH cannot put back what the truth carries on sp3 carbon
+# (C-methyl, aliphatic OMe/OAc, alkyl halide).  The round-trip oracle found exactly these misses.
+# Wider sites mean more regioisomers; ranking them is the f.z screen's job, not the generator's.
+_SP3 = "[CX4;!H0:1]"
+_SP2 = "[CX3;H1:1]"              # vinyl / aldehyde C-H (enols, acids, vinyl substituents)
+_NH = "[NX3;!H0:1]"
+V2_SITES = {
+    "+O":         [_SP2 + ">>[C:1]O", _NH + ">>[N:1]O"],
+    "+NH":        [_SP2 + ">>[C:1]N"],
+    "+prenyl":    [_SP3 + ">>[C:1]CC=C(C)C", _SP2 + ">>[C:1]CC=C(C)C", _NH + ">>[N:1]CC=C(C)C"],
+    "+C2H2O":     [_SP3 + ">>[C:1]C(C)=O", "[cH:1]>>[c:1]C(C)=O"],
+    "+CH2":       [_SP3 + ">>[C:1]C", _SP2 + ">>[C:1]C"],
+    "+CH2O":      [_SP3 + ">>[C:1]OC", _SP3 + ">>[C:1]CO", "[cH:1]>>[c:1]CO"],
+    "+CO":        [_SP3 + ">>[C:1]C=O"],
+    "+CONH":      [_SP3 + ">>[C:1]C(N)=O", _SP2 + ">>[C:1]C(N)=O", "[OX2H:1]>>[O:1]C(N)=O"],
+    "+NHCH2":     [_SP3 + ">>[C:1]NC", _SP2 + ">>[C:1]NC"],
+    "+SH":        [_SP3 + ">>[C:1]S"],
+    "+Cl":        [_SP3 + ">>[C:1]Cl"],
+    "+F":         [_SP3 + ">>[C:1]F"],
+    "+Br":        [_SP3 + ">>[C:1]Br"],
+    "+I":         [_SP3 + ">>[C:1]I"],
+    "+O-acetyl":  [_SP3 + ">>[C:1]OC(C)=O", _SP2 + ">>[C:1]OC(C)=O"],
+    "+O-hexose":  [_SP3 + ">>[C:1]OC1OC(CO)C(O)C(O)C1O"],
+    "+O-dhexose": [_SP3 + ">>[C:1]OC1OC(C)C(O)C(O)C1O"],
+    "+O-prenyl":  [_SP3 + ">>[C:1]OCC=C(C)C", _SP2 + ">>[C:1]OCC=C(C)C"],
+    "-2H":        ["[CX4;!H0:1]-[CX4;!H0:2]>>[C:1]=[C:2]"],
+}
+
+ADDITIVE_V2 = {**PALETTE, **EXTRA_PALETTE, **MACRO_PALETTE}
+
+
+def _neg(v):
+    return tuple(-x for x in v)
+
+
+def inverse_name(name):
+    if name in REVERSE_SMARTS:
+        return {"+2H": "-2H", "-H2O": "+H2O"}[name]
+    if name in ("-2H", "+H2O"):
+        return {"-2H": "+2H", "+H2O": "-H2O"}[name]
+    return ("-" + name[1:]) if name.startswith("+") else ("+" + name[1:])
+
+
+EXCISE = {inverse_name(n): _neg(v) for n, (v, _s) in ADDITIVE_V2.items() if n not in _NO_EXCISE}
+
+
+def signed_vec(name):
+    if name in ADDITIVE_V2:
+        return ADDITIVE_V2[name][0]
+    if name in REVERSE_SMARTS:
+        return REVERSE_SMARTS[name][0]
+    return EXCISE[name]
+
+
+def signed_names(inverse=True, extra=True, macro=True):
+    names = list(PALETTE)
+    if extra:
+        names += list(EXTRA_PALETTE)
+    if macro:
+        names += list(MACRO_PALETTE)
+    if inverse:
+        names += [n for n in EXCISE if n[1:] in {k[1:] for k in names}] + list(REVERSE_SMARTS)
+    return names
+
+
+def build_reach_signed(maxops=2, names=None, max_dec=MAX_DEC):
+    """`build_reach` over signed moves.  A combination holding a move and its own inverse is
+    skipped: it is the identity plus noise, and would let a depth-2 budget hide a depth-0 edit."""
+    names = signed_names() if names is None else list(names)
+    vecs = [signed_vec(n) for n in names]
+    inv = {i: names.index(inverse_name(n)) if inverse_name(n) in names else -1
+           for i, n in enumerate(names)}
+    reach = {}
+    for k in range(maxops + 1):
+        for combo in itertools.combinations_with_replacement(range(len(vecs)), k):
+            if any(inv[i] in combo for i in combo if inv[i] >= 0):
+                continue
+            d = [0] * len(EL)
+            for i in combo:
+                for j, x in enumerate(vecs[i]):
+                    d[j] += x
+            t = tuple(d)
+            cur = reach.get(t)
+            if cur is None:
+                reach[t] = [tuple(names[i] for i in combo)]
+            elif len(cur) < max_dec:
+                cur.append(tuple(names[i] for i in combo))
+    return {k: tuple(v) for k, v in reach.items()}
+
+
+# ------------------------------------------------------------------ exact-mass delta (I3)
+MONO = dict(C=12.0, H=1.00782503207, N=14.0030740048, O=15.99491461956, S=31.97207100,
+            P=30.97376163, F=18.99840322, Cl=34.96885268, Br=78.9183371, I=126.904473)
+_MONO_V = np.array([MONO[e] for e in EL])
+
+
+def vec_mass(v):
+    return float(np.dot(_MONO_V, np.asarray(v, dtype=np.float64)))
+
+
+def mass_index(reach):
+    """Sorted (masses, delta vectors) over a reach table, for `match_mass_delta`."""
+    keys = [k for k in reach if any(k)]
+    m = np.array([vec_mass(k) for k in keys])
+    o = np.argsort(m)
+    return m[o], [keys[i] for i in o]
+
+
+def match_mass_delta(dm, index, tol=0.003):
+    """Delta vectors whose monoisotopic mass is within `tol` Da of `dm` (query minus anchor),
+    nearest first.  3 mDa is ~5 ppm at m/z 600, the timsTOF precursor error budget."""
+    masses, keys = index
+    lo, hi = np.searchsorted(masses, [dm - tol, dm + tol])
+    idx = sorted(range(lo, hi), key=lambda i: abs(masses[i] - dm))
+    return [keys[i] for i in idx]
+
+
+# ------------------------------------------------------------------ reverse moves (I2)
+def _excise(mol, delta):
+    """Products of removing one group hung on a single acyclic bond, such that
+    formula(product) == formula(mol) + delta (delta is the negative of the group).
+
+    Cutting the bond and capping the kept atom with H turns -OMe into -OH, an O-glycoside into the
+    aglycone's -OH, -OAc into -OH, -OH into -H: one routine for every "+X" whose SMARTS hangs X on
+    a single bond.  Requiring the exact formula makes every other cut a no-op."""
+    v0 = elem_vec(mol)
+    if v0 is None:
+        return []
+    want = tuple(a + b for a, b in zip(v0, delta))
+    out = []
+    for b in mol.GetBonds():
+        if b.IsInRing() or b.GetBondType() != Chem.BondType.SINGLE:
+            continue
+        rw = Chem.RWMol(mol)
+        i, j = b.GetBeginAtomIdx(), b.GetEndAtomIdx()
+        rw.RemoveBond(i, j)
+        for k in (i, j):
+            a = rw.GetAtomWithIdx(k)
+            a.SetNoImplicit(False)
+            a.SetNumExplicitHs(0)
+            a.SetChiralTag(Chem.ChiralType.CHI_UNSPECIFIED)
+        try:
+            frags = Chem.GetMolFrags(rw.GetMol(), asMols=True, sanitizeFrags=True)
+        except Exception:
+            continue
+        for f in frags:
+            if elem_vec(f) == want:
+                out.append(f)
+    return out
+
+
+def _run_move(m, name):
+    if name in EXCISE:
+        return _excise(m, EXCISE[name])
+    rx = (REVERSE_SMARTS[name][1] if name in REVERSE_SMARTS else ADDITIVE_V2[name][1])
+    rx = list(rx) + V2_SITES.get(name, [])
+    key = "v2:" + name
+    if key not in _RXN:
+        _RXN[key] = [AllChem.ReactionFromSmarts(s) for s in rx]
+    prods = []
+    for rxn in _RXN[key]:
+        try:
+            for p in rxn.RunReactants((m,)):
+                prods.append(p[0])
+        except Exception:
+            continue
+    return prods
+
+
+def _apply_v2(mols, name, beam, scorer=None, floor=None, stats=None):
+    """One signed move over a frontier.  With `scorer`, products scoring below `floor` are pruned
+    (I0b) and the frontier keeps the top `beam` by score; without it, the v1 alphabetical cap."""
+    out = {}
+    for m in mols:
+        for q in _run_move(m, name):
+            try:
+                Chem.SanitizeMol(q)
+                s = Chem.MolToSmiles(q)
+            except Exception:
+                continue
+            if s and "." not in s and s not in out:
+                out[s] = Chem.MolFromSmiles(s)
+    out = {k: v for k, v in out.items() if v is not None}
+    if scorer is None or not out:
+        keys = sorted(out)[:beam]
+        return [out[k] for k in keys], {}
+    keys = list(out)
+    sc = np.asarray(scorer(keys), dtype=np.float64)
+    keep = np.ones(len(keys), bool) if floor is None else sc >= floor
+    if stats is not None:
+        stats["pruned"] += int((~keep).sum())
+    idx = [i for i in np.argsort(-sc, kind="stable") if keep[i]][:beam]
+    return [out[keys[i]] for i in idx], {keys[i]: float(sc[i]) for i in idx}
+
+
+def grow_signed(anchor, decomposition, target, beam=BEAM, cap=MAX_PRODUCTS, scorer=None,
+                floor=None, stats=None):
+    """Apply a signed decomposition to a whole molecule, trying every distinct move order.
+
+    All orders, not one: the I0b argument that pruning on intermediate score is nearly lossless
+    rests on B being reachable through *either* intermediate, so a single fixed order would let
+    one bad intermediate kill a good product.  Depth is <= 2-3 here, so this is <= 6 orders."""
+    out = []
+    for order in dict.fromkeys(itertools.permutations(decomposition)):
+        frontier = [anchor]
+        for name in order:
+            frontier, _ = _apply_v2(frontier, name, beam, scorer, floor, stats)
+            if not frontier:
+                break
+        for m in frontier:
+            if elem_vec(m) == target:
+                try:
+                    out.append(Chem.MolToSmiles(m))
+                except Exception:
+                    pass
+        if len(out) >= cap:
+            break
+    return list(dict.fromkeys(out))[:cap]
+
+
+def mutate_anchored(anchors, reach, beam=BEAM, cap=MAX_PRODUCTS, max_steps=2, scorer=None,
+                    tau=None, deadline=None, stats=None):
+    """Anchored whole-molecule mutation (I1).
+
+    anchors: [(anchor smiles, [delta vector, ...])], deltas from `match_mass_delta`, best anchor
+             first.  The target formula is formula(anchor) + delta, so no PubChem formula is used.
+    scorer:  optional f(list of SMILES) -> scores (f.z against the query's predicted fingerprint).
+             With `tau`, an intermediate scoring below score(anchor) - tau is pruned.
+
+    Returns [(candidate smiles, anchor index, decomposition)], first-found order, deduplicated by
+    canonical SMILES.  Ranking is the caller's job (the runner rescores with the full fingerprint).
+    """
+    st = stats if stats is not None else collections.Counter()
+    seen, out = set(), []
+    for ai, (asmi, deltas) in enumerate(anchors):
+        a = Chem.MolFromSmiles(asmi)
+        av = None if a is None else elem_vec(a)
+        if av is None:
+            st["anchor_bad"] += 1
+            continue
+        floor = None
+        if scorer is not None and tau is not None:
+            floor = float(np.asarray(scorer([Chem.MolToSmiles(a)]))[0]) - float(tau)
+        for dv in deltas:
+            target = tuple(x + y for x, y in zip(av, dv))
+            if any(x < 0 for x in target):
+                st["delta_negative"] += 1
+                continue
+            decs = tuple(d for d in reach.get(tuple(dv), ()) if len(d) <= max_steps)
+            if not decs:
+                st["delta_unreachable"] += 1
+                continue
+            st["anchor_pairs"] += 1
+            for dec in decs:
+                if deadline is not None and time.monotonic() > deadline:
+                    st["hit_deadline"] += 1
+                    return out
+                if any(n not in ADDITIVE_V2 for n in dec):
+                    st["used_reverse"] += 1
+                for s in grow_signed(a, dec, target, beam, cap - len(out), scorer, floor, st):
+                    if s not in seen:
+                        seen.add(s)
+                        out.append((s, ai, dec))
+                if len(out) >= cap:
+                    st["hit_cap"] += 1
+                    return out
+    return out
+
+
 if __name__ == "__main__":
     import time
 

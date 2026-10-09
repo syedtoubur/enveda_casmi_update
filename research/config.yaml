@@ -1,0 +1,45 @@
+# Research workflow config: read by research/bin/*.py and by every agent skill.
+competition: enveda-CASMI26-molecule-id-mass-spectra   # real slug; the catalog presets say enveda-casmi-2026 (wrong)
+kaggle_user: syedtoubur
+catalog: specs/Dataset_intro/dataset_catalog.json
+
+lines:
+  exploit:
+    worktree: C:/casmi/lines/exploit
+    branch: line/exploit
+    base_notebook: casmi-notebook-0-433.ipynb
+    kaggle_preset: sota_0433_inference_preset
+    code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (base .ipynb -> probe .ipynb)"
+    keep_bar: null          # = own-account control LB + 0.004; set after the control run
+  explore:
+    worktree: C:/casmi/lines/explore
+    branch: line/explore
+    base_notebook: scratch_pkg (mk_notebook.py), best run r3_full1_r2gl 0.346
+    kaggle_preset: scratch_r1_to_r3_preset
+    code_form: "scratch_pkg/casmi_scratch modules + tests, notebook via scratch_pkg/tools/mk_notebook.py"
+    keep_bar: 0.350         # 0.346 + 0.004; replace with a paired-control mean when one exists
+
+judge:
+  max_bounces: 3            # REVISE rounds before ESCALATE
+
+gates:
+  g3a_smoke_molecules: 20
+  g3b_block_if:
+    val_mrr_drop_gt: 0.02   # vs base on the same cohort
+    projected_runtime_h_gt: 8.0
+    counters_unmoved: true
+    crash: true
+
+colab:
+  cli: "~/.local/bin/colab"          # run through: wsl -- bash -lc
+  gpu: T4
+  cu_per_hour: 2.0                   # conservative T4 estimate for budget accounting
+  cu_cap_smoke: 0.5
+  cu_cap_val: 4.0
+  exec_timeout_s: 3600
+  drive_root: /content/drive/MyDrive/casmi_2026
+
+claude:
+  lock_file: research/queue/claude.lock
+  queue_file: research/queue/claude_queue.txt
+  settings: .claude/settings.headless.json

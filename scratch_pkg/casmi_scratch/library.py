@@ -1,6 +1,6 @@
 """Reference spectral library (train.parquet) and the Class-1 direct match `lv`."""
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pyarrow as pa
@@ -21,6 +21,7 @@ class Library:
     order: np.ndarray    # spectrum indices sorted by nm (finite first)
     snm: np.ndarray      # nm[order]
     n_ok: int            # number of finite nm
+    pol: np.ndarray = None   # +1 / -1 / 0 per spectrum, from the adduct's charge sign (analog search)
 
     def __len__(self):
         return len(self.off) - 1
@@ -43,7 +44,23 @@ def build_library(off, mz, it, prec, adduct, ik, formula=None, struct_mass=True)
     ok = np.isfinite(nm)
     order = np.argsort(np.where(ok, nm, 1e18), kind="mergesort")
     return Library(off=np.asarray(off, np.int64), mz=np.asarray(mz, np.float32), it=np.asarray(it, np.float32),
-                   nm=nm, ik=np.asarray(ik, dtype=object), order=order, snm=nm[order], n_ok=int(ok.sum()))
+                   nm=nm, ik=np.asarray(ik, dtype=object), order=order, snm=nm[order], n_ok=int(ok.sum()),
+                   pol=adduct_polarity(adduct))
+
+
+def adduct_polarity(adduct):
+    """'[M+H]+' -> 1, '[M-H]-' -> -1, anything else -> 0."""
+    ad = np.asarray(adduct, dtype=object)
+    return np.array([1 if isinstance(a, str) and a.endswith("+") else -1 if isinstance(a, str) and a.endswith("-")
+                     else 0 for a in ad], np.int8)
+
+
+def remap_keys(lib, keymap):
+    """A Library view whose ik are mapped through keymap (train inchikey14 -> R1 scorer_key); unmapped keys kept.
+    Peaks are shared, not copied."""
+    u, inv = np.unique(lib.ik.astype(str), return_inverse=True)
+    mapped = np.array([keymap.get(k, k) for k in u], dtype=object)
+    return replace(lib, ik=mapped[inv])
 
 
 def load_library(path, struct_mass=True, rows=None):

@@ -59,6 +59,19 @@ MUT_ENG = os.environ.get("MUT_ENG", "")             # engine-A lists as a second
 MUT_DEADLINE = float(os.environ.get("MUT_DEADLINE", 45))   # wall-clock seconds per molecule, generation only
 MUT_C3 = os.environ.get("MUT_C3", "")               # engine Class-3 diagnostics; unset => rank gate
 MUT_ANA = int(os.environ.get("MUT_ANA", 20))        # analog structures used as a scaffold source
+# ---- v2 (Track 4 c3v2): anchored whole-molecule mutation, signed moves, exact-mass delta
+MUT_V2 = os.environ.get("MUT_V2", "") == "1"
+MUT_ANCHORS = int(os.environ.get("MUT_ANCHORS", 5))     # analogs whose mass delta matches, best first
+MUT_DM_TOL = float(os.environ.get("MUT_DM_TOL", 0.003))  # Da, anchor -> query exact mass delta
+MUT_TAU = os.environ.get("MUT_TAU", "")                 # I0b prune floor in mean-|z| units; "" = off
+#   tau is scale-free: the floor is score(anchor) - MUT_TAU * mean(|z|), so it means "an intermediate
+#   may lose about MUT_TAU bits' worth of agreement".  The local oracle (eval_anchored_oracle.py, one
+#   bit ~ 1) lost 0 truths at tau=8 and 2.3% at tau=2-4 on depth-2 round trips.
+MUT_BETA = float(os.environ.get("MUT_BETA", 0.0))       # I0c consensus-core weight; 0 = off
+MUT_BEAM = int(os.environ.get("MUT_BEAM", 200))
+PPM_CENTER = float(os.environ.get("MUT_PPM_CENTER", 1.45))   # timsTOF precursor offset (CLAUDE.md)
+MUT_KEEP_DECLINED = os.environ.get("MUT_KEEP_DECLINED", "") == "1"   # calibration only: emit lists of
+#   molecules stage 1 declined (tier "") so generator recall can be measured apart from the gate
 
 _W = {}
 
@@ -86,6 +99,173 @@ def init_worker(v3code, pool_dir, mut_dir):
     _W["ecfp4"] = r["gen"].GetMorganGenerator(radius=2, fpSize=4096)
     _W["Chem"] = r["Chem"]
     _W["reach"] = dm.build_reach()
+    if MUT_V2:
+        _W["reach2"] = dm.build_reach_signed(max(2, _W["c3"].MAX_STEPS_V2))
+        _W["midx"] = dm.mass_index(_W["reach2"])
+    ban = os.environ.get("CASMI_BAN_KEYS", "")       # calibration only: cohort truths removed from the
+    if ban and os.path.exists(ban):                  # pool, so a regenerated truth is not dropped as known
+        _W["pool_keys"] -= set(json.load(open(ban)).get("pool_ban", []))
+
+
+def _fz_fn(z):
+    """f(list of SMILES) -> f.z with the full selected-bit fingerprint, cached.  This is the same
+    `fp[bits] @ z` the PubChem channel uses for fz_top, and best_pool_fz uses the pool's packed copy
+    of the same fingerprint, so all three are on one scale for a given molecule."""
+    chem, bits = _W["chem"], _W["bits"]
+    z = np.asarray(z, np.float32)
+    cache = {}
+
+    def f(smiles):
+        out = np.full(len(smiles), -np.inf)
+        for i, s in enumerate(smiles):
+            if s not in cache:
+                fp = chem.raw_fingerprint(s)
+                cache[s] = -np.inf if fp is None else float(fp[bits].astype(np.float32) @ z)
+            out[i] = cache[s]
+        return out
+    f.cache = cache
+    return f
+
+
+def consensus_core(neigh, power=3.0, min_n=3, min_sim=0.5, p_core=0.8):
+    """I0c: conserved-present bits over the analog neighbourhood -> (bit index array, logit weights).
+
+    One-sided on purpose.  The anchors are inside this consensus, so a symmetric prior would score
+    every edit below its own anchor; only *keeping* bits the family conserves is rewarded, and bits
+    no neighbour carries score 0 so a novel decoration costs nothing."""
+    chem, bits = _W["chem"], _W["bits"]
+    rows, w = [], []
+    for smi, sim in neigh:
+        if sim < min_sim:
+            continue
+        fp = chem.raw_fingerprint(smi)
+        if fp is not None:
+            rows.append(fp[bits].astype(np.float64))
+            w.append(float(sim) ** power)
+    if len(rows) < min_n:
+        return np.zeros(0, int), np.zeros(0)
+    w = np.asarray(w) / np.sum(w)
+    p = (np.stack(rows) * w[:, None]).sum(0)
+    idx = np.where(p >= p_core)[0]
+    pc = np.clip(p[idx], 1e-3, 0.99)
+    return idx, np.log(pc / (1 - pc))
+
+
+def mutate_one_v2(task):
+    """task = (mid, z, pc_row, pc_keys, eng_keys, c3) -> (mid, smiles, f.z, keys, (diag, forms, src)).
+
+    Anchors are engine-A shifted analogs whose exact mass delta to the query matches a signed move
+    combination (I1/I3).  Cheap vetoes run before generation; the f.z tests (I0) after it."""
+    import collections
+    mid, z, pc_row, pc_keys, eng_keys, c3 = task
+    t0 = time.time()
+    chem, dm, G = _W["chem"], _W["dm"], _W["c3"]
+    diag = dict(molecule_id=mid, n_gen=0, n_listed=0, tier=None, v2=1)
+    reasons, st = collections.Counter(), collections.Counter()
+
+    def done(tier=None, out=(), fzs=(), keys=(), forms=(), srcs=()):
+        diag.update(tier=tier, gate=(list(reasons)[-1] if reasons and not tier else ""),
+                    secs=round(time.time() - t0, 2), **{k: int(v) for k, v in st.items()})
+        return mid, list(out), list(fzs), list(keys), (diag, list(forms), list(srcs))
+
+    ana = (c3 or {}).get("ana") or []
+    exact = float((c3 or {}).get("lib_exact") or 0.0)
+    target = float(pc_row.get("target") or (c3 or {}).get("target") or 0.0)
+    target *= 1.0 - PPM_CENTER * 1e-6
+    anchors = []
+    for smi, mass, sim in ana:
+        dms = dm.match_mass_delta(target - float(mass), _W["midx"], MUT_DM_TOL)
+        dms = [d for d in dms if min(len(x) for x in _W["reach2"][d]) <= G.MAX_STEPS_V2]
+        if dms:
+            anchors.append((smi, float(sim), dms))
+    anchors.sort(key=lambda a: -a[1])
+    anchors = anchors[:MUT_ANCHORS]
+    ana_max = anchors[0][1] if anchors else (float(ana[0][2]) if ana else 0.0)
+    steps = (min(len(x) for d in anchors[0][2] for x in _W["reach2"][d]) if anchors else None)
+    diag.update(ana_max=round(ana_max, 4), lib_exact=round(exact, 4), n_anchors=len(anchors),
+                delta_steps=(-1 if steps is None else steps))
+    # cheap vetoes first: fz_best/fz_anchor are not known yet, so pass sentinels that cannot veto
+    if G.stage1_v2(exact, exact, ana_max, steps, 1.0, 0.0, None, reasons=reasons) is None:
+        return done()
+    reasons.clear()
+
+    score = _fz_fn(z)
+    core_idx, core_w = (consensus_core([(a[0], a[2]) for a in ana]) if MUT_BETA > 0
+                        else (np.zeros(0, int), np.zeros(0)))
+    if MUT_BETA > 0 and len(core_idx):
+        bits = _W["bits"]
+
+        def scorer(smiles):
+            base = score(smiles)
+            bonus = np.zeros(len(smiles))
+            for i, s in enumerate(smiles):
+                fp = chem.raw_fingerprint(s)
+                if fp is not None:
+                    bonus[i] = float(fp[bits][core_idx].astype(np.float64) @ core_w)
+            return base + MUT_BETA * bonus
+    else:
+        scorer = score
+    diag["core_bits"] = int(len(core_idx))
+    tau = (float(MUT_TAU) * float(np.mean(np.abs(np.asarray(z, np.float64))))
+           if MUT_TAU != "" else None)
+    try:
+        gen = dm.mutate_anchored([(a[0], a[2]) for a in anchors], _W["reach2"], beam=MUT_BEAM,
+                                 cap=MUT_CAP, max_steps=G.MAX_STEPS_V2,
+                                 scorer=scorer if tau is not None else None, tau=tau,
+                                 deadline=time.monotonic() + MUT_DEADLINE, stats=st)
+    except Exception as e:
+        diag["error"] = repr(e)[:200]
+        return done()
+    diag["n_gen"] = len(gen)
+    if not gen:
+        reasons["no_candidates"] += 1
+        return done()
+
+    smis = [s for s, _, _ in gen]
+    fz = score(smis)
+    rank_sc = scorer(smis) if scorer is not score else fz
+    fz_anchor = {i: float(score([a[0]])[0]) for i, a in enumerate(anchors)}
+    known = set(pc_keys) | set(eng_keys) | _W["pool_keys"]
+    out, out_fz, out_k, out_f, out_s, seen = [], [], [], [], [], set()
+    best_anchor = None
+    for o in np.argsort(-rank_sc, kind="stable"):
+        s, ai, dec = gen[o]
+        k = chem.score_key(s)
+        if k is None or k in seen:
+            continue
+        seen.add(k)
+        if k in known:
+            st["in_db"] += 1                    # a database structure: retrieval already has it
+            continue
+        if best_anchor is None:
+            best_anchor = ai
+        out.append(s)
+        out_fz.append(float(fz[o]))
+        out_k.append(k)
+        out_f.append(dm.fmt_vec(dm.vec_of_smiles(s)) + "|gen")
+        out_s.append("a%d:%s" % (ai, "+".join(dec)))
+        if len(out) >= MUT_K:
+            break
+    if not out:
+        reasons["no_new_candidates"] += 1
+        return done()
+    fin = fz[np.isfinite(fz)]
+    sep = (float((out_fz[0] - np.median(fin)) / (np.std(fin) + 1e-9)) if len(fin) >= 3 else None)
+    bp = pc_row.get("best_pool_fz")
+    bp = float(bp) if bp is not None and np.isfinite(float(bp)) else None
+    ft = pc_row.get("fz_top")
+    ft = float(ft) if ft is not None else None
+    tier = G.stage1_v2(exact, exact, anchors[best_anchor][1], steps, out_fz[0],
+                       fz_anchor[best_anchor], bp, ft, sep, reasons=reasons)
+    diag.update(fz_best=round(out_fz[0], 3), fz_anchor=round(fz_anchor[best_anchor], 3),
+                best_pool_fz=(None if bp is None else round(bp, 3)),
+                fz_top=(None if ft is None else round(ft, 3)),
+                fz_sep=(None if sep is None else round(sep, 3)), n_listed=len(out))
+    if tier is None:
+        if MUT_KEEP_DECLINED:
+            return done(None, out, out_fz, out_k, out_f, out_s)
+        return done()
+    return done(tier, out, out_fz, out_k, out_f, out_s)
 
 
 def mutate_one(task):
@@ -260,7 +440,9 @@ def main(argv):
               % (int((_am >= _G.ANA_MIN).sum()), len(_am),
                  int(((_am >= _G.ANA_MIN) & (_am - _lx >= _G.MARGIN_MIN)).sum())), flush=True)
 
-    cand = [(m, v) for m, v in PC.items() if v.get("pc") and str(m) in Z]
+    # v2 anchors on spectral analogs, not on the PubChem list, so an empty PubChem list (a plausible
+    # Class-3 situation) does not exclude the molecule; the v1 paths keep their exact behaviour.
+    cand = [(m, v) for m, v in PC.items() if (v.get("pc") or MUT_V2) and str(m) in Z]
     if C3:
         # every candidate molecule is offered to the Class-3 gate, which declines cheaply in the
         # worker.  Firing on nothing is a legal outcome -- that is the point of replacing the rank
@@ -279,21 +461,37 @@ def main(argv):
     if MAXM:
         fire = fire[:MAXM]
 
-    tasks = [(m, Z[str(m)], PC[m]["pc"], PC[m].get("pc_keys", []),
-              (EN.get(str(m)) or {}).get("smiles", []), (EN.get(str(m)) or {}).get("keys", []),
-              C3.get(str(m)) if C3 else None)
-             for m in fire]
+    if MUT_V2:
+        # v2 needs the engine diagnostics (anchors) for every molecule; no C3 -> nothing to anchor
+        fire = [m for m in fire if str(m) in C3]
+        _row = lambda m: {k: PC[m].get(k) for k in ("best_pool_fz", "fz_top", "target")}
+        tasks = [(m, Z[str(m)], _row(m), PC[m].get("pc_keys", []),
+                  (EN.get(str(m)) or {}).get("keys", []), C3.get(str(m))) for m in fire]
+        worker = mutate_one_v2
+        print(f"MUT V2: anchored signed mutation on {len(tasks)} molecules | anchors<={MUT_ANCHORS} "
+              f"dm_tol={MUT_DM_TOL} tau={MUT_TAU or 'off'} beta={MUT_BETA} beam={MUT_BEAM}",
+              flush=True)
+    else:
+        tasks = [(m, Z[str(m)], PC[m]["pc"], PC[m].get("pc_keys", []),
+                  (EN.get(str(m)) or {}).get("smiles", []), (EN.get(str(m)) or {}).get("keys", []),
+                  C3.get(str(m)) if C3 else None)
+                 for m in fire]
+        worker = mutate_one
     res, diags = {}, []
     import multiprocessing as mp
     ctx = mp.get_context("fork" if sys.platform != "win32" else "spawn")
     with ctx.Pool(NW, initializer=init_worker, initargs=(V3CODE, POOL_DIR, MUT_DIR)) as P:
-        for k, out in enumerate(P.imap_unordered(mutate_one, tasks, chunksize=1)):
+        for k, out in enumerate(P.imap_unordered(worker, tasks, chunksize=1)):
             mid, smis, fzs, keys, tail = out
             diag, forms, prov = tail if isinstance(tail, tuple) else (tail, [], [])
             diags.append(diag)
             if smis:
                 res[str(mid)] = dict(smiles=smis, keys=keys, formula=forms, fz=fzs, src=prov,
                                      tier=diag.get("tier") or "")
+                if MUT_V2:      # stage 2 and the cap read these in the fusion cell
+                    res[str(mid)]["sig"] = {k: diag.get(k) for k in (
+                        "ana_max", "lib_exact", "delta_steps", "fz_best", "fz_anchor",
+                        "best_pool_fz", "fz_top", "fz_sep")}
             if (k + 1) % 20 == 0 or k + 1 == len(tasks):
                 print(f"  mutator {k+1}/{len(tasks)} {time.time()-T0:.0f}s", flush=True)
 
@@ -321,6 +519,18 @@ def main(argv):
               flush=True)
         print("C3 GATE REASONS: " + " ".join(f"{k}={v}" for k, v in why.most_common() if k),
               flush=True)
+    if MUT_V2:
+        _sum = lambda k: sum(int(d.get(k, 0) or 0) for d in diags)
+        _imp = [d["fz_best"] - d["fz_anchor"] for d in diags
+                if d.get("fz_best") is not None and d.get("fz_anchor") is not None]
+        print(f"MUT V2 STATS: anchors>0 on {sum(1 for d in diags if d.get('n_anchors'))} | "
+              f"generated {_sum('n_gen')} | reverse moves used {_sum('used_reverse')} | "
+              f"pruned {_sum('pruned')} | in-db dropped {_sum('in_db')} | "
+              f"deadline {_sum('hit_deadline')} | core bits med "
+              f"{int(np.median([d.get('core_bits', 0) for d in diags])) if diags else 0}", flush=True)
+        if _imp:
+            print("MUT V2 fz_best - fz_anchor (percentiles 10/50/90): "
+                  + " ".join("%.2f" % x for x in np.percentile(_imp, [10, 50, 90])), flush=True)
 
 
 if __name__ == "__main__":

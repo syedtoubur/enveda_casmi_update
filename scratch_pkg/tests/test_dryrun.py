@@ -68,8 +68,83 @@ def test_dryrun():
     assert (first == CAFFEINE).all(), first                      # a real pool candidate, not padding
 
 
-TESTS = [test_dryrun]
+def fake_r1_pool(d):
+    """casmi26-scratch-pool built from the fake COCONUT arrays: every 3rd structure is enveda-180-only."""
+    from casmi_scratch import pool_build as PB
+    from casmi_scratch.pool import F_COCO, F_E180, F_TRAIN
+    coco = Path(d) / "coco"
+    cm = pickle.load(open(coco / "coco_meta.pkl", "rb"))
+    mass = np.load(coco / "coco_mass.npy")
+    flags = np.where(np.arange(len(mass)) % 3 == 0, F_TRAIN | F_E180, F_COCO)
+    pool = pd.DataFrame({"key": cm["keys"], "smiles": cm["smiles"], "mass": mass, "flags": flags}).sort_values("mass")
+    side = pd.DataFrame({"np_superclass": None}, index=pd.Index(pool.key, name="key"))
+    km = pd.DataFrame({"inchikey14": ["RYYVLZVUVIJVGH"], "scorer_key": [cm["keys"][1]]})
+    PB.write_pool(pool.reset_index(drop=True), side, km, str(Path(d) / "scratch-pool"), dict(version="dry"))
+    return int((flags == (F_TRAIN | F_E180)).sum())
+
+
+def test_dryrun_r1b():
+    test_path = ROOT / "test.parquet"
+    if not test_path.exists():
+        print("test_dryrun_r1b: SKIPPED (no local test.parquet)")
+        return
+    te = pq.read_table(test_path).to_pandas()
+    te = te[te.molecule_id.isin(te.molecule_id.unique()[:3])].reset_index(drop=True)
+    code = mk.render("r0_kaggle", {"use_sim": False, "frag_workers": 1, "pool_source": "r1", "pool_drop_e180": True},
+                     tag="dry-r1b")
+    with tempfile.TemporaryDirectory() as d:
+        fake_input(d, te)
+        n_e180 = fake_r1_pool(d)
+        (Path(d) / "coco" / "coco_meta.pkl").unlink()                  # R1 must not need the COCONUT arrays
+        work = Path(d) / "work"
+        work.mkdir()
+        script = Path(d) / "nb.py"
+        script.write_text(code, encoding="utf-8")
+        env = dict(os.environ, CASMI_INPUT=d, CASMI_WORK=str(work))
+        r = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, env=env, timeout=600)
+        assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+        sub = pd.read_csv(work / "submission.csv")
+        rep = json.loads((work / "run_report.json").read_text())
+    assert len(sub) == 3 and (sub.smiles.str.split(";").map(len) == 25).all()
+    assert rep["dropped_e180"] == n_e180 and rep["pool_size"] == 61 * 3 - n_e180 and rep["pool_version"] == "dry"
+    assert "remapped to scorer keys" in r.stdout and np.isfinite(rep["cand_median"])
+
+
+def test_dryrun_r2():
+    """R2 class vote on the fake R1 pool with NPClassifier labels: the vote runs, counters reach the report."""
+    test_path = ROOT / "test.parquet"
+    if not test_path.exists():
+        print("test_dryrun_r2: SKIPPED (no local test.parquet)")
+        return
+    from casmi_scratch import npc
+    te = pq.read_table(test_path).to_pandas()
+    te = te[te.molecule_id.isin(te.molecule_id.unique()[:3])].reset_index(drop=True)
+    code = mk.render("r0_kaggle", {"use_sim": False, "frag_workers": 1, "pool_source": "r1", "pool_drop_e180": True,
+                                   "class_vote": True}, tag="dry-r2")
+    with tempfile.TemporaryDirectory() as d:
+        fake_input(d, te)
+        fake_r1_pool(d)
+        n = len(np.load(Path(d) / "scratch-pool" / "pool_key.npy"))
+        npc.write_npc(str(Path(d) / "scratch-pool"), pd.DataFrame({
+            "sc1": np.where(np.arange(n) % 2 == 0, "Purine alkaloids", "Flavonoids"), "sc2": "Steroids", "sc3": None,
+            "sp1": 0.8, "sp2": 0.1, "sp3": np.nan}))
+        work = Path(d) / "work"
+        work.mkdir()
+        script = Path(d) / "nb.py"
+        script.write_text(code, encoding="utf-8")
+        env = dict(os.environ, CASMI_INPUT=d, CASMI_WORK=str(work))
+        r = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, env=env, timeout=600)
+        assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+        sub = pd.read_csv(work / "submission.csv")
+        rep = json.loads((work / "run_report.json").read_text())
+    assert len(sub) == 3 and (sub.smiles.str.split(";").map(len) == 25).all()
+    assert rep["class_vote"] is True and "[vote] NPClassifier superclass" in r.stdout
+    assert all(k in rep for k in ("n_vote_mol", "n_bonus_reorders", "n_vote_first"))
+
+
+TESTS = [test_dryrun, test_dryrun_r1b, test_dryrun_r2]
 
 if __name__ == "__main__":
-    test_dryrun()
+    for t in TESTS:
+        t()
     print("test_dryrun: OK")

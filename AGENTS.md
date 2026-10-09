@@ -26,3 +26,25 @@
 - **Strict Data Boundary**: Never stage or commit `.npz`, `.pt`, `.parquet`, or `.zip` files to Git (enforced by `.gitignore`).
 - **No Data Leakage**: In ranker training, never sample queries from structures the FPNet was trained on (the Stage C v1 mistake).
 - **Token-Efficient Notebook Inspection**: NEVER read, view, or grep raw `.ipynb` JSON files directly (wastes up to 98% of context on JSON formatting and base64 plots). Always use the `/analyze-notebook` skill or run `python .agents/skills/analyze-notebook/scripts/compare.py [notebooks...]` which converts to `py:percent` and extracts semantic diffs.
+
+## 4. Multi-agent research workflow (`research/`)
+- Two lines run in parallel: **exploit** (patches on `casmi-notebook-0-433.ipynb`) and **explore** (`scratch_pkg`). Each line has its own git worktree under `C:/casmi/lines/`, outside OneDrive. Write code only there.
+- One idea is one folder, `research/<line>/<idea>/`; its first STATUS line is the state. Roles, the state machine and entry points: `research/README.md`. Config: `research/config.yaml`.
+- Antigravity (Gemini Flash): `/cycle <line>` (grill, research, spike, spec), `/critic`, `/daily-digest`. Claude: `/judge`, plus `/run-idea`, which `research/bin/call_claude.py` starts headless (one job at a time).
+- Critic and judge checklist: `research/LESSONS.md`. Cite lessons by ID. Only the Reporter edits EXPERIMENTS.md and LESSONS.md.
+- Agents push Kaggle kernels (`research/bin/kaggle_push.py`). Only the human submits.
+
+## Agent skills
+
+### Issue tracker
+
+Specs and tickets are local markdown inside `research/<line>/<idea>/`, not GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root (created lazily). See `docs/agents/domain.md`.
+

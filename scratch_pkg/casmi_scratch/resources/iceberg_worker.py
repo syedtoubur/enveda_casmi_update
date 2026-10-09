@@ -34,8 +34,144 @@ import pandas as pd
 import torch
 from rdkit import Chem, RDLogger
 
-import ms_pred.common as common
-from ms_pred.iceberg import gen_model, inten_model, joint_model
+import importlib.abc  # noqa: E402
+import importlib.machinery  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
+import types  # noqa: E402
+
+STUBBED = []
+
+
+class _Missing:
+    """Stands in for a name from an ms_pred module the package does not ship; fails only if actually used."""
+
+    def __init__(self, name):
+        self._name = name
+
+    def __call__(self, *a, **k):
+        raise RuntimeError(f"{self._name} is not shipped with this ms_pred copy")
+
+    def __getattr__(self, attr):
+        raise RuntimeError(f"{self._name}.{attr} is not shipped with this ms_pred copy")
+
+
+class _StubMissingMsPred(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """The casmi26-iceberg package ships a trimmed ms_pred (inference modules only) whose package __init__s still
+    import training-side modules (e.g. nn_utils.tune_utils). Last on sys.meta_path, so it only answers for an
+    ms_pred submodule no real finder can find, with an empty module."""
+
+    def find_spec(self, name, path=None, target=None):
+        return importlib.machinery.ModuleSpec(name, self) if name.startswith("ms_pred.") else None
+
+    def create_module(self, spec):
+        m = types.ModuleType(spec.name)
+        m.__all__ = []
+
+        def __getattr__(attr, _n=spec.name):
+            if attr.startswith("__"):
+                raise AttributeError(attr)
+            return _Missing(f"{_n}.{attr}")
+        m.__getattr__ = __getattr__
+        return m
+
+    def exec_module(self, module):
+        STUBBED.append(module.__name__)
+
+
+class _Anything:
+    """Permissive placeholder served by an absent third-party module (import-time use only; ice_runner.py's)."""
+
+    def __init__(self, *a, **k):
+        pass
+
+    def __call__(self, *a, **k):
+        return _Anything()
+
+    def __getattr__(self, k):
+        if k.startswith("__"):
+            raise AttributeError(k)
+        return _Anything()
+
+    def __getitem__(self, k):
+        return _Anything()
+
+    def __setitem__(self, k, v):
+        pass
+
+    def __iter__(self):
+        return iter(())
+
+    def __bool__(self):
+        return False
+
+
+class _StubModule(types.ModuleType):
+    def __getattr__(self, k):
+        if k.startswith("__"):
+            raise AttributeError(k)
+        v = type(k, (_Anything,), {}) if k[:1].isupper() else _Anything()
+        setattr(self, k, v)
+        return v
+
+
+class _StubThirdParty(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """Serves stub modules (and any submodule) for third-party roots that ms_pred imports at module level but never
+    uses on the predict_mol path, when the image lacks them (multiprocess, h5py, pygmtools on the cp313 image)."""
+
+    def __init__(self, roots):
+        self.roots = set(roots)
+
+    def find_spec(self, name, path=None, target=None):
+        if name.split(".")[0] not in self.roots:
+            return None
+        return importlib.machinery.ModuleSpec(name, self, is_package=True)
+
+    def create_module(self, spec):
+        m = _StubModule(spec.name)
+        m.__path__ = []
+        return m
+
+    def exec_module(self, module):
+        pass
+
+
+# the casmi26-iceberg ice_runner.py list: imported at ms_pred module level, unused by ICEBERG inference
+OPTIONAL = ("pygmtools", "h5py", "multiprocess", "platformdirs")
+
+if os.environ.get("CASMI_ICE_PKG") == "1":
+    sys.meta_path.append(_StubMissingMsPred())
+    _absent = []
+    for _m in OPTIONAL:
+        try:
+            importlib.import_module(_m)
+        except BaseException:
+            for _k in [k for k in sys.modules if k.split(".")[0] == _m]:
+                del sys.modules[_k]
+            _absent.append(_m)
+    if _absent:
+        sys.meta_path.insert(0, _StubThirdParty(_absent))
+        print(f"[worker] absent third-party modules, stubbed: {_absent}", file=sys.stderr, flush=True)
+
+import ms_pred.common as common  # noqa: E402
+import ms_pred.common.chem_utils as _chem_utils  # noqa: E402
+from ms_pred.iceberg import gen_model, inten_model, joint_model  # noqa: E402
+
+if STUBBED:
+    print(f"[worker] ms_pred modules not shipped, stubbed: {STUBBED}", file=sys.stderr, flush=True)
+
+# predict_mol's InChI round trip writes a constant tautomer-transform file under platformdirs' user_cache_dir:
+# point it at a writable temp dir (also needed when platformdirs itself is stubbed)
+import tempfile  # noqa: E402
+_CACHE = os.path.join(tempfile.gettempdir(), "ice_ms_pred_cache")
+_chem_utils.user_cache_dir = lambda name, *a, **k: os.path.join(_CACHE, name)
+
+import rdkit  # noqa: E402
+print(f"[worker] rdkit {rdkit.__version__} at {os.path.dirname(rdkit.__file__)} | torch {torch.__version__}",
+      file=sys.stderr, flush=True)
+if os.environ.get("CASMI_ICE_PKG") == "1" and not rdkit.__version__.startswith("2025.03"):
+    raise RuntimeError(f"rdkit {rdkit.__version__}: the casmi26-iceberg checkpoints need 2025.03 "
+                       "(2026.03 kekulizes differently) -- the ice site is not first on PYTHONPATH")
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -85,18 +221,44 @@ def _safe_torch_load(*load_args, **load_kwargs):
 torch.load = _safe_torch_load
 
 
+HP_KEYS = ("hyper_parameters", "hparams", "hp", "config", "kwargs", "args")
+SD_KEYS = ("state_dict", "model_state_dict", "model", "weights")
+
+
+def load_model(cls, path):
+    """A Lightning checkpoint (.ckpt), or a plain torch file (.pt, e.g. the casmi26-iceberg package): a pickled
+    module, or a dict holding hyper-parameters + state_dict."""
+    if str(path).endswith(".pt"):   # the casmi26-iceberg layout: {hyper_parameters, state_dict}, as ice_runner.py loads it
+        obj = torch.load(path, map_location="cpu")
+        if isinstance(obj, dict) and "hyper_parameters" in obj and "state_dict" in obj:
+            m = cls(**obj["hyper_parameters"])
+            m.load_state_dict(obj["state_dict"], strict=True)
+            return m
+    try:
+        try:
+            return cls.load_from_checkpoint(path, map_location="cpu", weights_only=False)
+        except TypeError:
+            return cls.load_from_checkpoint(path, map_location="cpu")
+    except Exception as e:
+        lightning_err = e
+    obj = torch.load(path, map_location="cpu")
+    if isinstance(obj, torch.nn.Module):
+        return obj
+    if isinstance(obj, dict):
+        hp = next((obj[k] for k in HP_KEYS if k in obj), None)
+        sd = next((obj[k] for k in SD_KEYS if k in obj), None)
+        if isinstance(sd, torch.nn.Module):
+            return sd
+        if hp is not None and sd is not None:
+            m = cls(**dict(vars(hp) if hasattr(hp, "__dict__") and not isinstance(hp, dict) else hp))
+            m.load_state_dict(sd)
+            return m
+    raise RuntimeError(f"cannot load {path} as {cls.__name__}: Lightning said {lightning_err!r}; file holds "
+                       f"{sorted(obj)[:30] if isinstance(obj, dict) else type(obj)}")
+
+
 def load(args):
-    try:
-        gen = gen_model.FragGNN.load_from_checkpoint(args.gen, map_location="cpu", weights_only=False)
-    except TypeError:
-        gen = gen_model.FragGNN.load_from_checkpoint(args.gen, map_location="cpu")
-
-    try:
-        inten = inten_model.IntenGNN.load_from_checkpoint(args.inten, map_location="cpu", weights_only=False)
-    except TypeError:
-        inten = inten_model.IntenGNN.load_from_checkpoint(args.inten, map_location="cpu")
-
-    return gen, inten
+    return load_model(gen_model.FragGNN, args.gen), load_model(inten_model.IntenGNN, args.inten)
 
 
 def to_peaks(s, k, prec, margin):

@@ -1,0 +1,52 @@
+{
+  "$comment": "Loaded only by research/bin/call_claude.py (claude -p --settings ... --permission-mode dontAsk). Anything not allowed here is denied without prompting.",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Skill",
+      "Edit(research/**)",
+      "Edit(//C:/casmi/lines/**)",
+      "Edit(//c/casmi/lines/**)",
+      "Bash(python research/bin/*)",
+      "Bash(python .agents/skills/analyze-notebook/scripts/compare.py:*)",
+      "Bash(python:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(sh build/run_all_tests.sh)",
+      "Bash(git -C C:/casmi/lines/*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(kaggle kernels push:*)",
+      "Bash(kaggle kernels status:*)",
+      "Bash(kaggle kernels output:*)",
+      "Bash(kaggle competitions submissions:*)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(git -C * push*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git checkout -- :*)",
+      "Bash(git clean:*)",
+      "Bash(kaggle competitions submit:*)",
+      "Bash(rm -rf:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Edit(EXPERIMENTS.md)",
+      "Edit(research/LESSONS.md)",
+      "Edit(research/config.yaml)",
+      "Edit(.claude/**)",
+      "WebFetch",
+      "WebSearch"
+    ]
+  }
+}

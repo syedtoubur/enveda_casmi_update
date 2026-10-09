@@ -1,0 +1,8 @@
+queue/claude.lock
+**/kaggle_push/
+**/kaggle_output/
+**/colab_*.log
+**/claude_run.jsonl
+**/*.ipynb
+**/__pycache__/
+**/colab/
