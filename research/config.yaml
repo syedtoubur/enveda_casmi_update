@@ -41,6 +41,11 @@ gates:
     - 'Traceback .most recent call last.'
     - "FileNotFoundError"
   colab_infra_retries: 1    # Colab infra failures per gate before falling back to the Kaggle draft run
+  g4_fix_rounds: 2          # automatic fix agent -> re-push rounds after a G4 FAIL; then needs-human
+
+kaggle:
+  watch_interval_s: 30      # detached G4 watcher poll (heartbeat in <idea>/kaggle_watch/watch.log)
+  watch_timeout_s: 3600     # then STATUS g4-timeout; kaggle_push.py --check still finalizes it
 
 colab:
   cli: "~/.local/bin/colab"          # run through: wsl -- bash -lc

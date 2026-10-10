@@ -17,7 +17,9 @@ Agents talk only through the files in that folder. Never paste file contents int
 drafting -> spiking -> specced -> ready-for-judge -> judging
 judging -> revise (back to Ideator; bounce n/3) | escalate (to you) | approved
 approved -> implementing -> g1 -> g2 -> g3a -> g3b -> g4 (review, card, push) -> g4-pushed
-g4-pushed -> ready-to-submit | g4-failed   (kaggle_push.py --check, outside Claude)
+g4-pushed -> ready-to-submit | g4-fix -> g4-pushed ... | needs-human | g4-timeout   (the G4 watcher, outside Claude)
+g4-timeout -> ready-to-submit | g4-fix | needs-human   (kaggle_push.py --check, run by /daily-digest)
+g4-failed = the push itself failed (Kaggle CLI error)
 ready-to-submit -> submitted -> scored (poll_lb.py) -> keep | revert (Reporter)
 any -> paused-quota (Claude usage limit hit; call_claude.py resumes it)
 any -> dead (spike showed no signal, or a gate blocked; reason in STATUS line 2)
@@ -29,7 +31,15 @@ Lines after the first in `STATUS` are `key: value` (`mode: autonomous`, `bounces
 - `python research/bin/call_claude.py research/<line>/<idea>` hands an idea to Claude (lock and queue, one Claude job at a time).
 - `python research/bin/colab_run.py <idea> <script.py> --kind smoke|val` runs a script on a Colab T4 and always stops the session.
 - `python research/bin/kaggle_push.py <idea> <notebook.ipynb>` pushes a Kaggle kernel version (no submit). It refuses when the notebook loads a file the preset does not mount (L30), or when the line's `control` has no G4 PASS yet (L31).
-- `python research/bin/kaggle_push.py --check` finishes G4 for every `g4-pushed` idea whose kernel is done: it downloads only the log, then fails on `gates.g4_fail_markers` or missing counters.
+- `python research/bin/kaggle_push.py --check` is the watcher's backup: one poll per `g4-pushed` or `g4-timeout` idea that no live watcher owns, finalizing the finished ones the same way.
+
+## G4 watcher (L34)
+A successful push (without `--wait`) starts `kaggle_push.py --watch <idea>` as a detached process, so it outlives the Claude session and spends no Claude tokens. It polls `kaggle kernels status` every 30 s with a heartbeat line in `<idea>/kaggle_watch/watch.log`. When the run finishes, it downloads only the log and fails on `gates.g4_fail_markers` or missing counters. Every verdict pops a Windows toast.
+- **PASS** → `ready-to-submit`. A line control's PASS also queues that line's waiting probes (one `call_claude.py --drain --detach`).
+- **FAIL** → `g4_fix_brief.md` and STATUS `g4-fix`, and a fresh `/run-idea` fix agent re-pushes. After `gates.g4_fix_rounds` (2) failed rounds → `needs-human` with a `questions.md` entry. A source Kaggle rejects as "not valid" goes straight to `needs-human`, because only a catalog edit fixes it.
+- **No verdict after 60 min** → `g4-timeout`; `--check` finalizes it later.
+
+A new push supersedes a running watcher through STATUS `push_id`.
 - `python research/bin/run_tests.py <line>` runs the test suite inside the line worktree (G2).
 - `python research/bin/poll_lb.py` matches Kaggle submissions to ideas.
 

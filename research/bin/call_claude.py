@@ -26,7 +26,7 @@ from _common import REPO, idea_dir, load_config, read_status, write_status
 STALE_LOCK_S = 12 * 3600
 LIMIT_RE = re.compile(r"usage limit|limit reached|rate[_ ]limit|hit your limit", re.I)
 WAITING_STATES = {"ready-for-judge", "approved", "implementing", "g1", "g2", "g3a", "g3b", "g4",
-                  "paused-quota", "judging"}
+                  "paused-quota", "judging", "g4-fix"}
 
 
 def _pid_alive(pid: int) -> bool:
@@ -190,7 +190,9 @@ def main(argv=None) -> int:
         ap.error("idea or --drain required")
     if a.detach:
         args = [sys.executable, __file__] + ([rel] if rel else ["--drain"])
-        flags = 0x00000008 | 0x00000200 if os.name == "nt" else 0  # DETACHED | NEW_GROUP
+        # NO_WINDOW | NEW_GROUP: a hidden console that claude and its shells inherit (DETACHED
+        # would make Windows pop a console window for every child process)
+        flags = 0x08000000 | 0x00000200 if os.name == "nt" else 0
         subprocess.Popen(args, cwd=REPO, creationflags=flags, close_fds=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f"[call_claude] detached: {rel or 'drain'}")

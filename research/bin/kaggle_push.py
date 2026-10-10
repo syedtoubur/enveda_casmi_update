@@ -2,12 +2,22 @@
 
     python research/bin/kaggle_push.py research/exploit/20261010-foo path/to/probe.ipynb \
         [--slug casmi-foo] [--preset sota_0433_inference_preset] [--wait 7200] \
-        [--counter "TRACK4 .*" ...]
+        [--counter "TRACK4 .*" ...] [--source owner/catalog-dataset ...]
+    python research/bin/kaggle_push.py --check [<idea>]     # backup: one poll, finalize finished runs
+    python research/bin/kaggle_push.py --watch <idea>       # what the push starts, detached
 
-kernel-metadata.json is built from the preset in specs/Dataset_intro/dataset_catalog.json.
-The commit run takes the fast-commit path (10-20 molecules, L24). With --wait it polls
-`kaggle kernels status`, downloads only the log/csv/meta files to <idea>/kaggle_output/, and greps
-the log for the --counter regexes into gates.md.
+kernel-metadata.json is built from the preset in specs/Dataset_intro/dataset_catalog.json, plus
+any --source (must be a catalog dataset; kept in STATUS `extra_sources` for later pushes).
+The commit run takes the fast-commit path (10-20 molecules, L24).
+
+Without --wait the push starts a detached watcher (L34) that outlives Claude: it polls
+`kaggle kernels status` every `kaggle.watch_interval_s` with a heartbeat in
+<idea>/kaggle_watch/watch.log, and gives up after `kaggle.watch_timeout_s` (STATUS g4-timeout,
+which --check still finalizes). A finished run is finalized: only the log/csv/meta files go to
+<idea>/kaggle_output/, the --counter regexes go to gates.md, and after_g4 hands off:
+- PASS: toast; a line control also queues that line's waiting probes (one call_claude drain).
+- FAIL: toast, g4_fix_brief.md, STATUS g4-fix and a fresh /run-idea fix agent, at most
+  `gates.g4_fix_rounds` times; then needs-human with a questions.md entry.
 
 Refuses to push (L30, L31) when:
 - a file or dataset the notebook loads is not in the pushed sources (audit_sources), or
@@ -18,26 +28,40 @@ regex never matches.
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
+import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
+import call_claude
 from _common import REPO, RESEARCH, idea_dir, load_config, log_gate, read_status, write_status
+
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # children of a detached process get no console
+FIX_SCOPE = """\
+- The fix agent may change the patch code in the line worktree (`C:/casmi/lines/<line>`), then rerun G1 and G2.
+- It may add push sources **that already exist in `dataset_catalog.json`** (`kaggle_push.py --source <owner/slug>`).
+- A dataset missing from the catalog, or a fix that would change the idea itself: write to `questions.md`, set STATUS `needs-human`, stop.
+- For a **control** idea only sources and metadata may change, never the notebook code.
+- The catalog itself is never edited.
+"""
 
 
 def kaggle(args: list[str], timeout: float = 600) -> subprocess.CompletedProcess:
-    return subprocess.run(["kaggle"] + args, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout)
+    return subprocess.run(["kaggle"] + args, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                          encoding="utf-8", errors="replace", timeout=timeout, creationflags=NO_WINDOW)
 
 
-def build_metadata(cfg, preset: str, slug: str, code_file: str) -> dict:
+def build_metadata(cfg, preset: str, slug: str, code_file: str, extra: list[str] = ()) -> dict:
     cat = json.loads((REPO / cfg["catalog"]).read_text(encoding="utf-8"))
     p = cat["presets"][preset]
     gpu = str(p.get("enable_gpu", "true")).lower() == "true"
+    sources = list(p.get("dataset_sources", []))
     md = {
         "id": f"{cfg['kaggle_user']}/{slug}",
         "title": slug,
@@ -47,7 +71,7 @@ def build_metadata(cfg, preset: str, slug: str, code_file: str) -> dict:
         "is_private": True,
         "enable_gpu": gpu,
         "enable_internet": False,  # L24: offline
-        "dataset_sources": list(p.get("dataset_sources", [])),
+        "dataset_sources": sources + [s for s in extra if s not in sources],
         "competition_sources": [cfg["competition"]],  # catalog preset slug is wrong
         "kernel_sources": list(p.get("kernel_sources", [])),
         "model_sources": list(p.get("model_sources", [])),
@@ -168,18 +192,262 @@ def finalize(cfg, idea: Path, kernel: str, status: str, run=kaggle) -> int:
         with card.open("a", encoding="utf-8") as f:
             f.write(f"- **G4 result ({time.strftime('%Y-%m-%d %H:%M')})**: {result}; "
                     f"counters: {' / '.join(hits) or 'none'}\n")
-    print(f"[kaggle_push] {kernel} status={status} -> {result}")
+    print(f"[kaggle_push] {kernel} status={status} -> {result}", flush=True)
     for h in hits:
         print("  ", h)
+    reasons = bad if status == "complete" else [f"kernel status {status}"] + bad
+    after_g4(cfg, idea, ok, kernel, log_text, reasons)
     return 0 if ok else 2
 
 
+# ---------------- hand-off after a verdict (tests replace these four hooks)
+
+def toast(title: str, body: str) -> None:
+    """Best-effort Windows toast through PowerShell's WinRT API. Never raises."""
+    print(f"[toast] {title}: {body}", flush=True)
+    if os.name != "nt":
+        return
+    ps = (r"[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;"
+          r"$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
+          r"$n = $t.GetElementsByTagName('text');"
+          r"$null = $n.Item(0).AppendChild($t.CreateTextNode($env:CASMI_TOAST_TITLE));"
+          r"$null = $n.Item(1).AppendChild($t.CreateTextNode($env:CASMI_TOAST_BODY));"
+          r"$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe';"
+          r"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show("
+          r"[Windows.UI.Notifications.ToastNotification]::new($t))")
+    env = dict(os.environ, CASMI_TOAST_TITLE=title, CASMI_TOAST_BODY=body)
+    try:
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+                            base64.b64encode(ps.encode("utf-16-le")).decode()],
+                           env=env, capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
+        if r.returncode:
+            print(f"[toast] failed rc={r.returncode}: {r.stderr.strip()[:300]}", flush=True)
+    except Exception as e:  # noqa: BLE001 - a toast must never break G4
+        print(f"[toast] failed: {e}", flush=True)
+
+
+def _call_claude(args: list[str]) -> None:
+    subprocess.run([sys.executable, str(Path(call_claude.__file__).resolve())] + args, cwd=REPO,
+                   stdin=subprocess.DEVNULL, timeout=120, creationflags=NO_WINDOW)
+
+
+def queue_ideas(rels: list[str]) -> None:
+    """Append ideas to the Claude queue in one write, then start one detached drain (L34)."""
+    cfg = load_config()
+    q = call_claude.queue_read(cfg)
+    call_claude.queue_write(cfg, q + [r for r in rels if r not in q])
+    _call_claude(["--drain", "--detach"])
+
+
+def queue_fix(rel: str) -> None:
+    """A fresh headless /run-idea for one idea; the call_claude lock and queue serialize it."""
+    _call_claude([rel, "--detach"])
+
+
+def spawn_watcher(idea: Path) -> int:
+    """Start `--watch <idea>` as a detached process that outlives this one and any Claude session."""
+    wd = idea / "kaggle_watch"
+    wd.mkdir(exist_ok=True)
+    args = [sys.executable, "-u", str(Path(__file__).resolve()), "--watch",
+            idea.relative_to(REPO).as_posix()]
+    # NO_WINDOW, not DETACHED: the watcher owns a hidden console that its children (kaggle,
+    # powershell, call_claude) inherit; a console-less parent makes Windows pop a window per child
+    flags = NO_WINDOW | 0x00000200 if os.name == "nt" else 0  # NO_WINDOW | NEW_GROUP
+    breakaway = 0x01000000 if os.name == "nt" else 0  # leave the caller's job object if allowed
+    with open(wd / "watch.log", "a", encoding="utf-8") as log:
+        kw = dict(cwd=REPO, close_fds=True, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            p = subprocess.Popen(args, creationflags=flags | breakaway, **kw)
+        except OSError:  # the job forbids breakaway
+            p = subprocess.Popen(args, creationflags=flags, **kw)
+    print(f"[kaggle_push] watcher pid {p.pid}; heartbeat in {wd / 'watch.log'}")
+    return p.pid
+
+
+def waiting_probes(control: Path) -> list[str]:
+    """Other ideas on the control's line whose STATUS is one call_claude would run."""
+    out = []
+    for st in sorted(control.parent.glob("*/STATUS")):
+        state, meta = read_status(st.parent)
+        if st.parent != control and state in call_claude.WAITING_STATES and meta.get("kind") != "control":
+            out.append(st.parent.relative_to(REPO).as_posix())
+    return out
+
+
+def _context_blocks(lines: list[str], patterns: list[str], ctx: int = 20, cap: int = 300) -> list[str]:
+    rxs = [re.compile(p) for p in patterns]
+    keep = sorted({j for i, ln in enumerate(lines) if any(rx.search(ln) for rx in rxs)
+                   for j in range(max(0, i - ctx), min(len(lines), i + ctx + 1))})
+    out, prev = [], None
+    for j in keep:
+        if prev is not None and j != prev + 1:
+            out.append("...")
+        out.append(lines[j])
+        prev = j
+    return out[:cap]
+
+
+def build_fix_brief(cfg, idea: Path, kernel: str, log_text: str, reasons: list[str], round_n: int) -> Path:
+    """A compact, self-contained brief for a fresh fix agent. Never reads a raw .ipynb (CLAUDE.md §3)."""
+    _, meta = read_status(idea)
+    line = meta.get("line", idea.parent.name)
+    lcfg = cfg["lines"].get(line, {})
+    control = meta.get("kind") == "control"
+    rounds = cfg.get("gates", {}).get("g4_fix_rounds", 2)
+    args_p = idea / "kaggle_push" / "push_args.json"
+    pa = json.loads(args_p.read_text(encoding="utf-8")) if args_p.exists() else {}
+    md = [f"# G4 fix brief: {idea.name}", "",
+          f"- kernel: `{kernel}` (round {round_n} of {rounds}; log in `kaggle_output/`)",
+          f"- kind: {meta.get('kind', 'probe')}; line: {line}; worktree: `{lcfg.get('worktree')}`"]
+    if pa:
+        cmd = ["python research/bin/kaggle_push.py", idea.relative_to(REPO).as_posix(), f'"{pa["notebook"]}"',
+               "--preset", pa["preset"], "--slug", pa["slug"]]
+        cmd += [f'--counter "{c}"' for c in pa.get("counters", [])]
+        cmd += [f"--source {s}" for s in pa.get("extra_sources", [])]
+        md += ["", "## Re-push command (no --wait; add `--source <owner/slug>` for a catalog dataset)",
+               "```", " ".join(cmd), "```"]
+    spec = idea / "spec.md"
+    if not control and spec.exists():
+        sl = spec.read_text(encoding="utf-8", errors="replace").splitlines()
+        heads = [i for i, ln in enumerate(sl) if ln.startswith("## ")]
+        end = heads[2] if len(heads) > 2 else len(sl)  # title + Problem Statement + Solution
+        md += ["", "## The one change (spec.md, up to the 3rd section)",
+               *[ln.replace("## ", "### ", 1) if ln.startswith("## ") else ln for ln in sl[:min(end, 40)]]]
+    md += ["", "## Fail reasons", *[f"- {r}" for r in reasons or ["(none recorded)"]]]
+    lines = log_text.splitlines()
+    markers = cfg.get("gates", {}).get("g4_fail_markers", []) + ["Traceback"]
+    ctx = _context_blocks(lines, markers)
+    if ctx:
+        md += ["", "## Marker context (±20 lines)", "```", *ctx, "```"]
+    md += ["", "## Log tail (last 80 lines)", "```", *(lines[-80:] or ["(no log downloaded)"]), "```"]
+    gates = idea / "gates.md"
+    if gates.exists():
+        md += ["", "## gates.md", gates.read_text(encoding="utf-8", errors="replace").strip()]
+    base = REPO / str(lcfg.get("base_notebook") or "")
+    pushed = Path(pa.get("notebook", ""))
+    if not control and base.is_file() and pushed.is_file():
+        try:
+            r = subprocess.run([sys.executable, str(REPO / ".agents/skills/analyze-notebook/scripts/compare.py"),
+                                str(base), str(pushed)], cwd=REPO, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=300, creationflags=NO_WINDOW)
+            md += ["", "## compare.py base vs pushed", "```", *(r.stdout + r.stderr).splitlines()[:200], "```"]
+        except Exception as e:  # noqa: BLE001
+            md += ["", f"compare.py failed: {e}"]
+    md += ["", "## Fix scope", FIX_SCOPE]
+    path = idea / "g4_fix_brief.md"
+    path.write_text("\n".join(md) + "\n", encoding="utf-8")
+    return path
+
+
+def after_g4(cfg, idea: Path, ok: bool, kernel: str, log_text: str = "", reasons: list[str] = (),
+             fatal: bool = False) -> None:
+    """Hand a G4 verdict on: toast, queue probes after a control PASS, or start a fix round."""
+    _, meta = read_status(idea)
+    rel = idea.relative_to(REPO).as_posix()
+    if ok:
+        write_status(idea, None, g4_fixes=0)
+        body = "ready to submit"
+        if meta.get("kind") == "control":
+            probes = waiting_probes(idea)
+            if probes:
+                queue_ideas(probes)
+            log_gate(idea, "G4 queue", f"{len(probes)} probes", ", ".join(probes) or "none")
+            body += f"; queued: {', '.join(p.rsplit('/', 1)[-1] for p in probes) or 'none'}"
+        toast(f"{kernel} G4 PASS", body)
+        return
+    n = int(meta.get("g4_fixes", 0) or 0)
+    rounds = cfg.get("gates", {}).get("g4_fix_rounds", 2)
+    brief = build_fix_brief(cfg, idea, kernel, log_text, list(reasons), n + 1)
+    brief_rel = brief.relative_to(REPO).as_posix()
+    if fatal or n >= rounds:
+        write_status(idea, "needs-human")
+        why = "not fixable within the fix scope" if fatal else f"{n} automatic fix rounds used"
+        with open(idea / "questions.md", "a", encoding="utf-8") as f:
+            f.write(f"\n## G4 needs a human ({time.strftime('%Y-%m-%d %H:%M')})\n"
+                    f"- kernel `{kernel}`: {why}.\n- reasons: {'; '.join(reasons) or 'see gates.md'}\n"
+                    f"- brief: `{brief_rel}`\n")
+        log_gate(idea, "G4", "NEEDS-HUMAN", f"{why}; {brief_rel}")
+        toast(f"{kernel} G4 FAIL", f"needs a human: {why}")
+        return
+    write_status(idea, "g4-fix", g4_fixes=n + 1)
+    log_gate(idea, "G4 fix", f"round {n + 1}", brief_rel)
+    queue_fix(rel)
+    toast(f"{kernel} G4 FAIL", f"fix agent round {n + 1} started")
+
+
+# ---------------- the watcher
+
+def _lock_path(idea: Path) -> Path:
+    return idea / "kaggle_watch" / "watch.lock"
+
+
+def watch_live(cfg, idea: Path, push_id: str, clock=time.time) -> bool:
+    """True while another live watcher owns this push."""
+    try:
+        info = json.loads(_lock_path(idea).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    limit = cfg.get("kaggle", {}).get("watch_timeout_s", 3600) + 300
+    pid = int(info.get("pid", -1))
+    return (info.get("push_id", "") == push_id and pid != os.getpid()
+            and clock() - info.get("t", 0) < limit and call_claude._pid_alive(pid))
+
+
+def watch(cfg, idea: Path, run=kaggle, sleep=time.sleep, clock=time.time) -> int:
+    """Poll one pushed kernel until it finishes, then finalize. Exits quietly when superseded."""
+    state, meta = read_status(idea)
+    kernel, push_id = meta.get("kernel"), meta.get("push_id", "")
+    if state != "g4-pushed" or not kernel:
+        print(f"[watch] nothing to watch: STATUS={state}", flush=True)
+        return 0
+    if watch_live(cfg, idea, push_id, clock):
+        print(f"[watch] another watcher owns {kernel}; exiting", flush=True)
+        return 0
+    lock = _lock_path(idea)
+    lock.parent.mkdir(exist_ok=True)
+    lock.write_text(json.dumps({"pid": os.getpid(), "t": clock(), "push_id": push_id}), encoding="utf-8")
+    kcfg = cfg.get("kaggle", {})
+    interval, timeout = kcfg.get("watch_interval_s", 30), kcfg.get("watch_timeout_s", 3600)
+    t0 = clock()
+    try:
+        while True:
+            state, meta = read_status(idea)
+            if state != "g4-pushed" or meta.get("push_id", "") != push_id:
+                print(f"[watch] superseded (STATUS={state}); exiting", flush=True)
+                return 0
+            try:
+                r = run(["kernels", "status", kernel])
+                status = parse_status(r.stdout) if r.returncode == 0 else "unknown"
+            except Exception as e:  # noqa: BLE001 - a transient CLI failure is not a verdict
+                print(f"[watch] status call failed: {e}", flush=True)
+                status = "unknown"
+            print(f"[watch] {kernel} {status} t+{int(clock() - t0)}s", flush=True)
+            if status in DONE:
+                return finalize(cfg, idea, kernel, status, run)
+            if clock() - t0 >= timeout:
+                write_status(idea, "g4-timeout")
+                log_gate(idea, "G4", "TIMEOUT", f"{kernel} still {status} after {int(timeout)}s; "
+                                                 "kaggle_push.py --check finalizes it later")
+                toast(f"{kernel} G4 TIMEOUT", f"still {status} after {int(timeout // 60)} min")
+                return 4
+            sleep(interval)
+    finally:
+        try:
+            if json.loads(lock.read_text(encoding="utf-8")).get("pid") == os.getpid():
+                lock.unlink()
+        except (OSError, ValueError):
+            pass
+
+
 def check(cfg, ideas: list[Path], run=kaggle) -> int:
-    """One status poll per g4-pushed idea; finalize the finished ones. No waiting, no Claude."""
+    """One status poll per g4-pushed/g4-timeout idea; finalize the finished ones. No waiting, no Claude."""
     worst = 0
     for idea in ideas:
         state, meta = read_status(idea)
-        if state != "g4-pushed" or not meta.get("kernel"):
+        if state not in ("g4-pushed", "g4-timeout") or not meta.get("kernel"):
+            continue
+        if watch_live(cfg, idea, meta.get("push_id", "")):
+            print(f"[kaggle_push] {meta['kernel']}: a watcher owns it; skipping")
             continue
         status = parse_status(run(["kernels", "status", meta["kernel"]]).stdout)
         if status not in DONE:
@@ -189,24 +457,33 @@ def check(cfg, ideas: list[Path], run=kaggle) -> int:
     return worst
 
 
+def catalog_slugs(cat: dict) -> set[str]:
+    return {d["slug"] for group in cat.get("datasets", {}).values() for d in group.values() if "slug" in d}
+
+
 def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("idea", nargs="?")
     ap.add_argument("notebook", nargs="?")
     ap.add_argument("--slug", default=None)
     ap.add_argument("--preset", default=None)
-    ap.add_argument("--wait", type=float, default=0, help="seconds to poll for completion")
+    ap.add_argument("--wait", type=float, default=0, help="seconds to poll for completion (no watcher)")
     ap.add_argument("--counter", action="append", default=[])
+    ap.add_argument("--source", action="append", default=[],
+                    help="extra dataset source; must be a dataset slug in the catalog")
     ap.add_argument("--check", action="store_true",
-                    help="finalize G4 for <idea>, or for every g4-pushed idea when none is given")
+                    help="finalize G4 for <idea>, or for every g4-pushed/g4-timeout idea when none is given")
+    ap.add_argument("--watch", metavar="IDEA", help="poll one pushed idea until done (started by the push)")
     a = ap.parse_args(argv)
 
     cfg = load_config()
+    if a.watch:
+        return watch(cfg, idea_dir(a.watch), run, sleep)
     if a.check:
         ideas = [idea_dir(a.idea)] if a.idea else sorted(RESEARCH.glob("*/*/STATUS"))
         return check(cfg, [i if i.is_dir() else i.parent for i in ideas], run)
     if not (a.idea and a.notebook):
-        ap.error("idea and notebook are required unless --check")
+        ap.error("idea and notebook are required unless --check or --watch")
     idea = idea_dir(a.idea)
     _, meta = read_status(idea)
     line = meta.get("line", idea.parent.name)
@@ -221,8 +498,15 @@ def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
             print(f"[kaggle_push] refused: control {ctrl} has no G4 PASS yet")
             return 6
     cat = json.loads((REPO / cfg["catalog"]).read_text(encoding="utf-8"))
-    missing, unresolved = audit_sources(notebook_code(nb), cat,
-                                        cat["presets"][preset].get("dataset_sources", []))
+    unknown = [s for s in a.source if s not in catalog_slugs(cat)]
+    if unknown:
+        log_gate(idea, "G4", "BLOCKED", f"--source not in the catalog: {', '.join(unknown)}")
+        print(f"[kaggle_push] refused: --source not in the catalog: {', '.join(unknown)}")
+        return 5
+    extra = [s for s in meta.get("extra_sources", "").split(",") if s]
+    extra += [s for s in a.source if s not in extra]
+    sources = cat["presets"][preset].get("dataset_sources", [])
+    missing, unresolved = audit_sources(notebook_code(nb), cat, sources + extra)
     if missing:
         log_gate(idea, "G4", "BLOCKED", "sources (L30): " + "; ".join(missing))
         print("[kaggle_push] refused: notebook needs files the preset does not mount:")
@@ -235,9 +519,13 @@ def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
     shutil.rmtree(stage, ignore_errors=True)
     stage.mkdir()
     shutil.copy2(nb, stage / nb.name)
-    md = build_metadata(cfg, preset, slug, nb.name)
+    md = build_metadata(cfg, preset, slug, nb.name, extra)
     (stage / "kernel-metadata.json").write_text(json.dumps(md, indent=2), encoding="utf-8")
     (stage / "counters.txt").write_text("\n".join(a.counter) + "\n", encoding="utf-8")
+    (stage / "push_args.json").write_text(json.dumps(
+        {"notebook": str(nb), "preset": preset, "slug": slug, "counters": a.counter,
+         "extra_sources": extra}, indent=2), encoding="utf-8")
+    print(f"[kaggle_push] {len(md['dataset_sources'])} dataset sources")
 
     r = run(["kernels", "push", "-p", str(stage)])
     if r.returncode != 0:
@@ -246,22 +534,27 @@ def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
         return 1
     print(r.stdout.strip())
     if "not valid" in r.stdout + r.stderr:  # Kaggle pushes anyway, silently dropping the bad sources
-        log_gate(idea, "G4", "FAIL", f"push dropped sources: {(r.stdout + r.stderr).strip()[:300]}")
+        msg = f"push dropped sources: {(r.stdout + r.stderr).strip()[:300]}"
+        log_gate(idea, "G4", "FAIL", msg)
         write_status(idea, "g4-failed", kernel=md["id"])
+        after_g4(cfg, idea, False, md["id"], reasons=[msg], fatal=True)  # only a catalog edit fixes it
         return 1
-    write_status(idea, "g4-pushed", kernel=md["id"])
+    write_status(idea, "g4-pushed", kernel=md["id"], push_id=f"{time.time():.6f}",
+                 **({"extra_sources": ",".join(extra)} if extra else {}))
     log_gate(idea, "G4", "PUSHED", md["id"] + (f"; unresolved refs: {', '.join(unresolved)}"
                                                if unresolved else ""))
     if not a.wait:
+        spawn_watcher(idea)
         return 0
 
     deadline = time.time() + a.wait
     status = "unknown"
     while time.time() < deadline:
         status = parse_status(run(["kernels", "status", md["id"]]).stdout)
+        print(f"[kaggle_push] {md['id']} {status}", flush=True)
         if status in DONE:
             break
-        sleep(60)
+        sleep(cfg.get("kaggle", {}).get("watch_interval_s", 30))
     if status not in DONE:
         print(f"[kaggle_push] {md['id']} still {status}; finish later with --check")
         return 0

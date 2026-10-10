@@ -15,7 +15,7 @@ Context: `research/README.md` (roles, STATUS machine), `research/config.yaml`, `
 
 **Shell**: permissions are an allowlist (`.claude/settings.headless.json`). Run **one command per Bash call**: no `cd … &&` chains and no pipes into other tools. Use `git -C <dir>`, absolute paths, and the Grep/Glob/Read tools instead of shell grep/cat. A denied command is a signal to use another allowed route, not to retry.
 
-**No background work**: never use `run_in_background`, and never start anything that outlives this session. The session ends when you stop, and a background job dies with it. Long waits (Kaggle runs) belong to `kaggle_push.py --check`, which runs outside Claude.
+**No background work**: never use `run_in_background`, and never start anything that outlives this session (L33). The session ends when you stop, and a background job dies with it. Long waits (Kaggle runs) belong to the detached watcher that `kaggle_push.py` starts by itself (L34); `kaggle_push.py --check` is its backup.
 
 ## Steps by STATUS
 
@@ -36,10 +36,17 @@ Context: `research/README.md` (roles, STATUS machine), `research/config.yaml`, `
 **g4 (review, card, push)** → in this order:
 1. Run the `code-review` skill at `low` on the worktree branch diff vs its base. Fix only correctness findings (re-run G2 if you change code); record the rest in `gates.md`.
 2. Fill `submit_card.md`: the kernel slug, what changed, the paired control (for exploit, the line's `keep_bar`; if it is null, "submit the unchanged control first"), the KEEP bar, the expected effect bound, and a reminder to **paste the kernel slug into Kaggle's submission description** (poll_lb.py matches on it).
-3. `python research/bin/kaggle_push.py <idea> <probe.ipynb> --counter "<regex per spec counter>"` with **no** `--wait`. It refuses (rc 5) when the notebook loads a file the preset does not mount, and (rc 6) while the line's control has no G4 PASS. On rc 5 or 6, write the reason to questions.md and stop; do not edit the catalog or config. On success STATUS is `g4-pushed`. Stop there.
-`kaggle_push.py --check` (run by /daily-digest or by hand) finishes G4 later: it scans the log for the `gates.g4_fail_markers` and the counters, sets `ready-to-submit` or `g4-failed`, and appends the result to submit_card.md.
+3. `python research/bin/kaggle_push.py <idea> <probe.ipynb> --counter "<regex per spec counter>"` with **no** `--wait`. It refuses (rc 5) when the notebook loads a file the preset does not mount, and (rc 6) while the line's control has no G4 PASS. On rc 5 or 6, write the reason to questions.md and stop; do not edit the catalog or config. On success STATUS is `g4-pushed` and the push has already started a detached watcher (`<idea>/kaggle_watch/watch.log`). Stop there; do not wait or poll.
+The watcher finishes G4 by itself: it scans the log for the `gates.g4_fail_markers` and the counters, appends the result to submit_card.md, and sets `ready-to-submit`, or on a FAIL writes `g4_fix_brief.md` and sets `g4-fix` (a fresh run of this skill starts), or `needs-human` once `gates.g4_fix_rounds` are used up. After 60 min it sets `g4-timeout`. `kaggle_push.py --check` (run by /daily-digest) is only the backup.
 
-**g4-pushed | g4-failed | ready-to-submit | revise | escalate | dead | paused-quota | submitted | scored** → do nothing; print the STATUS and stop.
+**g4-fix (a fresh agent after a G4 FAIL)** → you have no memory of the earlier run; the brief is your context.
+1. Read `<idea>/g4_fix_brief.md` first. Open other files only where the brief points (the full log is in `<idea>/kaggle_output/`).
+2. Write `<idea>/g4_fix_<n>.md` (n = STATUS `g4_fixes`): symptom → root cause, with the log line as evidence → the fix, step by step.
+3. Apply the fix within the brief's **Fix scope**. For code: change the patch in the line worktree, commit there, rerun G1 (`compare.py base probe`) and G2 (`python research/bin/run_tests.py <line> --idea <idea>`), and rebuild the probe notebook. For a missing source: add `--source <owner/slug>` only if that slug is in the catalog. A `kind: control` idea may change only sources and metadata, never the notebook code. Log each step in `gates.md`.
+4. Re-push with the brief's re-push command, **no `--wait`**, then stop. The new watcher takes over.
+5. Out of scope (a dataset missing from the catalog, a fix that would change the idea itself, or a catalog edit): write to `questions.md`, set STATUS `needs-human`, stop.
+
+**g4-pushed | g4-failed | g4-timeout | needs-human | ready-to-submit | revise | escalate | dead | paused-quota | submitted | scored** → do nothing; print the STATUS and stop.
 
 ## Output
 End with one line: `RUN-IDEA <idea> -> <final STATUS>`. Keep your messages short; the files are the record.

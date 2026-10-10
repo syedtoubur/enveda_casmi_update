@@ -21,6 +21,9 @@ import poll_lb  # noqa: E402
 import run_tests  # noqa: E402
 
 
+HOOKS: dict[str, list] = {"spawn": [], "toast": [], "queue": [], "fix": []}
+
+
 def repo(tmp_path, monkeypatch):
     """A throwaway repo root with research/config.yaml, a template and one idea."""
     research = tmp_path / "research"
@@ -46,6 +49,13 @@ def repo(tmp_path, monkeypatch):
     for mod in (call_claude, colab_run, kaggle_push, poll_lb, nb_to_colab, run_tests):
         monkeypatch.setattr(mod, "load_config", _common.load_config)
     monkeypatch.setattr(colab_run, "login_problem", lambda shell=None: "")  # never read the real token
+    # never start a real watcher, toast or Claude job from a test; record the calls instead
+    for k in HOOKS:
+        HOOKS[k] = []
+    monkeypatch.setattr(kaggle_push, "spawn_watcher", lambda idea: HOOKS["spawn"].append(idea) or 0)
+    monkeypatch.setattr(kaggle_push, "toast", lambda title, body: HOOKS["toast"].append(f"{title}: {body}"))
+    monkeypatch.setattr(kaggle_push, "queue_ideas", lambda rels: HOOKS["queue"].append(list(rels)))
+    monkeypatch.setattr(kaggle_push, "queue_fix", lambda rel: HOOKS["fix"].append(rel))
     idea = research / "exploit" / "20261010-foo"
     idea.mkdir(parents=True)
     (idea / "STATUS").write_text("ready-for-judge\nline: exploit\ncu_used: 0.0\n")
@@ -395,7 +405,10 @@ def test_push_with_dropped_source_fails(repo):
                "['a/b']\nKernel version 2 successfully pushed.")
         return types.SimpleNamespace(returncode=0, stdout=out, stderr="")
     assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=run) == 1
-    assert _common.read_status(idea)[0] == "g4-failed"
+    # only a catalog edit fixes an invalid source, so no fix agent: straight to the human
+    assert _common.read_status(idea)[0] == "needs-human"
+    assert "G4 needs a human" in (idea / "questions.md").read_text()
+    assert HOOKS["fix"] == [] and HOOKS["spawn"] == []
 
 
 def test_source_audit(repo):
@@ -457,6 +470,227 @@ def test_colab_script_has_shim_then_cells(repo):
     assert text.index("end shim") < text.index("X = 1") < text.index("print(X)")
     assert "'casmi26-fpnet-full1': 'ahmedberatozer'" in text and "_KIND = 'val'" in text
     assert "/kaggle/input/competitions/" in text and "# t" not in text
+
+
+# ---------------- kaggle_push watcher and G4 hand-off (L34)
+def _pushed(idea, push_id="1", **meta):
+    _common.write_status(idea, "g4-pushed", kernel="syedtoubur/casmi-foo", push_id=push_id, **meta)
+    (idea / "kaggle_push").mkdir(exist_ok=True)
+    (idea / "kaggle_push" / "counters.txt").write_text("TRACK4\n")
+
+
+def _seq_run(statuses, log="TRACK4 fired 3\n", calls=None):
+    it = iter(statuses)
+
+    def run(args, timeout=600):
+        if calls is not None:
+            calls.append(args)
+        if args[1] == "status":
+            s = next(it)
+            if s == "ERR":
+                return types.SimpleNamespace(returncode=1, stdout="", stderr="503 Service Unavailable")
+            return types.SimpleNamespace(returncode=0, stdout=f'has status "KernelWorkerStatus.{s}"', stderr="")
+        return _kaggle_run([], log)(args, timeout)
+    return run
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def test_watch_finalizes_on_done_with_heartbeat(repo, capsys):
+    _, idea = repo
+    _pushed(idea)
+    clk = _Clock()
+    rc = kaggle_push.watch(_common.load_config(), idea, _seq_run(["QUEUED", "RUNNING", "COMPLETE"]),
+                           clk.sleep, clk)
+    assert rc == 0 and _common.read_status(idea)[0] == "ready-to-submit"
+    out = capsys.readouterr().out
+    assert out.count("[watch] syedtoubur/casmi-foo") == 3 and "t+60s" in out
+    assert not (idea / "kaggle_watch" / "watch.lock").exists()
+    assert HOOKS["toast"] and "G4 PASS" in HOOKS["toast"][0] and HOOKS["queue"] == []  # not a control
+
+
+def test_watch_keeps_polling_through_cli_errors(repo):
+    _, idea = repo
+    _pushed(idea)
+    clk = _Clock()
+    rc = kaggle_push.watch(_common.load_config(), idea, _seq_run(["ERR", "RUNNING", "COMPLETE"]), clk.sleep, clk)
+    assert rc == 0 and _common.read_status(idea)[0] == "ready-to-submit"
+
+
+def test_watch_times_out_and_check_finishes_later(repo):
+    import itertools
+    _, idea = repo
+    _pushed(idea)
+    clk = _Clock()
+    rc = kaggle_push.watch(_common.load_config(), idea, _seq_run(itertools.repeat("RUNNING")), clk.sleep, clk)
+    assert rc == 4 and _common.read_status(idea)[0] == "g4-timeout"
+    assert "| TIMEOUT |" in (idea / "gates.md").read_text()
+    assert any("TIMEOUT" in t for t in HOOKS["toast"])
+    assert kaggle_push.main(["--check"], run=_seq_run(["COMPLETE"])) == 0  # backup path picks it up
+    assert _common.read_status(idea)[0] == "ready-to-submit"
+
+
+def test_watch_exits_quietly_when_superseded(repo):
+    import itertools
+    _, idea = repo
+    _pushed(idea, push_id="1")
+    clk = _Clock()
+
+    def sleep(s):  # a new push lands while this watcher sleeps
+        _common.write_status(idea, None, push_id="2")
+        clk.sleep(s)
+    rc = kaggle_push.watch(_common.load_config(), idea, _seq_run(itertools.repeat("RUNNING")), sleep, clk)
+    assert rc == 0 and _common.read_status(idea)[0] == "g4-pushed"
+    assert "| G4 |" not in (idea / "gates.md").read_text() and HOOKS["toast"] == []
+
+
+def test_watch_lock_fresh_refuses_stale_is_taken(repo):
+    import os
+    import time as _t
+    _, idea = repo
+    _pushed(idea, push_id="1")
+    lock = idea / "kaggle_watch" / "watch.lock"
+    lock.parent.mkdir()
+    lock.write_text(json.dumps({"pid": os.getppid(), "t": _t.time(), "push_id": "1"}))  # a live owner
+    calls = []
+    assert kaggle_push.watch(_common.load_config(), idea, _seq_run(["COMPLETE"], calls=calls)) == 0
+    assert calls == [] and _common.read_status(idea)[0] == "g4-pushed"
+    assert kaggle_push.main(["--check"], run=_seq_run(["COMPLETE"], calls=calls)) == 0  # check skips it too
+    assert calls == [] and _common.read_status(idea)[0] == "g4-pushed"
+    lock.write_text(json.dumps({"pid": os.getppid(), "t": 0, "push_id": "1"}))  # stale by age
+    assert kaggle_push.watch(_common.load_config(), idea, _seq_run(["COMPLETE"]), lambda s: None) == 0
+    assert _common.read_status(idea)[0] == "ready-to-submit" and not lock.exists()
+
+
+def test_watch_lock_of_older_push_is_taken(repo):
+    import os
+    import time as _t
+    _, idea = repo
+    _pushed(idea, push_id="2")
+    lock = idea / "kaggle_watch" / "watch.lock"
+    lock.parent.mkdir()
+    lock.write_text(json.dumps({"pid": os.getppid(), "t": _t.time(), "push_id": "1"}))
+    assert kaggle_push.watch(_common.load_config(), idea, _seq_run(["COMPLETE"]), lambda s: None) == 0
+    assert _common.read_status(idea)[0] == "ready-to-submit"
+
+
+def _fail_log():
+    body = [f"line {i}" for i in range(100)]
+    body[50] = "Traceback (most recent call last):"
+    body[51] = "FileNotFoundError: x.npz"
+    return "\n".join(body) + "\n"
+
+
+def test_g4_fail_writes_brief_and_starts_fix_round(repo):
+    root, idea = repo
+    _pushed(idea)
+    (idea / "kaggle_push" / "push_args.json").write_text(json.dumps(
+        {"notebook": str(root / "probe.ipynb"), "preset": "p", "slug": "casmi-foo",
+         "counters": ["TRACK4"], "extra_sources": []}))
+    (idea / "spec.md").write_text("# Spec\n## Problem Statement\nOne change: rerank.\n## Solution\nsol\n"
+                                  "## User Stories\nUS-1\n")
+    rc = kaggle_push.watch(_common.load_config(), idea, _seq_run(["COMPLETE"], log=_fail_log()), lambda s: None)
+    assert rc == 2
+    state, meta = _common.read_status(idea)
+    assert state == "g4-fix" and meta["g4_fixes"] == "1"
+    assert HOOKS["fix"] == ["research/exploit/20261010-foo"]
+    brief = (idea / "g4_fix_brief.md").read_text()
+    ctx = brief.split("## Log tail")[0]
+    assert "line 30" in ctx and "line 71" in ctx and "line 29" not in ctx  # ±20 lines of context
+    assert "line 99" in brief.split("## Log tail")[1]
+    assert 'kaggle_push.py research/exploit/20261010-foo' in brief and '--counter "TRACK4"' in brief
+    assert "One change: rerank." in brief and "US-1" not in brief
+    assert "counter 'TRACK4' not printed" in brief and "The catalog itself is never edited" in brief
+    assert any("fix agent round 1" in t for t in HOOKS["toast"])
+
+
+def test_g4_fail_after_fix_rounds_needs_human(repo):
+    _, idea = repo
+    _pushed(idea, g4_fixes=2)
+    assert kaggle_push.watch(_common.load_config(), idea, _seq_run(["COMPLETE"], log=_fail_log()),
+                             lambda s: None) == 2
+    assert _common.read_status(idea)[0] == "needs-human"
+    q = (idea / "questions.md").read_text()
+    assert "G4 needs a human" in q and "g4_fix_brief.md" in q
+    assert HOOKS["fix"] == [] and HOOKS["queue"] == []
+
+
+def test_control_pass_queues_waiting_probes_on_its_line(repo):
+    root, idea = repo
+    _pushed(idea, kind="control")
+    for line, name, state in (("exploit", "20261010-p1", "g2"), ("exploit", "20261010-p2", "ready-to-submit"),
+                              ("explore", "20261010-p3", "g2")):
+        d = root / "research" / line / name
+        d.mkdir(parents=True)
+        (d / "STATUS").write_text(f"{state}\nline: {line}\n")
+    assert kaggle_push.watch(_common.load_config(), idea, _seq_run(["COMPLETE"]), lambda s: None) == 0
+    assert HOOKS["queue"] == [["research/exploit/20261010-p1"]]  # one write, same line, waiting only
+    assert "| G4 queue |" in (idea / "gates.md").read_text()
+    assert "queued: 20261010-p1" in HOOKS["toast"][0]
+    assert _common.read_status(idea)[1]["g4_fixes"] == "0"
+
+
+def test_push_spawns_watcher_only_without_wait(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p", "--counter", "TRACK4"],
+                            run=_kaggle_run([], "")) == 0
+    assert len(HOOKS["spawn"]) == 1
+    state, meta = _common.read_status(idea)
+    assert state == "g4-pushed" and meta["push_id"]
+    args = json.loads((idea / "kaggle_push" / "push_args.json").read_text())
+    assert args["counters"] == ["TRACK4"] and args["notebook"].endswith("probe.ipynb")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "TRACK4"],
+                            run=_kaggle_run([], "TRACK4 x\n"), sleep=lambda s: None) == 0
+    assert len(HOOKS["spawn"]) == 1
+
+
+def test_repush_with_watch_log_open(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    (idea / "kaggle_watch").mkdir()
+    with open(idea / "kaggle_watch" / "watch.log", "a") as f:  # an old watcher still holds it
+        f.write("[watch] old\n")
+        assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run([], "")) == 0
+        assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run([], "")) == 0
+
+
+def test_check_fail_also_starts_fix_round(repo):
+    _, idea = repo
+    _pushed(idea)
+    assert kaggle_push.main(["--check"], run=_seq_run(["ERROR"], log=_fail_log())) == 2
+    assert _common.read_status(idea)[0] == "g4-fix" and HOOKS["fix"] == ["research/exploit/20261010-foo"]
+    assert "kernel status error" in (idea / "g4_fix_brief.md").read_text()
+
+
+def test_extra_source_must_be_in_catalog_and_persists(repo):
+    root, idea = repo
+    cat = json.loads((root / "catalog.json").read_text())
+    cat["datasets"] = {"g": {"dreams": {"slug": "x/dreams-np", "key_files": ["dreams_np_mass.npy"]}}}
+    (root / "catalog.json").write_text(json.dumps(cat))
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    calls = []
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p", "--source", "x/not-there"],
+                            run=_kaggle_run(calls, "")) == 5
+    assert calls == []
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p", "--source", "x/dreams-np"],
+                            run=_kaggle_run(calls, "")) == 0
+    assert _common.read_status(idea)[1]["extra_sources"] == "x/dreams-np"
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 0
+    md = json.loads((idea / "kaggle_push" / "kernel-metadata.json").read_text())
+    assert md["dataset_sources"] == ["a/b", "c/d", "x/dreams-np"]
 
 
 # ---------------- poll_lb
