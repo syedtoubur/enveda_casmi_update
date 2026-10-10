@@ -1,0 +1,44 @@
+# Session Handoff Dossier
+**Generated:** 2026-10-03 15:56:00
+**Source Conversation ID:** 0d5062c1-cc0b-4dda-96db-a236370d1694
+**Context Size:** ~144k tokens (Smart Zone Ceiling reached)
+
+## 1. High-Level Mission & Active Objective
+- **Mission:** Win Enveda CASMI 2026 (MRR@25 on InChIKey14).
+- **Active Parallel Tracks:**
+  1. **Track 4 Probes (Claude subagent):** Implementing Probe P3 / P3e in `specs/track4_priors_probes/probe3_plan.md` (LOTUS/NPAtlas additive prior $\gamma=1.0$ + 2,715 pool expansion on top of the 0.415 baseline `casmi26-v29-fusion-pop-glmh-0-415.ipynb`).
+  2. **Track 4 Class-3 Calibration Analysis (Antigravity):** Analyzing the results of `casmi26-c3cal.ipynb` located in `specs/track4_priors_probes/c3_cal_v2_results/`, starting with `c3_cal_rows.csv`, followed by `mut_lists.json`, `mut_lists_diag.json`, and `pc_lists.json`, to properly understand Class-3 gating and re-calibration.
+
+## 2. Settled Decisions (Do NOT Re-Litigate)
+- **Decision 1: Full PubChem (106M) Preserved + Additive NP Prior ($\gamma = 1.0$).**
+  - *Rationale:* Completely discarding PubChem for the 152k NP table drops recall on 550,000+ lipids and human metabolites. Adding $+1.0$ popularity bonus to LOTUS/NPAtlas safely elevates natural products above lab decoys while preserving 100% database recall.
+  - *Impact:* Implemented in Probe P3e (`casmi26-t4v2-np1-expand.ipynb`).
+- **Decision 2: Fast Smoke Commit vs Deep Hidden Rerun Protocol.**
+  - *Rationale:* Kaggle runs must verify quickly on visible draft commits (10–20 molecules) and run full 400 test molecules only when `KAGGLE_IS_COMPETITION_RERUN` is active.
+- **Decision 3: Zero Mutator Rank-1 Cannibalization Rule.**
+  - *Rationale:* In `casmi26-c3v2-tau8.ipynb`, speculative generated molecules took Rank 1 for 12 queries, causing a -0.022 LB drop ($0.415 \to 0.393$). Rank 1 is strictly restricted or disabled unless backed by independent multi-signal consensus (FPNet + ICE + GL + Spectral Analog).
+
+## 3. Modified & Created Files
+- [`specs/track4_priors_probes/probe3_plan.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/probe3_plan.md) - Definitive implementation plan for Probe P3 / P3e.
+- [`docs/adr/0001-in-process-c3-pipeline.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/docs/adr/0001-in-process-c3-pipeline.md) - ADR for in-process C3 mutator pipeline.
+- [`docs/adr/0002-additive-natural-product-prior.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/docs/adr/0002-additive-natural-product-prior.md) - ADR for additive NP Prior + pool expansion.
+- [`GLOSSARY.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/GLOSSARY.md) - Added core domain definitions for CASMI 2026.
+- [`specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv) - 600-molecule calibration output (100 C1, 200 C2, 300 C3).
+
+## 4. Current Work in Flight
+- Analyzing `specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv` column-by-column:
+  - 100 Class-1 controls: 100% vetoed by `class1_library_match` (0% false positives, CC.1 & CC.2 passed).
+  - 200 Class-2 controls: 96.5% vetoed (only 1 sure, 6 likely fired).
+  - 300 Class-3 positives: 40 fired (10 sure, 30 likely), recovering 32 truths (10.7% recovery on pure database-absent molecules), with 23 at Rank 1.
+- Next file in line: `mut_lists.json` and `mut_lists_diag.json`.
+
+## 5. The Immediate Frontier (Next Steps)
+1. **Analyze `mut_lists.json`:** Inspect generated SMILES, formula isolation tags, and the exact biochemical transforms used.
+2. **Analyze `mut_lists_diag.json` & `pc_lists.json`:** Review intermediate delta-fz pruning traces and PubChem probe scores.
+3. **Calibrate Gating Thresholds:** Determine if `MUT_TAU` and `ana_max` thresholds need adjustment based on the 32 recovered vs 268 unrecovered `c3` queries.
+
+## 6. Recommended Skills & Boot Command
+- Skills: `/analyze-notebook`, `/update-experiments`
+
+### Copy-Paste Boot Prompt for New Session:
+> "Resume work from [.scratch/handoffs/latest.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/handoffs/latest.md). Read the Settled Decisions and continue with the analysis of `mut_lists.json` and `mut_lists_diag.json` in `specs/track4_priors_probes/c3_cal_v2_results/`."

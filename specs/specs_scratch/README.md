@@ -21,8 +21,8 @@ rebuilds from the smallest pipeline we fully understand — Track 3's library-en
 | Validation role | Diagnose and kill; the LB decides. No hyper-parameter tuning on validation (it cost −0.015 before). |
 | Fast commit | `KAGGLE_IS_COMPETITION_RERUN` unset + public test → 20 molecules deep; rerun → all. `run_report.json` always. |
 | R0 | Port the 0.296 pipeline **with fixes**: one `MAX_PEAKS` drives `lv`, `fr` and `sv` (the old `simsim_common.TOPK=64` is gone); no globals. |
-| R1 | Unified pool: v2-pool ∪ ChEBI/LIPID MAPS ∪ NP-table rows missing from the pool ∪ PubChem-tier rows with LOTUS/NPAtlas bits; dedup on scorer_key; built on Colab → our own Kaggle dataset. |
-| Sim budget | Priority cap K per window (lv > fr > NP/popularity > \|ppm\|), K from measured T4 throughput; log truth-in-simulated rate. |
+| R1 | **Revised 10-05 (second grilling), see `r1_pool_plan.md`:** unified pool v2-pool ∪ R0 COCONUT+train ∪ ChEBI/LIPID MAPS ∪ NP table, dedup on scorer_key, **no PubChem, no popularity**; built on Colab → `casmi26-scratch-pool`. Twins R1a (union) / R1b (− enveda-180-only). |
+| Sim budget | Unchanged from R0 (lv > fr > \|ppm\| under the time budget); truth-in-simulated rate measured by the R1 audit. |
 | R2+ | Chosen after R1 from the harness miss breakdown (candidates in `kb_index.md`). |
 | Class 3 | Parked until own-code ≈ 0.400. |
 | Harness | Two slices never pooled (I = 245 enveda-np-examples timsTOF; C = ~400 NP-library molecules); per-query C1/C2/C3 ban arms; MSG-seen split. Design detail still open — see `roadmap.md`. |
@@ -34,4 +34,5 @@ rebuilds from the smallest pipeline we fully understand — Track 3's library-en
 | `gate_report.md` | Pre-registered thresholds, then measured verdicts. **Write thresholds before running.** |
 | `data_contract.md` | Competition schema and every dataset slug the notebooks attach. |
 | `kb_index.md` | Which knowledge-base evidence backs which lever. |
+| `r1_pool_plan.md` | R1 unified candidate pool: decisions, gates, build and run order. |
 | `archive/specs_scratch_draft.txt` | An earlier parallel draft, superseded; its ideas are listed in `kb_index.md`. |

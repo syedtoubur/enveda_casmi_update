@@ -1,0 +1,409 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Enveda CASMI 2026 Dataset & Model Catalog",
+  "description": "Authoritative machine-readable registry of Kaggle dataset slugs, mount locations, purposes, and notebook presets for autonomous agents and kernel-metadata.json generation.",
+  "version": "1.0.0",
+  "last_updated": "2026-10-09",
+  "competition": {
+    "name": "enveda-CASMI26-molecule-id-mass-spectra",
+    "competition_source": "enveda-CASMI26-molecule-id-mass-spectra",
+    "mount_path": "/kaggle/input/competitions/enveda-CASMI26-molecule-id-mass-spectra"
+  },
+  "datasets": {
+    "wheels": {
+      "rdkit_2026_metric": {
+        "slug": "metric/rdkit-2026-3-3-wheel",
+        "url": "https://www.kaggle.com/datasets/metric/rdkit-2026-3-3-wheel",
+        "mount_pattern": "/kaggle/input/**/rdkit-2026.3.3-*.whl",
+        "description": "Official RDKit 2026.03.3 offline wheels (cp310, cp311, cp312, cp313). Strictly required for competition metric evaluation parity.",
+        "key_files": [
+          "rdkit-2026.3.3-cp310-cp310-manylinux_2_28_x86_64.whl",
+          "rdkit-2026.3.3-cp311-cp311-manylinux_2_28_x86_64.whl",
+          "rdkit-2026.3.3-cp312-cp312-manylinux_2_28_x86_64.whl",
+          "rdkit-2026.3.3-cp313-cp313-manylinux_2_28_x86_64.whl"
+        ],
+        "used_in": [
+          "all_notebooks",
+          "casmi-notebook-0-433",
+          "sovereign-zenith",
+          "v4n"
+        ]
+      },
+      "rdkit_2025_cp313_shims": {
+        "slug": "eveliaveldrine/rdkit-wheels",
+        "url": "https://www.kaggle.com/datasets/eveliaveldrine/rdkit-wheels",
+        "mount_pattern": "/kaggle/input/**/rdkit-2025.3.6-cp313*.whl",
+        "description": "RDKit 2025.3.6 wheel re-built for Python 3.13 + numpy 2.5.3 + pillow 12.3.0. Required for ICEBERG and GLACIER subprocesses to run on Kaggle cp313 without throwing wheel rejection errors.",
+        "key_files": [
+          "rdkit-2025.3.6-cp313-cp313-manylinux_2_28_x86_64.whl",
+          "numpy-2.5.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+          "pillow-12.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "v4h",
+          "v4l",
+          "v4n",
+          "glacier_runs",
+          "iceberg_runs"
+        ]
+      }
+    },
+    "model_checkpoints_and_engines": {
+      "v4b_models_and_engine": {
+        "slug": "ahmedberatozer/casmi26-v4b-models",
+        "url": "https://www.kaggle.com/datasets/ahmedberatozer/casmi26-v4b-models",
+        "mount_pattern": "/kaggle/input/**/casmi26-v4b-models",
+        "description": "SOTA v4b engine code, MANIFEST.json, FPNet A/B/D checkpoints, and retrained LightGBM rankers.",
+        "key_files": [
+          "fe_A.pt",
+          "fe_B.pt",
+          "fe_D.pt",
+          "fpnet_0.pt",
+          "ranker_v4b.pkl",
+          "MANIFEST.json",
+          "casmi/engine.py"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith",
+          "v4n",
+          "v4b"
+        ]
+      },
+      "v3_models_and_engine": {
+        "slug": "ahmedberatozer/casmi26-v3-models",
+        "url": "https://www.kaggle.com/datasets/ahmedberatozer/casmi26-v3-models",
+        "mount_pattern": "/kaggle/input/**/casmi26-v3-models",
+        "description": "V3 engine code, FPNet 0/1 checkpoints, and ranker_0.pkl. Used in the isolated background PubChem worker subprocess (pc_runner.py).",
+        "key_files": [
+          "fpnet_0.pt",
+          "fpnet_1.pt",
+          "ranker_0.pkl",
+          "casmi/engine.py"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith",
+          "v4n",
+          "pc_runner"
+        ]
+      },
+      "fpnet_full1": {
+        "slug": "ahmedberatozer/casmi26-fpnet-full1",
+        "url": "https://www.kaggle.com/datasets/ahmedberatozer/casmi26-fpnet-full1",
+        "mount_pattern": "/kaggle/input/**/casmi26-fpnet-full1/**/fpnet_full1.pt",
+        "description": "FPNet neural model trained on ALL competition training folds including natural product examples. Replaces fpnet_0 for a +0.02 to +0.035 MRR jump.",
+        "key_files": [
+          "fpnet_full1.pt"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "r3_full1_r2gl",
+          "v4m",
+          "v4n"
+        ]
+      },
+      "fp_models_v2": {
+        "slug": "prvsiyan/casmi26-fp-models-v2",
+        "url": "https://www.kaggle.com/datasets/prvsiyan/casmi26-fp-models-v2",
+        "mount_pattern": "/kaggle/input/**/casmi26-fp-models-v2",
+        "description": "Prvsiyan's dual-view FPNet models (single-spectrum and merged-spectrum). Used in Engine A / analog propagation.",
+        "key_files": [
+          "fp_merged_m1.pt",
+          "fp_single_s2.pt"
+        ],
+        "used_in": [
+          "engine_A",
+          "two_ranker_engine",
+          "v4n"
+        ]
+      }
+    },
+    "candidate_pools": {
+      "pubchem_tier_mmap": {
+        "slug": "ahmedberatozer/casmi26-pubchem-tier",
+        "url": "https://www.kaggle.com/datasets/ahmedberatozer/casmi26-pubchem-tier",
+        "mount_pattern": "/kaggle/input/**/pc_smiles.npy",
+        "description": "105,875,489 organic PubChem structures in zero-RAM memory-mapped binary arrays. Provides 100% recall ceiling for Class 2 retrieval.",
+        "key_files": [
+          "pc_mass.npy",
+          "pc_off.npy",
+          "pc_smiles.npy"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith",
+          "v4n",
+          "pc_runner",
+          "Track 1"
+        ]
+      },
+      "v2_candidate_pool": {
+        "slug": "ahmedberatozer/casmi26-v2-pool",
+        "url": "https://www.kaggle.com/datasets/ahmedberatozer/casmi26-v2-pool",
+        "mount_pattern": "/kaggle/input/**/pool_meta.parquet",
+        "description": "710,701 candidate structures from Training Set + COCONUT 2.0 with precomputed 10,226-bit fingerprints and fragment profiles.",
+        "key_files": [
+          "pool_meta.parquet",
+          "pool_fp.npy",
+          "pool_frag_p1.npy",
+          "pool_frag_p2.npy"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith",
+          "v4n",
+          "engine_1"
+        ]
+      },
+      "scratch_unified_pool": {
+        "slug": "syedtoubur/casmi26-scratch-pool",
+        "url": "https://www.kaggle.com/datasets/syedtoubur/casmi26-scratch-pool",
+        "mount_pattern": "/kaggle/input/**/casmi26-scratch-pool",
+        "description": "Our own unified, deduplicated candidate pool for Track 1 and Track 3 specs_scratch experiments (R1 pool).",
+        "key_files": [
+          "r1_pool_meta.parquet",
+          "r1_pool_fp.npy"
+        ],
+        "used_in": [
+          "specs_scratch",
+          "R1_unified_pool",
+          "R2_class_vote",
+          "R3_probes"
+        ]
+      },
+      "pubchemlite_6930bit": {
+        "slug": "cosmicbe/casmi26-pubchemlite",
+        "url": "https://www.kaggle.com/datasets/cosmicbe/casmi26-pubchemlite",
+        "mount_pattern": "/kaggle/input/**/casmi26-pubchemlite",
+        "description": "385,760 candidate structures with precomputed 6,930-bit packed fingerprints for Engine 2 candidate expansion.",
+        "key_files": [
+          "pubchemlite_fp6930.npy",
+          "pubchemlite_meta.parquet"
+        ],
+        "used_in": [
+          "Engine 2",
+          "Track 1 expansion"
+        ]
+      },
+      "coconut_candidates": {
+        "slug": "prvsiyan/coconut-casmi26-candidates",
+        "url": "https://www.kaggle.com/datasets/prvsiyan/coconut-casmi26-candidates",
+        "mount_pattern": "/kaggle/input/**/coco_fp.npy",
+        "description": "COCONUT natural-product candidates with 6,930-bit packed fingerprints; also ships the 6,930-bit fp_bits.npy the v4b engine uses.",
+        "key_files": [
+          "coco_fp.npy",
+          "coco_mass.npy",
+          "coco_meta.pkl",
+          "fp_bits.npy"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith"
+        ]
+      },
+      "chebi_lipidmaps": {
+        "slug": "prvsiyan/chebi-lipidmaps-casmi26",
+        "url": "https://www.kaggle.com/datasets/prvsiyan/chebi-lipidmaps-casmi26",
+        "mount_pattern": "/kaggle/input/**/bio_fp.npy",
+        "description": "ChEBI + LIPID MAPS candidates, same 6,930-bit packed fingerprints as COCONUT.",
+        "key_files": [
+          "bio_fp.npy",
+          "bio_mass.npy",
+          "bio_meta.pkl"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith"
+        ]
+      },
+      "dreams_np_tail": {
+        "slug": "hengck23/hengck23-dreams-enveda-casmi26",
+        "url": "https://www.kaggle.com/datasets/hengck23/hengck23-dreams-enveda-casmi26",
+        "mount_pattern": "/kaggle/input/**/dreams_np_mass.npy",
+        "description": "Precomputed DreaMS natural product mass and SMILES arrays for mass-window candidate tail backfilling in cell 22 audit.",
+        "key_files": [
+          "dreams_np_mass.npy",
+          "dreams_np_smiles.npy"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith"
+        ]
+      }
+    },
+    "priors_and_knowledge_tables": {
+      "pubchem_popularity_prior": {
+        "slug": "dmitriigluzdov/casmi26-pubchem-popularity-prior",
+        "url": "https://www.kaggle.com/datasets/dmitriigluzdov/casmi26-pubchem-popularity-prior",
+        "mount_pattern": "/kaggle/input/**/pc_lsid.npy",
+        "description": "Aligned row-by-row with casmi26-pubchem-tier and casmi26-v2-pool. Contains log(1+substances), log(1+PubMed), log(1+patents), CID, InChIKey14, and LOTUS/NPAtlas flags (+0.012 to +0.016 LB boost).",
+        "key_files": [
+          "pc_lsid.npy",
+          "pc_lpmid.npy",
+          "pc_lpatent.npy",
+          "pc_cid.npy",
+          "pc_ik14.npy",
+          "pc_np.npy",
+          "pool_lsid.npy",
+          "pool_lpmid.npy",
+          "pool_np.npy",
+          "MANIFEST.json"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith",
+          "v4n",
+          "supernext",
+          "0.411"
+        ]
+      },
+      "natural_product_knowledge_table": {
+        "slug": "dmitriigluzdov/casmi26-natural-product-knowledge-table",
+        "url": "https://www.kaggle.com/datasets/dmitriigluzdov/casmi26-natural-product-knowledge-table",
+        "mount_pattern": "/kaggle/input/**/natural_products.parquet",
+        "description": "152,717 known natural products from LOTUS and NPAtlas with plant taxonomy, NPClassifier superclasses, organism counts, and 2,715 structures missing from the standard pool.",
+        "key_files": [
+          "natural_products.parquet",
+          "lotus_structure_genus.parquet",
+          "SUMMARY.json"
+        ],
+        "used_in": [
+          "Track 4b",
+          "candidate_expansion",
+          "taxonomic_reranking"
+        ]
+      }
+    },
+    "ms_simulators_and_rescorers": {
+      "iceberg_simulator": {
+        "slug": "ahmedberatozer/casmi26-iceberg",
+        "url": "https://www.kaggle.com/datasets/ahmedberatozer/casmi26-iceberg",
+        "mount_pattern": "/kaggle/input/**/casmi26-iceberg/**/ice_runner.py",
+        "description": "Physics-based forward mass spectrometry prediction model. Generates in-silico MS/MS spectra and computes entropy cosine similarity to re-rank same-formula isomers.",
+        "key_files": [
+          "ice_runner.py",
+          "ice_fuse.py",
+          "wheels/"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "v4h",
+          "v4l",
+          "v4n",
+          "Track 3"
+        ]
+      },
+      "glacier_simulator": {
+        "slug": "ahmedberatozer/casmi26-glacier",
+        "url": "https://www.kaggle.com/datasets/ahmedberatozer/casmi26-glacier",
+        "mount_pattern": "/kaggle/input/**/casmi26-glacier/**/gl_runner.py",
+        "description": "Transformer-based MassSpecGym MS/MS isomer re-scorer. SOTA practice uses it restricted to [M+H]+ spectra for +0.006 to +0.008 LB lift.",
+        "key_files": [
+          "gl_runner.py",
+          "gl_fuse.py"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433",
+          "sovereign-zenith",
+          "v4h",
+          "v4n",
+          "Track 3"
+        ]
+      }
+    },
+    "ranker_training_assets": {
+      "simulated_ranker_rows": {
+        "slug": "megayak/casmi26-simulated-ranker-rows",
+        "url": "https://www.kaggle.com/datasets/megayak/casmi26-simulated-ranker-rows",
+        "mount_pattern": "/kaggle/input/**/sim_rank_rows_*.npz",
+        "description": "399,790 leak-free training rows across 2,250 simulated molecules from 7 query sets (GNPS, RIKEN, MoNA, MassBank, etc.) for training LightGBM rankers.",
+        "key_files": [
+          "sim_rank_rows_nofp.npz",
+          "sim_rank_rows_fp16k.npz",
+          "sim_rank_rows_fppair.npz"
+        ],
+        "used_in": [
+          "ranker_retraining",
+          "Stage C",
+          "Track 1"
+        ]
+      },
+      "pv_ranker_features": {
+        "slug": "prvsiyan/casmi26-ranker-features",
+        "url": "https://www.kaggle.com/datasets/prvsiyan/casmi26-ranker-features",
+        "mount_pattern": "/kaggle/input/**/rank_train.npz",
+        "description": "prvsiyan's shipped ranker training rows (rank_train.npz), coupled to the FPNet logits (L02).",
+        "key_files": [
+          "rank_train.npz"
+        ],
+        "used_in": [
+          "casmi-notebook-0-433"
+        ]
+      }
+    }
+  },
+  "presets": {
+    "sota_0433_inference_preset": {
+      "description": "Exact 16 dataset_sources needed to run casmi-notebook-0-433.ipynb (0.433 LB) and Sovereign Zenith without any missing file exceptions, including DreaMS NP arrays and Engine 2 assets.",
+      "enable_gpu": "true",
+      "enable_internet": "false",
+      "competition_sources": [
+        "enveda-CASMI26-molecule-id-mass-spectra"
+      ],
+      "dataset_sources": [
+        "metric/rdkit-2026-3-3-wheel",
+        "eveliaveldrine/rdkit-wheels",
+        "ahmedberatozer/casmi26-v4b-models",
+        "ahmedberatozer/casmi26-v3-models",
+        "ahmedberatozer/casmi26-fpnet-full1",
+        "ahmedberatozer/casmi26-v2-pool",
+        "ahmedberatozer/casmi26-pubchem-tier",
+        "dmitriigluzdov/casmi26-pubchem-popularity-prior",
+        "ahmedberatozer/casmi26-iceberg",
+        "ahmedberatozer/casmi26-glacier",
+        "megayak/casmi26-simulated-ranker-rows",
+        "prvsiyan/casmi26-fp-models-v2",
+        "prvsiyan/casmi26-ranker-features",
+        "prvsiyan/coconut-casmi26-candidates",
+        "prvsiyan/chebi-lipidmaps-casmi26",
+        "hengck23/hengck23-dreams-enveda-casmi26"
+      ]
+    },
+    "scratch_r1_to_r3_preset": {
+      "description": "Datasets needed for specs_scratch line (R1 unified pool, R2 class vote, R3 FPNet channel).",
+      "enable_gpu": "true",
+      "enable_internet": "false",
+      "competition_sources": [
+        "enveda-CASMI26-molecule-id-mass-spectra"
+      ],
+      "dataset_sources": [
+        "metric/rdkit-2026-3-3-wheel",
+        "eveliaveldrine/rdkit-wheels",
+        "syedtoubur/casmi26-scratch-pool",
+        "ahmedberatozer/casmi26-fpnet-full1",
+        "ahmedberatozer/casmi26-glacier",
+        "ahmedberatozer/casmi26-iceberg",
+        "prvsiyan/casmi26-fp-models-v2"
+      ]
+    },
+    "track1_mutator_preset": {
+      "description": "Datasets for Track 1 Retrieval & Scaffold Mutator runs.",
+      "enable_gpu": "true",
+      "enable_internet": "false",
+      "competition_sources": [
+        "enveda-CASMI26-molecule-id-mass-spectra"
+      ],
+      "dataset_sources": [
+        "metric/rdkit-2026-3-3-wheel",
+        "ahmedberatozer/casmi26-v4b-models",
+        "ahmedberatozer/casmi26-v3-models",
+        "ahmedberatozer/casmi26-fpnet-full1",
+        "ahmedberatozer/casmi26-v2-pool",
+        "ahmedberatozer/casmi26-pubchem-tier",
+        "dmitriigluzdov/casmi26-pubchem-popularity-prior"
+      ]
+    }
+  }
+}

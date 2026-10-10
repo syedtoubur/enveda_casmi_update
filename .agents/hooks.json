@@ -1,0 +1,11 @@
+{
+  "smart-zone-guard": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python scripts/check_context.py"
+      }
+    ]
+  }
+}

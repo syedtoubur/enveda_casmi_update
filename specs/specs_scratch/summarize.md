@@ -113,11 +113,14 @@ python scratch_pkg/tools/mk_notebook.py r0_kaggle --name nosim --set use_sim=Fal
    - Gate R0.4: LB ≥ 0.292. If it scores lower, it's a port bug: diff with `.agents/skills/analyze-notebook/scripts/compare.py` before anything else.
    - Record verdicts in `gate_report.md` and the score via `/update-experiments`.
 2. **Harness design discussion** (§3 open items), then build `casmi_scratch/harness/` and a Colab driver.
-3. **R1 unified pool:**
-   - `pool_build.py` on Colab writes mass-sorted arrays plus `MANIFEST.json`, then publish as a Kaggle dataset.
-   - Measure T4 throughput and set K.
-   - Pre-register the R1 gates.
-   - Run the harness and a paired LB probe.
+3. **R1 unified pool** — design settled in a second grilling session (10-05); see `r1_pool_plan.md`, gates R1.* / CV
+   pre-registered in `gate_report.md`. Changes vs §2's R1 row: **no PubChem tier and no popularity** in R1; sources are
+   v2-pool ∪ R0 coco+train ∪ BIO ∪ NP table; sim priority unchanged (NP flag is moot in an all-NP pool); two LB twins
+   R1a (union) / R1b (− enveda-180-only); NP labels + NP_Score stored for a class-vote R2 candidate, measured first by
+   the CV diagnostic (shift-aware entropy analog hits).
+   **Code done 10-06** (see the status section of `r1_pool_plan.md` for the run order).
+   **v1 pool built 10-06**: 778,095 structures (+10.2% vs R0), R1.1 PASS; R1b = 597,446 (−15% vs R0).
+   Next: upload as `casmi26-scratch-pool`, run the audit notebook (R1.2/R1.3/CV).
 
 ## 6. Rules to keep (from memory / CLAUDE.md)
 - Never read raw `.ipynb` JSON; use the analyze-notebook skill / `compare.py`.

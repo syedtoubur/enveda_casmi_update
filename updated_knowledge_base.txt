@@ -1,0 +1,622 @@
+================================================================================
+ENVEDA CASMI 2026 — UPDATED KNOWLEDGE BASE
+Built 2026-10-02 for Track 4 (Priors & Probes). Current best: 0.405 public LB
+(evenda-casmi-inferencesupernext.ipynb).
+
+Contents
+  PART I   — The 0.405 notebook: pipeline audit, diff vs 0.399, headroom
+  PART II  — Literature knowledge base (A–F), from 25+ web searches / 127 tool calls
+  PART III — Ten most promising new levers, ranked
+  PART IV  — Sources
+
+Marks: [V] = verified this session against a primary page (arXiv/GitHub/PMC/
+publisher). [U] = from memory or a secondary summary, not confirmed.
+[!] = known evaluation problem.
+Feasibility 1–5 = estimated value per engineering hour for this competition
+(offline, single T4, ≤9 h, 400 molecules, MRR@25 on InChIKey-14).
+================================================================================
+
+
+################################################################################
+PART I — THE 0.405 NOTEBOOK (evenda-casmi-inferencesupernext.ipynb)
+################################################################################
+
+Method: compare.py on both notebooks (py:percent), plus an ast diff of the large
+embedded-source strings in C3/C4, which compare.py truncates.
+Parent: casmi26-v4n-engine-fusion-union-lb-0-399.ipynb (0.399, EXPERIMENTS row 21).
+The mutator notebooks (rows 22–23: 0.399 / 0.397) are not the parent.
+
+I.1 Pipeline (11 code cells; same structure as the 0.399 notebook)
+-------------------------------------------------------------------
+C1  config + data discovery
+    LIB_TAU, REL_TH = 0.9, 600.0
+    TOPN, ICE_LAM, ICE_BUDGET, ICE_PC = 60, 1.0, 5400, True
+    SLOTS_AGG = [2,4,6,8,10]; SLOTS_GENTLE = [4,8,12,16,20]
+    Offline RDKit wheel. find() locates datasets (the shortest glob hit wins).
+    MANIFEST SHA-256 lock on casmi26-v4b-models.
+    NEW: finds casmi26-pubchem-popularity-prior/**/MANIFEST.json and sets
+         POP_LAM, POP_UNION, POOLPOP_MU = 0.25, 200, 0.15, plus env vars
+         CASMI_POP_DIR, CASMI_POP_LAM, CASMI_POP_UNION.
+         If the dataset is missing, POOLPOP_MU = 0.
+    No PPM_CENTER anywhere: engine A learns the offset through its ranker
+    features [ppm, |ppm|, |ppm+1.5|].
+C2  commit/rerun switch
+    IS_RERUN = KAGGLE_IS_COMPETITION_RERUN or md5(sorted test spectrum_id)
+               != '654e030e4173780e945252b4a5adf70b'.
+    Commit run: SMOKE_N = 12 and ICE_BUDGET = 300.
+    GL_BUDGET is NOT shrunk; C8 hard-sets it to 4000.
+C3  engine A (prvsiyan analog-propagation two-ranker), in a subprocess with a 4 h timeout
+    Pool: COCONUT (6,930-bit) ∪ train ∪ BIO (ChEBI + LIPID MAPS).
+          Window PPM_WIN 10, falling back to 30.
+    Settings: W_A = (0.35, 0.55); SEEDS (0, 1); N_ANALOG = 200.
+    Rankers are fitted at runtime:
+      - HistGBM on rank_train.npz (depth 6, 500 iterations, lr 0.03);
+      - pv rankers on sim_rank_rows_nofp.npz.
+    FP models: casmi26-fp-models-v2/fp_*.pt.
+    Output: blend_scores(pv, ours, 0.88) → top 80 → dedup → top 40 → ENG.
+C4  PubChem-only channel (pc_runner.py + probe_core2.py, 4 workers)
+    FPNet A+B from casmi26-v3-models.
+    z = 0.5·(mean per-spectrum logits + mean per-polarity merged logits),
+    using only spectra[:16].
+    best_pool_fz = max f·z over the pool window (±10 ppm, falling back to 30 ppm).
+    probe_one: PubChem window ±10 ppm with NO fallback.
+      - Pass 1: ECFP4 partial f·z, keep 5000.
+      - Pass 2: full f·z.
+      - Drop keys already in the pool; stop at K = 25.
+C5–C6  v4n engine
+    casmi26-v2-pool; FP bank fpnet_full1 (falling back to fpnet_0).
+    V1FE fe_v4 features; LightGBM booster list averaged in rank_score.
+C7  BASE lists
+    Per molecule: median neutral mass → V.run → rank_score → dedup → top 60.
+    NEW: POOL_POP = pool_lsid + pool_lpmid (log PubChem SID count + log PMID count).
+         f = z(scs) + 0.15·POOL_POP[pid].
+         Only pool candidates are re-sorted; generated candidates (pid < 0)
+         keep their positions.
+         Generated candidates' formulas get a '|gen' suffix.
+C8  forward rescoring
+    Molecules are processed in ascending lib_max order.
+    ICE input = BASE top 60 ∪ ENG top 40 (ICE_UNION)
+                ∪ PubChem top 25 for molecules with lib_max < LIB_TAU (ICE_PC).
+    NEW: GLACIER runs only on '[M+H]+' spectra. Molecules with none are
+         reranked by ICE alone.
+    rerank(λ = 1) and rerank_multi([ice, gl], [1, 1]), within same-formula
+    groups. BASE is then cut to 25.
+C9  gated PubChem merge
+    lib_max ≥ 0.9 → BASE untouched.
+    Otherwise rel = pc_fz[0] − best_pool_fz:
+      rel > 600 → SLOTS_AGG; else SLOTS_GENTLE.
+    merge() inserts at most 5 PubChem-only candidates.
+C10 final fusion
+    fuse2: weighted RRF; the v4 list scores 1/(3+r), ENG scores 0.6/(3+r);
+    keys via score_key (IK14); cut to n = 40.
+    Then ICE+GL rerank → top 25 → submission.csv.
+
+Datasets: casmi26-v4b-models, casmi26-fpnet-full1, casmi26-v3-models,
+casmi26-v2-pool, PubChem tier (pc_smiles / pc_mass / pc_off), casmi26-iceberg,
+casmi26-glacier, casmi26-fp-models-v2, prvsiyan (coco_*, bio_*,
+sim_rank_rows_nofp, rank_train), NEW casmi26-pubchem-popularity-prior
+(public dataset), RDKit wheel.
+
+I.2 Diff 0.399 → 0.405 (only two live changes; all embedded code is identical except comments)
+------------------------------------------------------------------------------
+1. Popularity prior on the v4n BASE list (C1 + C7). This is the main lever.
+   The shifted scs also feed the ICE/GL z-fusion.
+2. GLACIER restricted to [M+H]+ spectra (C8). This also lowers GL runtime.
+Side effect to ablate: the '|gen' suffix puts generated candidates in their
+own formula groups, so ICE/GL can no longer swap a generated regioisomer with
+the same-formula pool truth (the mutator "friendly fire" failure, −0.002).
+Possibly dead config: CASMI_POP_LAM and CASMI_POP_UNION are exported, but no
+visible code reads them. Assumption to check: len(POOL_POP) == len(pool_meta).
+
+I.3 Weaknesses and headroom
+---------------------------
+Pool misses:
+ - The prior only re-orders candidates AFTER the TOPN = 60 cut, so a truth at
+   ranker rank 61+ stays lost. POP_UNION = 200 is not implemented.
+ - The PubChem-only channel is capped at 5 effective slots (merge), ordered by
+   f·z only (no popularity), with a ±10 ppm window and no fallback, and it uses
+   only spectra[:16].
+ - Engine A contributes only its top 40, and fuse2 cuts the union at 40.
+ - Class 3 has essentially no channel: only the v4n generate=True generator
+   and BIO.
+Class risk:
+ - C1: not shielded from fuse2 or the ICE/GL λ = 1+1 rerank; popularity also
+   reorders class-1 lists. A top-1 freeze is a cheap guard.
+ - C2: where both the gain and the remaining headroom sit.
+ - C3: contributes zero.
+Hard-coded, never tuned: LIB_TAU 0.9; REL_TH 600 (absolute f·z, scale-fragile);
+SLOTS; TOPN 60; ALPHA 0.6; KRR 3; fuse2 n = 40; ICE/GL λ 1.0; w_pv 0.88;
+N_ANALOG 200; PC_N1 5000; PPM 10; K 25; POOLPOP_MU 0.15 (scale of lsid+lpmid
+unknown — if ~10–20, then 0.15 is 1.5–3σ).
+Runtime (commit run, 12 molecules): C1 21 s, C3 692 s (mostly fixed cost),
+C4 109 s, C5 83 s, C6 31 s, C7 58 s, C8 127 s, C10 6 s; total ~19 min.
+A full rerun takes ~3.5–4.5 h of the 9 h limit, so slack is ~4.5–5 h.
+Suggested ablations: POOLPOP_MU = 0 with '|gen' kept; popularity-ordered
+PubChem list; popularity union before the TOPN cut; class-1 top-1 freeze;
+a commit-run GL_BUDGET fix.
+
+I.4 Test-set facts (competition data page)
+------------------------------------------
+- ~1,500 spectra of ~400 molecules, 1–16 spectra per molecule (median 3),
+  all Bruker timsTOF.
+- Monoisotopic mass 157–1,159 Da (median 348).
+- Ten adducts, GIVEN per spectrum: [M+H]+, [M+NH4]+, [M-H2O+H]+, [M-2H2O+H]+,
+  [M+Na]+, [M+K]+, [M-H]-, [M-H2O-H]-, [M+CH2O2-H]-, [M+Cl]-.
+- No CCS / ion mobility / RT columns.
+- Columns: molecule_id, spectrum_id, ms2_mzs, ms2_normalized_intensities,
+  base_peak_intensity, adduct, ionization_mode, instrument_type, precursor_mz,
+  collision_energy_ev (list; several values = a merged spectrum),
+  collision_energy_orig, collision_energy_orig_units.
+- Minimal cleaning: spectra with an inconsistent precursor were dropped, base
+  peaks under 1,000 counts were dropped, peaks above precursor + 2 Da removed.
+- Class distribution is hidden.
+- Training data [V]: ~2.54M spectra / ~277k structures; 82 instrument types,
+  11 ingest libraries (HF mirror lonelyforever/enveda.casmi).
+- Enveda-180 [V]: 1.16M spectra of 184k synthetic drug-like molecules on the
+  same timsTOF as the test set, with CCS (related to enveda/tims-bench).
+- Metric [V]: RDKit tautomer canonicalisation → InChIKey first block;
+  ≤ 25 SMILES per molecule; 5 submissions per day.
+- Other competitors (claims only):
+  - shiferaxa/casmi26: the most predictive local validation is "250 structures
+    the host measured on the test instrument", scored full / spectra-hidden /
+    pool-excluded; random training holdouts did not track the LB.
+  - Isaackjoshua/casmi-2026: merging all of PubChem (94M) hurt (median window
+    ~4.6k candidates). A tiered pool (curated first, PubChem only to fill) and
+    a 1 mDa window helped.
+  - Public LB figures cited: 0.328, 0.306, 0.24. At 0.405 we are well above
+    the public notebooks.
+
+
+################################################################################
+PART II — LITERATURE KNOWLEDGE BASE
+################################################################################
+
+A. STRUCTURE ANNOTATION FROM MS/MS
+==================================
+
+A.1 Benchmark reality check (read first)
+----------------------------------------
+MassSpecGym (NeurIPS 2024 D&B) [V]
+  231k curated pairs; MCES-based OOD split. Tasks: de novo, retrieval
+  (≤256 candidates by mass, or by formula as the bonus task), simulation.
+  Known formula alone lifts random Hit@1 from 0.43% to 12.98%.
+  github.com/pluskal-lab/MassSpecGym. Feasibility 4 (pretrained models,
+  data-safe splits).
+
+MassSpecGym in the Wild / v1.5 (arXiv 2606.19624, June 2026) [V]
+  Found evaluation flaws in ≥17 of 26 papers:
+  - leakage via decoder pretraining, synthetic data and formula predictors;
+  - SMILES-canonicalisation shortcuts reaching 82% Hit@1;
+  - a spectrum-blind baseline ranking by PubChem PUG-REST default order
+    reaches ~49% Hit@1;
+  - a MIST batching/padding bug inflated MIST+MolForge de novo from
+    10.73% to 31.75% top-1.
+  Corrected formula-known retrieval, Hit@1 / @5 / @20:
+    Random                       3.06 / 11.35 / 27.74
+    MIST                         9.57 / 22.11 / 41.12
+    JESTR                       11.82 / 33.48 / 61.46
+    MVP                         13.96 / 36.88 / 68.12
+    FLARE                       22.66 / 50.00 / 75.15
+    ICEBERG (simulate+entropy)  36.18 / 60.70 / 78.83
+    FRIGID                      45.27 / 58.30 / 69.46
+  Adds RDKit-canonical SMILES and data-safe 2.5M / 50M pretraining sets
+  (Tanimoto ≥ 0.7 to any test molecule removed).
+  LESSONS: (1) out of domain, forward simulators beat fingerprint and
+  contrastive retrieval by ~2–3×; (2) popularity / "has-been-measured"
+  priors are VERY strong; (3) distrust pre-2026 MIST-based de novo numbers.
+  Feasibility 5.
+
+"Confronting spurious evaluations…" (Gupta & Skinnider, bioRxiv 2026.05.03) [V abstract]
+  A model that ignores the spectra entirely does well on existing benchmarks,
+  because structures with reference MS/MS look systematically different from
+  generic database structures, so a model can learn "was this compound likely
+  measured?". The authors propose library-like generative decoys.
+  For us this is a feature: test molecules were actually isolated and measured.
+  CAUTION: class-2 truths have NO public spectra, so a "has public spectra"
+  classifier would penalise them. Use literature/occurrence counts instead.
+  Feasibility 5.
+
+"Small molecule retrieval: what are we optimizing for?" (arXiv 2602.16507) [V abstract]
+  Proves a trade-off between fingerprint accuracy and retrieval quality that
+  depends on how similar the candidates are. Implication: train the FPNet with
+  a candidate-aware contrastive loss over same-formula decoys, not per-bit BCE
+  alone. Feasibility 3.
+
+"When should we trust the annotation?" (arXiv 2603.10950) [V abstract]
+  Fingerprint-level uncertainty predicts retrieval success poorly.
+  Retrieval-level total uncertainty is the best rejection criterion, and
+  first-order confidence (top score, margin) is a cheap, strong baseline.
+  Use for novelty-class detection. Feasibility 4.
+
+A.2 Fingerprint / embedding retrieval
+-------------------------------------
+SIRIUS 6 / CSI:FingerID / COSMIC / CANOPUS (Böcker lab) [V]
+  Fragmentation trees + isotopes → formula; kernel/NN → fingerprint; DB search.
+  COSMIC adds a 0–1 confidence and custom combinatorial DB search (28,630
+  hypothetical bile-acid conjugates, 11 of 12 top hits judged correct).
+  CANOPUS predicts ~2,500 ClassyFire/NPClassifier classes.
+  Won CASMI 2016/2017 automated/NP categories; CASMI 2016 top-1 28%.
+  LICENCE: structure search is a WEB SERVICE (academic free, commercial via
+  Bright Giant), so it is NOT usable offline on Kaggle. Feasibility 2: copy
+  the ideas (fragmentation-tree features, COSMIC confidence, class priors).
+
+MIST (Goldman, Nat Mach Intell 2023) [V]
+  Formula transformer: peaks annotated with subformulae, neutral-loss pairs,
+  auxiliary substructure prediction. Beat CSI:FingerID on fingerprint
+  prediction for >70% of standards. MassSpecGym 14.64% Hit@1 originally;
+  corrected 9.57% (formula). github.com/samgoldman97/mist (MIT? [U]).
+  [!] batching padding bug — use the v1.5 fix. Feasibility 3; mostly useful as
+  the encoder behind MS-GPT and FRIGID.
+
+MIST-CF (JCIM 2024) [V]: energy-based formula+adduct ranking without a
+  fragmentation tree; joint accuracy 0.868 (= SIRIUS); fast above m/z 800.
+
+JESTR (Bioinformatics 2025) [V]: contrastive molecule-graph ↔ spectrum
+  embedding regularised with in-silico candidates. 15.6% (mass) / 11.8%
+  (formula, corrected) Hit@1. MIT; weights for NPLIB1 and MassSpecGym.
+  Feasibility 3 (cheap orthogonal channel).
+
+MVP — MultiView Projection (Anal Chem 2026) [V]
+  Contrastive over graph, fingerprint, spectrum and CONSENSUS-SPECTRUM views.
+  KEY: building one consensus spectrum per molecule (merge spectra; keep max
+  intensity per formula-annotated peak) clearly beats rank-then-aggregate:
+  35.99% (mass) / 13.96% (formula) Hit@1. CFM-ID rank-then-aggregate got 2.0%
+  vs MVP's 13.9% in one comparison. github.com/HassounLab/MVP.
+  Feasibility 4 (our molecules have several CEs and adducts).
+
+FLARE (bioRxiv 2026.01.27) [V]: peak-to-atom bidirectional alignment with weak
+  supervision and a max-sim (ColBERT-like) score. 43.15% (mass) / 22.66%
+  (formula) Hit@1 — the best contrastive result on MassSpecGym. HassounLab
+  ([U] repo). Feasibility 4 as a structurally different RRF channel.
+
+MSAlign (arXiv 2605.19752) [V]: frozen DreaMS + frozen ChemBERTa with MLP
+  projectors. Formula split R@1 53.8%; MCES split 16.2% (FLARE 27.2% on their
+  split). CC BY 4.0; code "to be released".
+  [!] The near-identical predecessor SpecBridge (arXiv 2601.17204) was WITHDRAWN
+  in March 2026 for a preprocessing/evaluation problem. Feasibility 3.
+
+GLMR (AAAI 2026, arXiv 2511.06259) [V abstract]: contrastive pre-retrieval of
+  the top-k → generator conditioned on spectrum + candidates → re-rank
+  candidates by similarity to the generated structure. Claims >40% relative
+  top-1 gain. Feasibility 3.
+
+CMSSP (Anal Chem 2024) [V]: contrastive pretraining; +30% top-1 on CASMI 2017;
+  HF OliXio/CMSSP. Feasibility 2.
+
+Cross-instrument domain generalisation (arXiv 2602.00547) [V abstract]: 42.2%
+  top-1 in 256-way scaffold-disjoint retrieval. Main point: Orbitrap / QTOF /
+  timsTOF shift costs a lot, so weight timsTOF (Enveda-180) data heavily when
+  fine-tuning. Feasibility 3.
+
+ESP (Bioinformatics 2024) [V]: MLP+GNN spectrum-predictor ensemble.
+  Feasibility 1.
+
+A.3 Spectral library and analog search
+--------------------------------------
+Flash entropy search (Li & Fiehn, Nat Methods 2023) [V]: exact entropy
+  similarity, ~10,000× faster. Identity, open, NEUTRAL-LOSS and HYBRID modes;
+  a billion spectra in ~2 s. pip ms_entropy. Feasibility 5 (already used).
+  Hybrid and neutral-loss search catch modification analogs and are candidate
+  extra channels.
+Modified cosine (GNPS): precursor-shift-aware analog primitive. Feasibility 4.
+Spec2Vec [V]; MS2DeepScore 2.0 (Nat Commun 2026) [V]: cross-ion-mode Tanimoto
+  prediction with an embedding-quality flag. Feasibility 3.
+MS2Query (Nat Commun 2023) [V]: random forest over Spec2Vec, MS2DeepScore,
+  precursor Δm and the mean similarity of 10 chemically similar library
+  compounds, predicting analog Tanimoto. Feasibility 3.
+MSBERT (Anal Chem 2024) [V]: Orbitrap top-1 0.787. FastEI is EI-only.
+  CLERMS: no details found [U]. Feasibility 2.
+DreaMS (Nat Biotech 2025) [V]: transformer pretrained on GeMS (up to 700M GNPS
+  spectra); DreaMS Atlas has 201M spectra. Fine-tuned fingerprint prediction
+  matches MIST; beats MS2DeepScore on analog search. HF roman-bushuiev/DreaMS.
+  Better used as an analog-search embedding or frozen retrieval encoder than
+  for de novo. Feasibility 3.
+PRISM (Enveda) [V]: BERT masked-peak model on 1.2B spectra (~half proprietary);
+  +23% relative on library matching. No public weights. Hints that the host
+  values library/analog matching.
+LSM1-MS2 (Matterworks): weights not open [U]. Feasibility 1.
+
+A.4 Forward simulators
+----------------------
+CFM-ID 4.0 [V]: QTOF 10/20/40 eV; +35% over v3 on CASMI 2016; slow C++.
+  Feasibility 2.
+MetFrag (2016) [V]: combinatorial bond disconnection + metadata.
+  Reference/patent counts lifted top-1 to 89% (ChemSpider) and 71% (PubChem).
+  Literature+patent counts alone on full PubChem: 58% top-1, 70% when
+  restricted to PubChemLite. Java, offline. Feasibility 3; strong evidence for
+  metadata priors.
+ICEBERG 1 / 2.0 / 2.1 (Coley; ms-pred, MIT) [V]: autoregressive fragment DAG +
+  intensity model; CE is a required input in 2.1, which is 3× faster than 2.0.
+  MassSpecGym weights are public; NIST weights are commercial. Corrected
+  formula-known Hit@1 36.2%. In use.
+GLACIER (arXiv 2606.29161) [V]: single-stage "object-detection" fragment
+  transformer, ~8× faster than ICEBERG. Reports "70.0% top-1 retrieval on
+  MassSpecGym" — candidate set [U]. MassSpecGym checkpoint in ms-pred (MIT).
+  In use.
+MARASON (ICML 2025) [V]: ICEBERG + retrieval-augmented neural graph matching
+  against reference spectra of similar molecules. NIST top-1 18.7% → 27.8%.
+  Feasibility 3 (nearest-neighbour real spectra for timsTOF adaptation).
+SPARC (arXiv 2609.35649) [V abstract]: retrieval-guided TEST-TIME
+  specialisation of a pretrained simulator, recalibrating intensities from
+  related reference spectra. Feasibility 3 (use Enveda-180 timsTOF neighbours).
+FraGNNet (TMLR 2025) [V]: NIST20 top-1 30.3% vs ICEBERG 27.9%.
+  FIORA (Nat Commun 2025, MIT) [V]. MassFormer (Nat Mach Intell 2024) [V] —
+  basis of the CASMI 2022 winner. Feasibility 2–3 each for ensemble diversity.
+AIMe / MS2KOSMOS (bioRxiv 2026.08.05) [V]: neuro-symbolic simulator; 800M
+  predicted spectra for >100M PubChem molecules. If downloadable and licensed,
+  class 2 becomes a library search with no GPU. Feasibility 3 (check).
+
+A.5 De novo generation
+----------------------
+(columns: core | MassSpecGym top-1 | NPLIB1 top-1 | code/licence | T4 feasibility)
+MSNovelist (Nat Meth 2022) [V] | CSI fp + formula → LSTM | GNPS 25% top-1, 45%
+  retrieved; CASMI16 26%/57% | needs SIRIUS fingerprints, effectively not
+  offline | 1
+Spec2Mol (2023) [U] | spectrum → SMILES-embedding AE | low | GitHub | 1
+MassGenie (2021) [U] | transformer on ~6M simulated spectra | n/a | – | 1
+MS2Mol (Enveda, 2023) [V] | BART + BPE SMILES; EnvedaDark (226 NPs): 21% close
+  match, 62% meaningful similarity | not open [U]
+MADGEN (ICLR 2025) [V] | scaffold retrieval → generation | 1.31% (10.5% with
+  oracle scaffold) | 2.10% | GitHub | 2
+DiffMS (ICML 2025) [V] | MIST-like encoder + formula-constrained graph diffusion
+  | 2.30% (top-10 4.25%) | 8.34% | MIT, Zenodo | 1 (131 s/spectrum)
+MS-BART (NeurIPS 2025) [V] | fingerprint-pretrained BART, ~10× faster than
+  diffusion | 1.07% | 7.45% | GitHub | 2
+Test-time-tuned LM (ICLR 2026, Mismetti) [V] | simulated-spectra pretraining +
+  per-query TTT | 3.16% | 12.88% (16.80% with extra spectra) | MIT, HF
+  laura-mismetti/ttt-msms | 2
+MIST+MolForge (arXiv 2508.04180) [V] | claimed 31% | [!] inflated, corrected
+  10.73% (top-10 14.48%)
+FlowMS (ICLR-W 2026) [V] | discrete flow matching | – | 9.15% | 2
+MBGen (arXiv 2602.01643) [V] | many-body diffusion | 7.58% | 12.20% | 2
+FOAM (arXiv 2602.07709, Coley) [V] | formula-constrained graph GENETIC
+  ALGORITHM scored by ICEBERG | DiffMS top-10 4.25% → 10.28% after FOAM
+  refinement; NIST20 encounter rate 68.1% | coleygroup/foam | 3
+FRIGID (arXiv 2604.16648, Coley) [V] | masked diffusion LM over SAFE tokens,
+  conditioned on formula + 4096-bit MIST fingerprint, pretrained on up to 1B
+  molecules; ICEBERG finds hallucinated fragments → remask → re-denoise |
+  18.29% (top-10 22.0%) | 25.03% (33.4%) | coleygroup/FRIGID; LICENCE
+  CONFLICT: paper CC BY-NC-SA 4.0 vs repo Apache 2.0 | 3 (182M params;
+  6.6 s/spectrum backbone, 86 s with scaling, RTX 6000 Ada)
+MS-GPT (arXiv 2607.23607) [V] | molecule LM (100M molecules) queried with a
+  BAND of thresholded fingerprints drawn from the predicted posterior + LoRA
+  posterior alignment | 23.91% (top-10 28.7%) | 29.76% (41.1%) | Apache 2.0,
+  github.com/VIKI623/MS-GPT | 4 (cheap autoregressive; default 20 queries × 5
+  samples)
+MARLIN (arXiv 2607.04774) [V] | DreaMS → fp → mass-shell block-diffusion LM, no
+  formula needed (correct formula emerges 76.7%) | – | 16.94% | code "upon
+  publication"
+CoRe-Gen (arXiv 2605.12980) [U] | robust to imperfect fingerprints
+MetGenX (Nat Commun 2026) [V] | CC BY-NC-ND, Zenodo weights — check rules
+SEISMiQ (Boehringer) [V] | formula + known-substructure constraints | 2
+[!] FRIGID and MS-GPT use MIST encoders; whether the batching bug affects
+their numbers is [U]. The audit lists FRIGID's corrected retrieval as valid
+(45.27%).
+TAKEAWAY: the gains come from fingerprint posterior + large pretrained LM prior
++ multi-query sampling (MS-GPT), and simulator-based error correction
+(FRIGID/FOAM). The decoder's fingerprint type must match (MS-GPT/FRIGID use
+Morgan-4096). Our DreaMS+SELFIES arm lacked both a strong unconditional prior
+and multi-query posterior sampling (8.17% exact@25 on pseudo_c3).
+
+A.6 Networking and propagation
+------------------------------
+GNPS molecular networking / FBMN [V]. Feasibility 3 (concept).
+NAP (PLoS CB 2018) [V]: Sc = α·fc + (1−α)·Σ_j sig(m_j·tc_j); α = 0.3;
+  neighbour cosine ≥ 0.6. Top-1 +29% (fusion), +19.8% (consensus) over MetFrag;
+  mean rank 14.7 → 4.7. Feasibility 4 — but largely overlaps our engine A's
+  analog propagation (N_ANALOG = 200).
+MolNetEnhancer [V]: NAP + MS2LDA + DEREPLICATOR + ClassyFire at family level.
+  Feasibility 2.
+MetDNA3 (Nat Commun 2025) [V]: knowledge (reaction) + data (MS/MS) network;
+  1,600 seeds → >12k annotations. Feasibility 2.
+BAM (Hassoun, Anal Chem 2025) [V]: anchor (library match) → PROXIMAL2 applies
+  RetroRules (42,307 rules) → GNN-SOM ranks sites. Recall 24.2% over 60k
+  anchor–suspect pairs (37.7% at Tanimoto ≥ 0.9). When generated, the true
+  suspect ranked FIRST 57.7% of the time (mean rank 2.1). MIT.
+  Feasibility 4 for class 3.
+STEP / MT-GEM (bioRxiv 2026.05.06) [V]: predicts the number of structural
+  edits between two spectra. AP 48.4% for single-transformation pairs vs 3.8%
+  (entropy) and 2.5% (modified cosine). Feasibility 4 for choosing anchors and
+  edit depth.
+
+B. FORMULA, ADDUCTS, timsTOF, ORTHOGONAL FILTERS
+================================================
+SIRIUS isotope + fragmentation trees: the CASMI 2022 formula winner reached 94%
+  formula and 93% adduct accuracy [V].
+BUDDY / msbuddy (Nat Methods 2023) [V]: bottom-up subformula assignment, ML
+  ranking, FDR; 42.8% smaller search space. pip msbuddy. Feasibility 4 —
+  calibrated formula posterior; a 10 ppm window becomes formula-constrained.
+FIDDLE (Nat Commun 2025) [V existence]: deep-learning formula predictor,
+  claimed to beat SIRIUS and BUDDY.
+Formula/structure comparison (arXiv 2601.00941) [V]: formula top-1 only
+  0.28–0.40 out of domain, 0.74 retrained in-domain; formula errors propagate
+  minimally to structure generation; rare adducts fail almost completely.
+  (Our adducts are GIVEN per spectrum, which removes most of that risk.)
+timsTOF mass accuracy [V]: ~1 ppm median precursor error; <0.8 ppm RMS with
+  internal calibrant. Supports ~3–5 ppm (or ~1 mDa) precursor windows and
+  5–10 ppm fragment tolerance.
+CCS prediction (AllCCS, CCSbase, SigmaCCS, GraphCCS, GRACE): 1.5–3% median
+  error in-domain; GraphCCS R² 0.36 on novel chemistry (Enveda, J Cheminf
+  2024). NOT APPLICABLE — the test set has no CCS or 1/K0.
+RT / logP filters: NOT APPLICABLE — no RT in the test set.
+
+C. CANDIDATE GENERATION FOR NOVEL STRUCTURES
+============================================
+BioTransformer 3.0 [V]: Java, LGPL-3, offline JAR; mammalian/microbial rules,
+  so only partly relevant to plant NPs.
+RetroRules [V]: CC BY 4.0, ~400k rules. PROXIMAL2 [V]: RDKit-based.
+MINE 2.0 [V]: precomputed compounds one reaction step from known metabolism;
+  downloadable [U].
+  Feasibility 4 when anchored on spectrally-near library hits plus the Δmass
+  (BAM-style); low if applied blindly.
+NP modification grammar (recommendation): Δmasses hexose 162.0528, deoxyhexose
+  146.0579, pentose 132.0423, glucuronide 176.0321, methyl 14.0157,
+  O 15.9949, acetyl 42.0106, malonyl 86.0004, prenyl 68.0626,
+  sulfate 79.9568, caffeoyl 162.0317, coumaroyl 146.0368, galloyl 152.0110,
+  H2 2.0157 — applied at sensible sites. (Our ΔM mutator already covers this
+  in formula space; see c3_routing.md.)
+Chemical language-model priors:
+  - DeepMet (Skinnider, Nature 2025) [V]: CLM sampled → mass-matched; sampling
+    frequency used as the ranking prior.
+  - DarkNPS (NMI 2021): ~50% top-1 / ~86% top-10 from mass alone on designer
+    drugs [U].
+  - 67M NP-like DB (Sci Data 2023) [V existence]: CLM trained on COCONUT;
+    a ready-made class-3 pool.
+  - NaFM (NMI 2026): NP foundation model.
+  Feasibility 4–5: a precomputed, formula-indexed CLM pool needs no GPU at
+  inference.
+COCONUT 2.0 [V]: 695,133 unique NPs, 63 collections, NP-likeness and organism
+  data. LOTUS [V]: >750k structure–organism pairs, ~250k structures,
+  ~30k organisms. NPClassifier: pathway/superclass/class.
+  Feasibility 5 — add LOTUS plant-occurrence counts as a prior.
+Suspect lists: PubChemLite (~400k+, exposomics); its membership flag took
+  MetFrag from 58% to 70% top-1 [V]. A COCONUT ∩ LOTUS-Plantae list would be
+  the NP analogue.
+
+D. RANKING AND FUSION
+=====================
+RRF (Cormack 2009) [V]: Σ 1/(k + rank), k = 60. Beat Condorcet, CombMNZ and
+  learned rankers on LETOR 3. Matches our history: only orthogonal fusion pays.
+Calibrated fusion (reasoning): MRR is maximised by sorting on calibrated
+  P(correct). Calibrate each source per novelty class, then noisy-OR or a
+  stacked LambdaMART. NEEDS an LB-aligned validation set (local val tuning cost
+  −0.015 before), so it is deferred.
+CombSUM / CombMNZ / Borda [V]: weaker than RRF without calibration.
+Novelty detection: top-1 score, margin, entropy over the top-k, best library
+  entropy, analog modified cosine. Use it to allocate the 25 slots.
+POPULARITY / "MEASURED-NESS" PRIORS [V] — the 0.405 lever:
+  - CASMI 2016 follow-up (Blaženović 2017): "database boosting is needed to
+    achieve 93% accuracy" — CFM-ID + MetFrag + DB info gave ~93% top-1 and
+    98% top-10.
+  - MetFrag reference/patent counts (A.4).
+  - MassSpecGym PubChem default order ~49% Hit@1 (A.1).
+  - Data: PubChem FTP Compound/Extras/CID-Patent.gz, CID-PMID.gz, CID-SID.gz,
+    collapsed to IK14 (PubChemLite does this).
+Taxonomic priors (Rutz 2019) [V]: taxonomically informed re-ranking gave >50%
+  correct at rank 1 and 1.5–7× F1. With no per-molecule organism metadata, a
+  general plant-NP prior (LOTUS Plantae occurrences, number of plant families)
+  still captures most of the effect.
+
+E. LESSONS FROM CASMI
+=====================
+CASMI 2012/2013 [V]: MetFusion — in-silico + spectral similarity to reference
+  compounds helps.
+CASMI 2016 [V]: Category 2 (in-silico only) won by CSI:IOKR (41%); best >30%
+  top-1. Category 3 (all information) won by MS-FINDER with 70% top-1 thanks
+  to metadata/DB priors. CSI:FingerID alone 28%, MetFrag 12%. Priors more than
+  double accuracy.
+CASMI 2017 [V]: SIRIUS/CSI:FingerID best on natural products.
+CASMI 2022 [V]: 500 compounds absent from libraries; winner Adamo Young
+  (MassFormer simulation ranking), then Rutz (taxonomy/SIRIUS) and Alcazar.
+  Formula/adduct ~93–94% solvable; 2D structure only 21/55 = 38% at best.
+Failure modes: wrong adduct/formula; oversized pools (PubChem dilution);
+  validation mismatched to test chemistry/instrument; duplicate tautomers or
+  stereoisomers wasting slots; overconfident single source; leakage-inflated
+  literature numbers; rare adducts.
+
+F. PRACTICAL (offline, T4, licences)
+====================================
+ms_entropy / FlashEntropySearch  | offline pip | permissive [U] | CPU, ms per query
+matchms, MS2DeepScore, Spec2Vec, MS2Query | pip | Apache-2 [U] | light
+msbuddy                          | pip | [U] | ~0.1–1 s per spectrum [U]
+ms-pred (ICEBERG 2.1, GLACIER, MARASON) | MIT [V] | MassSpecGym weights ONLY
+FRIGID     | licence conflict | ~15–25 s per spectrum on T4 [U]; scaling infeasible
+MS-GPT     | Apache-2 [V] | 100 samples per spectrum, ~seconds [U]; needs a
+             MIST-format fingerprint posterior (or LoRA re-alignment to our FPNet)
+DiffMS     | MIT | 131 s per spectrum → infeasible
+ttt-msms   | MIT | per-query fine-tuning, expensive
+JESTR / MVP | MIT / [U] | cheap
+DreaMS     | [U] | cheap
+BioTransformer | Java JAR, LGPL-3 | CPU
+RetroRules | CC BY 4.0
+MetGenX    | CC BY-NC-ND — check rules
+SIRIUS CSI:FingerID | NOT offline (web service)
+
+
+################################################################################
+PART III — TEN MOST PROMISING NEW LEVERS (research ranking)
+################################################################################
+1.  Popularity / measured-NP prior channel (spectrum-blind): PubChem
+    patent/PMID/SID counts collapsed to IK14, PubChemLite membership, LOTUS
+    plant occurrences, COCONUT membership, NP-likeness. Apply to every list
+    (BASE before the cut, fused, PubChem-only).
+    [Track 4 note: use fixed counts, NOT a classifier trained on train-set
+    structures — class-2 truths have no public spectra.]
+2.  Calibrated probabilistic fusion + novelty-aware slot allocation (needs an
+    LB-aligned validation set).
+3.  A consensus spectrum per molecule plus an adduct-consistent neutral mass
+    (MVP: aggregate-then-rank ≫ rank-then-aggregate).
+4.  Simulation re-ranking as an RRF channel on the top ~50 fused candidates,
+    with CE matching and optional SPARC/MARASON timsTOF recalibration.
+5.  NAP-style network-consensus feature (overlaps engine A's analog
+    propagation).
+6.  Contrastive spectrum↔molecule retrieval channel (FLARE / JESTR / MVP),
+    fine-tuned on Enveda-180 timsTOF with same-formula hard negatives.
+7.  Δmass-targeted analog transformation (BAM + STEP) — upgrades the ΔM
+    mutator.
+8.  Precomputed NP chemical-language-model pool (DeepMet/DarkNPS style, or the
+    67M NP-like DB) for class 3, indexed by formula.
+9.  Fingerprint-posterior multi-query generation (MS-GPT, Apache-2.0), routed
+    to class-3-suspected molecules only.
+10. CCS soft filter — NOT APPLICABLE (no mobility data in the test set).
+Housekeeping: dedupe slots by tautomer-canonical IK14; validate only on
+instrument-matched NP data; treat MIST-dependent pre-June-2026 numbers as
+possibly inflated.
+
+
+################################################################################
+PART IV — SOURCES
+################################################################################
+Competition: kaggle.com/competitions/enveda-CASMI26-molecule-id-mass-spectra/data ·
+  github.com/shiferaxa/casmi26 · github.com/Isaackjoshua/casmi-2026 ·
+  huggingface.co/datasets/lonelyforever/enveda.casmi · deepwiki.com/enveda/enveda-180 ·
+  enveda.com/prism-a-foundation-model-for-lifes-chemistry · github.com/enveda/ccs-prediction
+Benchmarks: arxiv.org/html/2606.19624v1 (MassSpecGym in the Wild) ·
+  arxiv.org/abs/2410.23326 (MassSpecGym) ·
+  biorxiv.org/content/10.64898/2026.05.03.722532v1 (spurious evaluations) ·
+  arxiv.org/abs/2602.16507 · arxiv.org/abs/2603.10950
+De novo: arxiv.org/html/2604.16648v1 + github.com/coleygroup/FRIGID ·
+  arxiv.org/html/2607.23607v1 + github.com/VIKI623/MS-GPT ·
+  arxiv.org/html/2607.04774v1 (MARLIN) · arxiv.org/abs/2602.01643 (MBGen) ·
+  arxiv.org/abs/2603.18397 (FlowMS) · github.com/coleygroup/DiffMS ·
+  arxiv.org/html/2501.01950v3 (MADGEN) · arxiv.org/abs/2510.20615 (MS-BART) ·
+  arxiv.org/abs/2510.23746 (TTT) · arxiv.org/abs/2508.04180 (MIST+MolForge) ·
+  arxiv.org/abs/2602.07709 (FOAM) · arxiv.org/pdf/2605.12980 (CoRe-Gen) ·
+  github.com/ZhuMetLab/MetGenX · nature.com/articles/s41592-022-01486-3 (MSNovelist) ·
+  github.com/Boehringer-Ingelheim/seismiq
+Retrieval: biorxiv.org/content/10.64898/2026.01.27.702086v1 (FLARE) ·
+  arxiv.org/html/2605.19752v1 (MSAlign) · arxiv.org/abs/2601.17204 (SpecBridge, withdrawn) ·
+  arxiv.org/abs/2511.06259 (GLMR) · arxiv.org/abs/2602.00547 ·
+  pmc.ncbi.nlm.nih.gov/articles/PMC12642559 (MVP) · github.com/HassounLab/JESTR1 ·
+  pubs.acs.org/doi/10.1021/acs.analchem.4c03724 (CMSSP) ·
+  nature.com/articles/s42256-023-00708-3 (MIST) · arxiv.org/abs/2307.08240 (MIST-CF) ·
+  nature.com/articles/s41587-025-02663-3 (DreaMS) ·
+  nature.com/articles/s41467-026-69083-y (MS2DeepScore 2) ·
+  nature.com/articles/s41467-023-37446-4 (MS2Query) · github.com/YuanyueLi/FlashEntropySearch
+Simulators: github.com/coleygroup/ms-pred · arxiv.org/abs/2606.29161 (GLACIER) ·
+  arxiv.org/pdf/2502.17874 (MARASON) · arxiv.org/abs/2609.35649 (SPARC) ·
+  arxiv.org/html/2404.02360v1 (FraGNNet) · nature.com/articles/s41467-025-57422-4 (FIORA) ·
+  nature.com/articles/s42256-024-00816-8 (MassFormer) ·
+  pubs.acs.org/doi/10.1021/acs.analchem.1c01465 (CFM-ID 4) ·
+  ncbi.nlm.nih.gov/pmc/articles/PMC4732001 (MetFrag) ·
+  link.springer.com/article/10.1186/s13321-021-00489-0 (PubChemLite+MetFrag) ·
+  biorxiv.org/content/10.64898/2026.08.05.743095v1 (AIMe)
+Networks / rules / NP: pmc.ncbi.nlm.nih.gov/articles/PMC5927460 (NAP) ·
+  pmc.ncbi.nlm.nih.gov/articles/PMC11841678 (BAM) ·
+  biorxiv.org/content/10.64898/2026.05.06.723373v1 (STEP) ·
+  nature.com/articles/s41467-025-63536-6 (MetDNA3) ·
+  github.com/Wishartlab-openscience/Biotransformer · retrorules.org/dl ·
+  github.com/HassounLab/PROXIMAL2 · academic.oup.com/bioinformatics/article/38/13/3484/6589885 (MINE 2) ·
+  nature.com/articles/s41586-025-09969-x (DeepMet) · nature.com/articles/s42256-021-00407-x (DarkNPS) ·
+  nature.com/articles/s41597-023-02207-x (67M NP-like) ·
+  academic.oup.com/nar/article/53/D1/D634/7908792 (COCONUT 2) · elifesciences.org/articles/70780 (LOTUS) ·
+  ncbi.nlm.nih.gov/pmc/articles/PMC6824209 (taxonomic scoring) ·
+  nature.com/articles/s41587-020-0740-8 (CANOPUS) · nature.com/articles/s41587-021-01045-9 (COSMIC)
+Formula / CCS: nature.com/articles/s41592-023-01850-x (BUDDY) · msbuddy.readthedocs.io ·
+  nature.com/articles/s41467-025-66060-9 (FIDDLE) · arxiv.org/html/2601.00941v1 ·
+  v6.docs.sirius-ms.io/account-and-license · arxiv.org/abs/2609.12223 (GRACE)
+Fusion / CASMI: cormack.uwaterloo.ca/cormacksigir09-rrf.pdf ·
+  fiehnlab.ucdavis.edu/casmi/casmi-2022-results · ncbi.nlm.nih.gov/pmc/articles/PMC5368104 ·
+  link.springer.com/article/10.1186/s13321-017-0219-x (database boosting 93%) ·
+  bio.informatik.uni-jena.de/2017/11/casmi-2017-results-are-out ·
+  github.com/rogerwwww/awesome-ai-mass-spec · github.com/enveda/computational-metabolomics-review

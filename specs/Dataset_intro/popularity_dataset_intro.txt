@@ -1,0 +1,69 @@
+[CASMI26 PubChem Popularity Prior](https://www.kaggle.com/datasets/dmitriigluzdov/casmi26-pubchem-popularity-prior)PubChem counts, CIDs, patents and natural-product flags for CASMI26 candidates
+Last Updated: 2 days ago (Version 2)
+[View Dataset](https://www.kaggle.com/datasets/dmitriigluzdov/casmi26-pubchem-popularity-prior)
+About this Dataset
+CASMI26 PubChem Popularity Prior and Annotations
+PubChem knowledge for every candidate structure of the public CASMI 2026 v4 pipeline, aligned row by row with[casmi26-pubchem-tier](https://www.kaggle.com/datasets/ahmedberatozer/casmi26-pubchem-tier) (105,875,489 structures) and[casmi26-v2-pool](https://www.kaggle.com/datasets/ahmedberatozer/casmi26-v2-pool) (710,701 structures); both are mirrored in[our attributed fork](https://www.kaggle.com/datasets/dmitriigluzdov/casmi26-attributed-v4g-reproduction-assets).Used by [CASMI 26: From Spectra to Structures](https://www.kaggle.com/code/dmitriigluzdov/casmi-26-from-spectra-to-structures).
+For each candidate you get: how often it was deposited, how often it appears in PubMed and in patents, its PubChem CID,its InChIKey connectivity block, and whether it is a known natural product.
+Quick start
+import numpy as np P = '/kaggle/input/casmi26-pubchem-popularity-prior' A = '/kaggle/input/casmi26-attributed-v4g-reproduction-assets' mass = np.load(f'{A}/pubchem_tier__pc_mass.npy', mmap_mode='r') load = lambda name: np.load(f'{P}/{name}.npy', mmap_mode='r') sid, pmid, patent, cid, ik14, npf = map(load, ['pc_lsid', 'pc_lpmid', 'pc_lpatent', 'pc_cid', 'pc_ik14', 'pc_np']) a, b = np.searchsorted(mass, [194.0794, 194.0814]) # a 5-ppm window around caffeine pop = sid[a:b].astype('float32') + pmid[a:b].astype('float32') best = a + int(pop.argmax()) print(b - a, 'candidates; most documented CID:', int(cid[best]), ik14[best].decode()) # 2519 RYYVLZVUVIJVGH (caffeine) print('natural products in the window:', int((npf[a:b] > 0).sum()), '| distinct connectivities:', len(np.unique(ik14[a:b])))
+Add 0.25 * pop to a z-scored spectral score to reproduce the prior used in the notebook, or feed the arrays to a ranker.
+Files
+File
+Rows
+Type
+Value
+pc_lsid.npy
+105,875,489
+float16
+log(1 + PubChem substance records)
+pc_lpmid.npy
+105,875,489
+float16
+log(1 + distinct PubMed articles)
+pc_lpatent.npy
+105,875,489
+float16
+log(1 + patent documents)
+pc_cid.npy
+105,875,489
+int32
+representative PubChem CID (the most-deposited stereo variant); 0 = unmatched
+pc_ik14.npy
+105,875,489
+S14
+InChIKey connectivity block of that CID
+pc_np.npy
+105,875,489
+uint8
+natural-product bits: 1 = COCONUT, 2 = LOTUS, 4 = NPAtlas
+pool_lsid.npy, pool_lpmid.npy, pool_lpatent.npy, pool_cid.npy, pool_np.npy
+710,701
+the same for pool rows (pid order)
+pc_* arrays follow the row order of pubchem_tier/pc_smiles.npy; pool_* arrays follow v2_pool/pool_meta.parquet.0 means "no PubChem record found". MANIFEST.json pins the four version-1 arrays and is unchanged, so notebooks thatverify it keep working; MANIFEST_ANNOTATIONS.json pins the files added in version 2.
+What the numbers say
+Coverage. 105,873,462 of 105,875,489 PubChem tier rows (100.0%) and 679,471 of 710,701 pool rows
+(95.6%) are matched to PubChem.
+Patents. 31,069,605 tier rows (29.3%) and 121,541 pool rows have at least one patent.
+Natural products. 1,368,748 tier rows (1.3%) belong to a natural-product collection:
+COCONUT 1,361,539, LOTUS 575,420, NPAtlas 119,349. The hidden test comes from biological
+extracts, so this small flagged subset is where many answers are expected to live.
+Redundancy. The tier holds 105,875,489 rows but 89,944,373 distinct connectivities: stereoisomers, isotopologues
+and mobile-hydrogen tautomers of one skeleton occupy several rows (3.7 rows per connectivity among NPAtlas compounds).
+Group by pc_ik14 when a shortlist should contain distinct scored structures.
+How it was built
+build_pop.py and build_annot.py (both included) read the official[PubChem Compound Extras](https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/) release of 2026-09-27: CID-SID.gz,CID-PMID.gz, CID-Patent.gz, CID-SMILES.gz and CID-InChI-Key.gz, each verified against its published MD5.
+PubChem tier. Each PubChem SMILES is stripped of stereo marks and matched to the tier strings
+(83,798,834 rows); the remaining, mostly stereo-rich rows are matched through RDKit canonical
+non-isomeric SMILES computed on both sides (22,074,628 rows). Counts are summed over all CIDs that share
+the stereo-free structure; the representative CID is the one with the most substance records.
+Pool. Rows are matched by the InChIKey connectivity block (RDKit standard key of the pool SMILES, falling back to the
+stored key); counts are summed over CIDs sharing the block.
+Natural-product flags. A row is flagged when its InChIKey connectivity block occurs in COCONUT (the structures of
+v2_pool), in the [LOTUS](https://doi.org/10.7554/eLife.70780) frozen metadata of 2023-01-06
+([Zenodo 7534071](https://zenodo.org/records/7534071), 147,983 connectivities) or in
+[NPAtlas](https://www.npatlas.org/) (33,497 connectivities).
+Why a popularity prior
+Compounds that reach a mass spectrometer have usually been bought, isolated, deposited and written about.[MetFrag](https://doi.org/10.1186/s13321-016-0115-9) combines in-silico fragmentation with PubChem reference and patentcounts, and [PubChemLite](https://doi.org/10.1186/s13321-021-00489-0) builds a candidate database around annotation richness.The idea of adding log1p(SID) + log1p(PMID) to the CASMI26 v4 pipeline comes from[wangpenghua's public v21 notebook](https://www.kaggle.com/code/wangpenghua/casmi26-v21-v4i-pop); this dataset is anindependent, documented rebuild from the primary files. A prior of this kind favours well-studied chemistry, so validateit on rare compounds before giving it much weight.
+Terms
+PubChem counts and identifiers: NCBI distributes them for free reuse([PubChem downloads](https://pubchem.ncbi.nlm.nih.gov/docs/downloads)). LOTUS is released under CC0 and NPAtlas underCC BY 4.0; only membership flags derived from their InChIKeys are included here. The row order follows the upstream Kaggledatasets named above, whose own terms apply to those datasets. No competition data are included.

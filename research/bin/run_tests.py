@@ -26,7 +26,17 @@ def main(argv=None, run=subprocess.run) -> int:
     if not (wt / "build" / "run_all_tests.sh").exists():
         print(f"[run_tests] no build/run_all_tests.sh in {wt}")
         return 2
-    sh = shutil.which("sh") or shutil.which("bash") or "sh"
+    sh = shutil.which("sh") or shutil.which("bash")
+    if not sh:
+        for candidate in [
+            r"C:\Program Files\Git\bin\sh.exe",
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files\Git\usr\bin\sh.exe",
+        ]:
+            if Path(candidate).exists():
+                sh = candidate
+                break
+    sh = sh or "sh"
     r = run([sh, "build/run_all_tests.sh"], cwd=wt, capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=3600)
     out = (r.stdout or "") + (r.stderr or "")
