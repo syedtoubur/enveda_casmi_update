@@ -47,6 +47,9 @@ CFG = dict(
     ICE_FALLBACK=False,      # fused list: ICEBERG rerank where GLACIER is blind (ice and not gl)
     METRIC_FUSION=False,     # E004/E006 overlay: one RRF vote per metric identity per engine, after C12
     FUSION_WINDOW=None,      # fused shortlist size before the simulator rerank (None = FUSE_N; E006 uses 40)
+    # engine2-fppair knobs: read by the Engine 2 cell upstream of the dump, no-ops in run() (replay reads stored ENG)
+    ENGINE2_ROWS='nofp',     # 'nofp' (base) | 'fppair': "ours" ranker on sim_rank_rows_fppair.npz + leak-free FPNets
+    ENGINE2_W_PV=0.88,       # Engine 2 blend weight of the pv ranker (base 0.88; fppair probe 0.50)
 )
 
 

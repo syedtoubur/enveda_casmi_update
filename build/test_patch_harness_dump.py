@@ -102,6 +102,14 @@ def test_e006_defaults_are_base():
     assert cp.run(state(), deps(), FUSION_WINDOW=cp.CFG['FUSE_N']) == cp.run(state(), deps())
 
 
+def test_engine2_knobs_are_noops_in_replay():
+    # engine2-fppair: ENGINE2_ROWS / ENGINE2_W_PV act upstream of the dump; the replay reads stored ENG lists
+    assert cp.CFG['ENGINE2_ROWS'] == 'nofp' and cp.CFG['ENGINE2_W_PV'] == 0.88
+    for d in (deps(), deps_ice_reverses()):
+        assert cp.run(state(), d, **E006_ON) == cp.run(state(), d, ENGINE2_ROWS='fppair', ENGINE2_W_PV=0.5, **E006_ON)
+        assert cp.run(state(), d) == cp.run(state(), d, ENGINE2_ROWS='nofp', ENGINE2_W_PV=0.88)
+
+
 def test_ice_fallback_where_gl_blind():
     s = state()
     s['gl'] = {}                                         # GLACIER blind for m3, ICE present
