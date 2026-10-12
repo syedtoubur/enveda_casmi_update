@@ -37,6 +37,7 @@ run build/test_patch_c3v2.py
 run build/test_patch_c3cal.py
 run build/test_patch_adduct_ice.py
 run build/test_patch_engine2_fppair.py
+run build/test_patch_promo-soften.py
 run build/test_np_signals_core.py
 run scratch_pkg/tests/run.py
 for _nb in casmi26-v4n-mutator-submit.ipynb casmi26-v4n-mutator-bio-submit.ipynb casmi26-v4n-mutator-c3-submit.ipynb; do
