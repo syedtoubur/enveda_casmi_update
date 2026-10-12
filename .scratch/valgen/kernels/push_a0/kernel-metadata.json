@@ -1,0 +1,26 @@
+{
+  "id": "syedtoubur/casmi-a0-np-holdout",
+  "title": "casmi-a0-np-holdout",
+  "code_file": "a0_audit.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "dataset_sources": [
+    "ahmedberatozer/casmi26-v4b-models",
+    "ahmedberatozer/casmi26-fpnet-full1",
+    "ahmedberatozer/casmi26-v2-pool",
+    "metric/rdkit-2026-3-3-wheel",
+    "ahmedberatozer/casmi26-v3-models",
+    "prvsiyan/casmi26-fp-models-v2",
+    "prvsiyan/coconut-casmi26-candidates",
+    "megayak/casmi26-simulated-ranker-rows",
+    "prvsiyan/casmi26-ranker-features"
+  ],
+  "competition_sources": [
+    "enveda-CASMI26-molecule-id-mass-spectra"
+  ],
+  "kernel_sources": [],
+  "model_sources": []
+}

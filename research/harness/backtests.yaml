@@ -1,0 +1,59 @@
+# Back-test suite for the replay harness (APPEND-ONLY; rules pre-registered in gate_report.md 2026-10-11).
+# `python research/harness/harness.py suite --dump C2 --dump C1_npx` -> capability_map.md + capability_map.json.
+#
+# families: every casmi_post.CFG knob belongs to exactly one family; compare() and preflight R08 use this map.
+# flips:    tier S = sure, own account, paired | A = same-author single runs isolating the change (sign only)
+#           | B = bundle replayed whole (advisory) | none = behaviour row, no valid LB key.
+#           lb = LB delta of `set` vs the base (null when tier none).
+# sweeps:   evidence = true -> the harness argmax must sit within one grid step of `lb_opt` on every dump.
+
+families:
+  e006_overlay: [METRIC_FUSION, FUSION_WINDOW]
+  ice_fallback: [ICE_FALLBACK]
+  tail: [FINAL_PASS]
+  reranker: [CELL19_ICE, BASE_ICE, FUSED_GL, PC_SIM_RERANK, ICE_LAM, GL_LAM]
+  fusion: [USE_ENG, ALPHA, KRR, FUSE_N]
+  promotion: [PROMOTE, S_TAU, POP_TAU, REL_PROMOTE]
+  merge_gate: [LIB_TAU, REL_TH, SLOTS_AGG, SLOTS_GENTLE, ICE_PC, TOPN]
+
+flips:
+  - id: e006
+    family: e006_overlay
+    set: {ICE_FALLBACK: true, METRIC_FUSION: true}
+    tier: S
+    lb: 0.007
+    source: "own account: E006 0.440 (2026-10-10 20:21) vs casmi-control-0433 0.433 (2026-10-10 13:52)"
+  - id: ice_fallback
+    family: ice_fallback
+    set: {ICE_FALLBACK: true}
+    tier: A
+    lb: 0.004
+    source: "flexonafft E004/v80 0.436 -> E006 0.440; .scratch/nb2_e006.py:1249-1252 asserts the control rebuild"
+  - id: final_pass_off
+    family: tail
+    set: {FINAL_PASS: false}
+    tier: A
+    lb: -0.008
+    source: "obstacledeveloper V1 0.425 -> V1.1 0.433 (.scratch/nb1_433.py:16-24); V1.1 also pinned RDKit 2026.03.3"
+  - id: cell19_base_ice
+    family: reranker
+    set: {CELL19_ICE: true, BASE_ICE: true}
+    tier: B
+    lb: -0.015
+    source: "b420 ICE+GL 0.402 vs b416 GL-only 0.417 (.scratch/nb1_433.py:604-609, :324); bundle"
+  - {id: use_eng_off, family: fusion, set: {USE_ENG: false}, tier: none, lb: null, source: "old H2 row; key was v4g"}
+  - {id: promote_off, family: promotion, set: {PROMOTE: false}, tier: none, lb: null, source: "old H2 row; key inferred"}
+  - {id: fused_gl_off, family: reranker, set: {FUSED_GL: false}, tier: none, lb: null, source: "old H2 row; key was an input filter"}
+  - {id: cell19_ice, family: reranker, set: {CELL19_ICE: true}, tier: none, lb: null, source: "old H2 row; key was a bundle"}
+
+sweeps:
+  - {knob: ICE_LAM, values: [0.25, 0.5, 1.0, 1.5, 2.0], evidence: true, lb_opt: 1.0, source: "EXPERIMENTS row 17 (0.5 -> 1.0 +0.007), graveyard (2.0 -0.034)"}
+  - {knob: GL_LAM, values: [0.25, 0.5, 1.0, 1.5, 2.0], evidence: true, lb_opt: 1.0, source: "same as ICE_LAM"}
+  - {knob: ALPHA, values: [0.2, 0.4, 0.6, 0.8, 1.0], evidence: false}
+  - {knob: KRR, values: [1.0, 2.0, 3.0, 5.0, 10.0], evidence: false}
+  - {knob: LIB_TAU, values: [0.7, 0.8, 0.9, 0.95, 1.01], evidence: false}
+  - {knob: REL_TH, values: [150.0, 300.0, 600.0, 1200.0, 1.0e+9], evidence: false}
+  - {knob: SLOTS_GENTLE, values: [[2, 4, 6, 8, 10], [3, 6, 9, 12, 15], [4, 8, 12, 16, 20], [6, 12, 18, 24], []], evidence: false}
+  - {knob: S_TAU, values: [2.0, 4.0, 6.0, 8.0, 12.0], evidence: false}
+  - {knob: POP_TAU, values: [1.0, 3.0, 5.0, 8.0, 15.0], evidence: false}
+  - {knob: REL_PROMOTE, values: [100.0, 250.0, 500.0, 1000.0, 1.0e+9], evidence: false}

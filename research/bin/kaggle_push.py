@@ -2,7 +2,7 @@
 
     python research/bin/kaggle_push.py research/exploit/20261010-foo path/to/probe.ipynb \
         [--slug casmi-foo] [--preset sota_0433_inference_preset] [--wait 7200] \
-        [--counter "TRACK4 .*" ...] [--source owner/catalog-dataset ...]
+        [--counter "TRACK4 fired" ...] [--counter "?ELIGIBLE"] [--source owner/catalog-dataset ...]
     python research/bin/kaggle_push.py --check [<idea>]     # backup: one poll, finalize finished runs
     python research/bin/kaggle_push.py --watch <idea>       # what the push starts, detached
 
@@ -22,8 +22,8 @@ which --check still finalizes). A finished run is finalized: only the log/csv/me
 Refuses to push (L30, L31) when:
 - a file or dataset the notebook loads is not in the pushed sources (audit_sources), or
 - the line has a `control:` idea whose gates.md has no G4 PASS yet (control pushes are exempt).
-G4 FAILs on a COMPLETE run if the log matches a `gates.g4_fail_markers` regex or a --counter
-regex never matches.
+G4 FAILs on a COMPLETE run if the log matches a `gates.g4_fail_markers` regex, a --counter
+regex never matches, or the number after its last match is not > 0 (`?<regex>`: may be 0).
 """
 from __future__ import annotations
 
@@ -156,11 +156,34 @@ def grep_counters(log_text: str, patterns: list[str]) -> list[str]:
     return hits
 
 
-def check_log(log_text: str, counters: list[str], markers: list[str]) -> list[str]:
-    """Reasons a COMPLETE run still fails G4: a fail marker fired, or a counter never printed."""
+def counter_value(log_text: str, pat: str) -> float | None:
+    """The first number within 30 characters after the LAST match of `pat`, or None.
+    `[X] eligible molecules 1` -> 1; `... | molecules reranked 0 | ...` -> 0."""
+    rx, val = re.compile(pat), None
+    for ln in log_text.splitlines():
+        m = rx.search(ln)
+        if m:
+            n = re.match(r"\D{0,30}?(-?\d+(?:\.\d+)?)", ln[m.end():])
+            val = float(n.group(1)) if n else None
+    return val
+
+
+def check_log(log_text: str, counters: list[str], markers: list[str],
+              required: list[str] = ()) -> list[str]:
+    """Reasons a COMPLETE run still fails G4: a fail marker fired, a required line or counter never
+    printed, or a counter's value is not > 0 (a printed `molecules reranked 0` proves nothing fired, L05).
+    A counter written as `?<regex>` may legitimately be 0 (or have no number) and only has to print."""
     bad = [f"marker {m!r}: {grep_counters(log_text, [m])[0][:120]}"
            for m in markers if grep_counters(log_text, [m])]
-    bad += [f"counter {c!r} not printed" for c in counters if not grep_counters(log_text, [c])]
+    bad += [f"required {r!r} not printed" for r in required if not grep_counters(log_text, [r])]
+    for c in counters:
+        pat = c[1:] if c.startswith("?") else c
+        if not grep_counters(log_text, [pat]):
+            bad.append(f"counter {pat!r} not printed")
+        elif not c.startswith("?"):
+            v = counter_value(log_text, pat)
+            if v is None or v <= 0:
+                bad.append(f"counter {pat!r} value {v if v is not None else 'missing'} (must be > 0)")
     return bad
 
 
@@ -179,14 +202,15 @@ def finalize(cfg, idea: Path, kernel: str, status: str, run=kaggle) -> int:
     run(["kernels", "output", kernel, "-p", str(out),
          "--file-pattern", OUTPUT_FILES], timeout=1800)
     log_text = "".join(log_text_of(p) for p in out.glob("*.log")) if out.exists() else ""
-    hits = grep_counters(log_text, counters)
+    hits = grep_counters(log_text, [c.lstrip("?") for c in counters])
     _, meta = read_status(idea)
     required = cfg["lines"].get(meta.get("line", idea.parent.name), {}).get("g4_required") or []
-    bad = check_log(log_text, counters + required, cfg.get("gates", {}).get("g4_fail_markers", []))
+    bad = check_log(log_text, counters, cfg.get("gates", {}).get("g4_fail_markers", []), required)
     ok = status == "complete" and not bad
     result = "PASS" if ok else f"FAIL ({status}{'; ' + ' / '.join(bad) if bad else ''})"
     log_gate(idea, "G4", result, f"{kernel}; counters: {' / '.join(hits) or 'none matched'}")
-    write_status(idea, "ready-to-submit" if ok else "g4-failed")
+    instrument = meta.get("kind") == "instrument"        # harness dumps: never submitted, never auto-fixed
+    write_status(idea, ("instrument-ready" if instrument else "ready-to-submit") if ok else "g4-failed")
     card = idea / "submit_card.md"
     if card.exists():
         with card.open("a", encoding="utf-8") as f:
@@ -196,7 +220,7 @@ def finalize(cfg, idea: Path, kernel: str, status: str, run=kaggle) -> int:
     for h in hits:
         print("  ", h)
     reasons = bad if status == "complete" else [f"kernel status {status}"] + bad
-    after_g4(cfg, idea, ok, kernel, log_text, reasons)
+    after_g4(cfg, idea, ok, kernel, log_text, reasons, fatal=instrument)
     return 0 if ok else 2
 
 
@@ -533,6 +557,13 @@ def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
         print(r.stdout, r.stderr)
         return 1
     print(r.stdout.strip())
+    if "successfully pushed" not in (r.stdout + r.stderr).lower():
+        # the CLI exits 0 on e.g. "Kernel push error: Maximum batch GPU session count of 2 reached."
+        msg = f"push: {(r.stdout + r.stderr).strip()[-200:]}"
+        log_gate(idea, "G4", "FAIL", msg)
+        write_status(idea, "g4-failed", kernel=md["id"], reason=msg[:150])
+        print("[kaggle_push] push did not go through; no watcher started")
+        return 1
     if "not valid" in r.stdout + r.stderr:  # Kaggle pushes anyway, silently dropping the bad sources
         msg = f"push dropped sources: {(r.stdout + r.stderr).strip()[:300]}"
         log_gate(idea, "G4", "FAIL", msg)

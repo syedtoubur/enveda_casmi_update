@@ -3,7 +3,7 @@
   "title": "Enveda CASMI 2026 Dataset & Model Catalog",
   "description": "Authoritative machine-readable registry of Kaggle dataset slugs, mount locations, purposes, and notebook presets for autonomous agents and kernel-metadata.json generation.",
   "version": "1.0.0",
-  "last_updated": "2026-10-09",
+  "last_updated": "2026-10-10",
   "competition": {
     "name": "enveda-CASMI26-molecule-id-mass-spectra",
     "competition_source": "enveda-CASMI26-molecule-id-mass-spectra",
@@ -342,6 +342,22 @@
           "casmi-notebook-0-433"
         ]
       }
+    },
+    "validation": {
+      "val_cohorts": {
+        "slug": "syedtoubur/validation-data-casmi-2026",
+        "url": "https://www.kaggle.com/datasets/syedtoubur/validation-data-casmi-2026",
+        "mount_pattern": "/kaggle/input/**/val_key.pkl",
+        "description": "Validation cohorts (val_scripts): val.parquet in the test schema, val_key.pkl with cohort (C1_npx, C1_xlib, C2, C2_hard), truth smiles/inchikey14 and train ban_rows/ban_keys per molecule.",
+        "key_files": [
+          "val.parquet",
+          "val_key.pkl",
+          "scaffolds.pkl"
+        ],
+        "used_in": [
+          "casmi-0433-harness"
+        ]
+      }
     }
   },
   "presets": {
@@ -403,6 +419,33 @@
         "ahmedberatozer/casmi26-v2-pool",
         "ahmedberatozer/casmi26-pubchem-tier",
         "dmitriigluzdov/casmi26-pubchem-popularity-prior"
+      ]
+    },
+    "harness_0433_preset": {
+      "description": "sota_0433_inference_preset + the validation cohorts, for the research harness val-mode dumps (build/patch_harness_dump.py).",
+      "enable_gpu": "true",
+      "enable_internet": "false",
+      "competition_sources": [
+        "enveda-CASMI26-molecule-id-mass-spectra"
+      ],
+      "dataset_sources": [
+        "metric/rdkit-2026-3-3-wheel",
+        "eveliaveldrine/rdkit-wheels",
+        "ahmedberatozer/casmi26-v4b-models",
+        "ahmedberatozer/casmi26-v3-models",
+        "ahmedberatozer/casmi26-fpnet-full1",
+        "ahmedberatozer/casmi26-v2-pool",
+        "ahmedberatozer/casmi26-pubchem-tier",
+        "dmitriigluzdov/casmi26-pubchem-popularity-prior",
+        "ahmedberatozer/casmi26-iceberg",
+        "ahmedberatozer/casmi26-glacier",
+        "megayak/casmi26-simulated-ranker-rows",
+        "prvsiyan/casmi26-fp-models-v2",
+        "prvsiyan/casmi26-ranker-features",
+        "prvsiyan/coconut-casmi26-candidates",
+        "prvsiyan/chebi-lipidmaps-casmi26",
+        "hengck23/hengck23-dreams-enveda-casmi26",
+        "syedtoubur/validation-data-casmi-2026"
       ]
     }
   }

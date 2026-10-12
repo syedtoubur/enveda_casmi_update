@@ -1,44 +1,63 @@
 # Session Handoff Dossier
-**Generated:** 2026-10-03 15:56:00
-**Source Conversation ID:** 0d5062c1-cc0b-4dda-96db-a236370d1694
-**Context Size:** ~144k tokens (Smart Zone Ceiling reached)
+**Generated:** 2026-10-11 05:05:00  
+**Source Conversation ID:** 33f5b233-feb1-4804-901a-af8ed7017f63  
+**Active Objective:** Cross-Instrument Library Matching Statistical Evaluation & Smart Gate Integration for CASMI 2026 SOTA  
+
+---
 
 ## 1. High-Level Mission & Active Objective
-- **Mission:** Win Enveda CASMI 2026 (MRR@25 on InChIKey14).
-- **Active Parallel Tracks:**
-  1. **Track 4 Probes (Claude subagent):** Implementing Probe P3 / P3e in `specs/track4_priors_probes/probe3_plan.md` (LOTUS/NPAtlas additive prior $\gamma=1.0$ + 2,715 pool expansion on top of the 0.415 baseline `casmi26-v29-fusion-pop-glmh-0-415.ipynb`).
-  2. **Track 4 Class-3 Calibration Analysis (Antigravity):** Analyzing the results of `casmi26-c3cal.ipynb` located in `specs/track4_priors_probes/c3_cal_v2_results/`, starting with `c3_cal_rows.csv`, followed by `mut_lists.json`, `mut_lists_diag.json`, and `pc_lists.json`, to properly understand Class-3 gating and re-calibration.
+- **Competition**: Enveda CASMI 2026 (Predict 2D molecular structures from LC-MS/MS mass spectra, evaluated on tautomer-canonical InChIKey14 MRR@25).
+- **Target Notebook**: [`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-e006-window-40-ice-fallback-true.ipynb) (Public LB: ~0.440).
+- **Objective Completed**: **Phase 3: Cross-Instrument Library Matching Statistical Evaluation with Exact Spectral Entropy & Precursor Window-Max Simulation on Kaggle**.
+- **Next Frontier**: Integrate the empirically validated 4-Tier Smart Library Gate into `casmi26-e006-window-40-ice-fallback-true.ipynb` and verify fast-commit + offline constraints.
 
-## 2. Settled Decisions (Do NOT Re-Litigate)
-- **Decision 1: Full PubChem (106M) Preserved + Additive NP Prior ($\gamma = 1.0$).**
-  - *Rationale:* Completely discarding PubChem for the 152k NP table drops recall on 550,000+ lipids and human metabolites. Adding $+1.0$ popularity bonus to LOTUS/NPAtlas safely elevates natural products above lab decoys while preserving 100% database recall.
-  - *Impact:* Implemented in Probe P3e (`casmi26-t4v2-np1-expand.ipynb`).
-- **Decision 2: Fast Smoke Commit vs Deep Hidden Rerun Protocol.**
-  - *Rationale:* Kaggle runs must verify quickly on visible draft commits (10–20 molecules) and run full 400 test molecules only when `KAGGLE_IS_COMPETITION_RERUN` is active.
-- **Decision 3: Zero Mutator Rank-1 Cannibalization Rule.**
-  - *Rationale:* In `casmi26-c3v2-tau8.ipynb`, speculative generated molecules took Rank 1 for 12 queries, causing a -0.022 LB drop ($0.415 \to 0.393$). Rank 1 is strictly restricted or disabled unless backed by independent multi-signal consensus (FPNet + ICE + GL + Spectral Analog).
+---
 
-## 3. Modified & Created Files
-- [`specs/track4_priors_probes/probe3_plan.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/probe3_plan.md) - Definitive implementation plan for Probe P3 / P3e.
-- [`docs/adr/0001-in-process-c3-pipeline.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/docs/adr/0001-in-process-c3-pipeline.md) - ADR for in-process C3 mutator pipeline.
-- [`docs/adr/0002-additive-natural-product-prior.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/docs/adr/0002-additive-natural-product-prior.md) - ADR for additive NP Prior + pool expansion.
-- [`GLOSSARY.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/GLOSSARY.md) - Added core domain definitions for CASMI 2026.
-- [`specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv) - 600-molecule calibration output (100 C1, 200 C2, 300 C3).
+## 2. Settled Decisions & Ground Truth Findings
 
-## 4. Current Work in Flight
-- Analyzing `specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv` column-by-column:
-  - 100 Class-1 controls: 100% vetoed by `class1_library_match` (0% false positives, CC.1 & CC.2 passed).
-  - 200 Class-2 controls: 96.5% vetoed (only 1 sure, 6 likely fired).
-  - 300 Class-3 positives: 40 fired (10 sure, 30 likely), recovering 32 truths (10.7% recovery on pure database-absent molecules), with 23 at Rank 1.
-- Next file in line: `mut_lists.json` and `mut_lists_diag.json`.
+1. **Extreme-Value Decoy Inflation is Massive for Unfiltered Metrics**:
+   - Single-decoy pairwise FPR at $\tau = 0.50$ is only **0.67%**.
+   - In a realistic $\pm 10\text{ ppm}$ precursor window containing 50–200 candidates, the **Window-Max Raw Cosine False Lock Rate escalates to 10.83%** (and **16.83%** at $\tau = 0.40$).
+   - Lowering raw cosine threshold without structural filters would severely pollute Class 2/3 queries.
 
-## 5. The Immediate Frontier (Next Steps)
-1. **Analyze `mut_lists.json`:** Inspect generated SMILES, formula isolation tags, and the exact biochemical transforms used.
-2. **Analyze `mut_lists_diag.json` & `pc_lists.json`:** Review intermediate delta-fz pruning traces and PubChem probe scores.
-3. **Calibrate Gating Thresholds:** Determine if `MUT_TAU` and `ana_max` thresholds need adjustment based on the 32 recovered vs 268 unrecovered `c3` queries.
+2. **Spectral Entropy Has a Drastically Lower Decoy Tail**:
+   - Spectral Entropy similarity ($1 - \frac{2 S(M) - S(P) - S(Q)}{\ln 4}$) suppresses window decoy false locks by **$3.8\times$** compared to raw cosine at $\tau = 0.50$ (2.83% FLR vs 10.83% FLR).
 
-## 6. Recommended Skills & Boot Command
-- Skills: `/analyze-notebook`, `/update-experiments`
+3. **The Smart Gate Completely Neutralizes Window False Locks**:
+   - Precursor masking ($|m/z - M_{\text{prec}}| > 1.5\text{ Da}$), $N_{\text{matched}} \ge 4$, and high-$m/z$ fragment presence ($> 0.5 \times M_{\text{prec}}$):
+     - At $\tau = 0.70$: Smart FLR = **0.00%** (0 false locks out of 1,200 negative queries, each with ~60 decoys).
+     - At $\tau = 0.65$: Smart FLR = **0.08%** (1 out of 1,200), Smart Precision = **99.12%**, True Match Recall = **53.33%**.
+     - At $\tau = 0.40$: Smart FLR = **0.58%**, Smart Precision = **95.61%**, True Match Recall = **72.00%**.
 
-### Copy-Paste Boot Prompt for New Session:
-> "Resume work from [.scratch/handoffs/latest.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/handoffs/latest.md). Read the Settled Decisions and continue with the analysis of `mut_lists.json` and `mut_lists_diag.json` in `specs/track4_priors_probes/c3_cal_v2_results/`."
+4. **Window Rank 1 Separation**:
+   - When an authentic reference exists in Domain B, Spectral Entropy places the true match at **Rank 1 above all window decoys 91.17% of the time**.
+
+5. **The 4-Tier Smart Library Gate Architecture (Empirically Validated)**:
+   - **Tier 1 (`cos_masked >= 0.85` or `entropy >= 0.80`)**: Intra-instrument lock $\rightarrow$ Rank 1 pinned, 0 PubChem insertions (`untouched`), forward simulators bypassed ($\lambda = 0.0$).
+   - **Tier 2 (`0.65 <= cos_masked < 0.85` or `0.65 <= entropy < 0.80`, $N \ge 2$)**: High cross-instrument $\rightarrow$ Rank 1 retained, aggressive PubChem suppressed, simulators dampened ($\lambda = 0.15$).
+   - **Tier 3 (`0.40 <= cos_masked < 0.65`, $N \ge 4$, $\max(m/z) > 0.5 \times M_{\text{prec}}$)**: Rescued cross-instrument match (72.0% recall, 0.58% decoy window FLR) $\rightarrow$ Candidate in Top 2, gentle PubChem fallback only (slots `[15, 18, 21]`), $\lambda = 0.25$.
+   - **Tier 4 (`cos_masked < 0.40` or fails filters)**: Class 2/3 query $\rightarrow$ Standard PubChem and simulator reranking.
+
+---
+
+## 3. Artifact Ledger
+- [`c:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\handoffs\smart_gate.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/handoffs/smart_gate.md) - Master technical specification updated with Phase 1, Phase 2, and Phase 3 empirical tables.
+- [`c:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\build_eval_nb_v3.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/build_eval_nb_v3.py) - Phase 3 notebook generator script.
+- [`c:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\kaggle_libmax_eval\casmi_cross_instrument_libmax_eval.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/kaggle_libmax_eval/casmi_cross_instrument_libmax_eval.ipynb) - Kaggle evaluation notebook (Version 4).
+- [`c:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\kaggle_libmax_eval\output_v3\phase3_entropy_window_max_report.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output_v3/phase3_entropy_window_max_report.json) - Complete Phase 3 empirical metrics JSON.
+- [`c:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\kaggle_libmax_eval\output_v3\phase3_quantile_distribution.csv`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output_v3/phase3_quantile_distribution.csv) - Table 1 quantile CSV.
+- [`c:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\kaggle_libmax_eval\output_v3\phase3_entropy_operating_curves.csv`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output_v3/phase3_entropy_operating_curves.csv) - Table 2 operating curves CSV.
+- [`c:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\kaggle_libmax_eval\output_v3\phase3_entropy_window_max_curves.png`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output_v3/phase3_entropy_window_max_curves.png) - Publication-grade density and ROC figure.
+
+---
+
+## 4. The Immediate Frontier (Next Steps)
+1. **Apply Smart Gate to Production Notebook (`casmi26-e006-window-40-ice-fallback-true.ipynb`)**:
+   - Implement Steps 1–5 from [`smart_gate.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/handoffs/smart_gate.md):
+     - Step 1: Add `evaluate_smart_gate_for_molecule(L, spectra, target, prec_mz)` in Cell 16.
+     - Step 2: Store decisions `SMART_GATES[mid]` in Cell 18.
+     - Step 3: Upgrade simulator candidate filter in Cell 20.
+     - Step 4: Upgrade PubChem merge bouncer in Cell 22.
+     - Step 5: Prevent friendly-fire demotion in Cell 30 (`rerank_row`).
+2. **Execute Local Smoke Test / Dry Run**:
+   - Verify notebook syntax, fast commit integrity (`SMOKE_N = 12`), and format compliance.

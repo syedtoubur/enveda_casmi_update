@@ -1,0 +1,121 @@
+{
+  "num_tp_pairs": 2500,
+  "num_decoy_pairs": 2481,
+  "recall_at_0_90": 2.12,
+  "false_rejection_at_0_90": 97.88,
+  "median_true_match_sim": 0.6694785009930877,
+  "mean_true_match_sim": 0.6012889591597396,
+  "table_quantiles": [
+    {
+      "Percentile": "5%",
+      "True Match (Sqrt Cosine)": 0.04783207526818386,
+      "True Match (Raw Cosine)": 0.005655585943455811,
+      "Decoy (Sqrt Cosine)": 0.0,
+      "Decoy (Raw Cosine)": 0.0
+    },
+    {
+      "Percentile": "10%",
+      "True Match (Sqrt Cosine)": 0.21039073175314388,
+      "True Match (Raw Cosine)": 0.06739493456776875,
+      "Decoy (Sqrt Cosine)": 0.0,
+      "Decoy (Raw Cosine)": 0.0
+    },
+    {
+      "Percentile": "25%",
+      "True Match (Sqrt Cosine)": 0.491114673398404,
+      "True Match (Raw Cosine)": 0.36226777157827683,
+      "Decoy (Sqrt Cosine)": 0.0,
+      "Decoy (Raw Cosine)": 0.0
+    },
+    {
+      "Percentile": "50%",
+      "True Match (Sqrt Cosine)": 0.6694785009930877,
+      "True Match (Raw Cosine)": 0.6996358607893247,
+      "Decoy (Sqrt Cosine)": 0.011019070785528013,
+      "Decoy (Raw Cosine)": 0.0003376716209611587
+    },
+    {
+      "Percentile": "75%",
+      "True Match (Sqrt Cosine)": 0.7751358736899312,
+      "True Match (Raw Cosine)": 0.8767160686476578,
+      "Decoy (Sqrt Cosine)": 0.06868704794052453,
+      "Decoy (Raw Cosine)": 0.014948778415752434
+    },
+    {
+      "Percentile": "90%",
+      "True Match (Sqrt Cosine)": 0.8410467873332219,
+      "True Match (Raw Cosine)": 0.9513059167057122,
+      "Decoy (Sqrt Cosine)": 0.21319100958436404,
+      "Decoy (Raw Cosine)": 0.173483750963531
+    },
+    {
+      "Percentile": "95%",
+      "True Match (Sqrt Cosine)": 0.8744033241168966,
+      "True Match (Raw Cosine)": 0.9759419675014174,
+      "Decoy (Sqrt Cosine)": 0.3333293341910181,
+      "Decoy (Raw Cosine)": 0.41776666998846496
+    }
+  ],
+  "table_thresholds": [
+    {
+      "Threshold (tau)": 0.95,
+      "True Match Recall (%)": 0.04,
+      "Decoy False Positive (%)": 0.0,
+      "Precision Estimate (%)": 99.99999750000006
+    },
+    {
+      "Threshold (tau)": 0.9,
+      "True Match Recall (%)": 2.12,
+      "Decoy False Positive (%)": 0.0,
+      "Precision Estimate (%)": 99.9999999528302
+    },
+    {
+      "Threshold (tau)": 0.85,
+      "True Match Recall (%)": 8.4,
+      "Decoy False Positive (%)": 0.04030632809351068,
+      "Precision Estimate (%)": 99.52245419156677
+    },
+    {
+      "Threshold (tau)": 0.8,
+      "True Match Recall (%)": 19.16,
+      "Decoy False Positive (%)": 0.04030632809351068,
+      "Precision Estimate (%)": 99.79007455192298
+    },
+    {
+      "Threshold (tau)": 0.75,
+      "True Match Recall (%)": 31.52,
+      "Decoy False Positive (%)": 0.12091898428053204,
+      "Precision Estimate (%)": 99.61783984423214
+    },
+    {
+      "Threshold (tau)": 0.7,
+      "True Match Recall (%)": 43.2,
+      "Decoy False Positive (%)": 0.32245062474808545,
+      "Precision Estimate (%)": 99.25911656831815
+    },
+    {
+      "Threshold (tau)": 0.65,
+      "True Match Recall (%)": 54.559999999999995,
+      "Decoy False Positive (%)": 0.36275695284159615,
+      "Precision Estimate (%)": 99.3395143034308
+    },
+    {
+      "Threshold (tau)": 0.6,
+      "True Match Recall (%)": 62.96000000000001,
+      "Decoy False Positive (%)": 0.5239822652156388,
+      "Precision Estimate (%)": 99.1746228772821
+    },
+    {
+      "Threshold (tau)": 0.5,
+      "True Match Recall (%)": 74.2,
+      "Decoy False Positive (%)": 1.6928657799274487,
+      "Precision Estimate (%)": 97.76940063666316
+    },
+    {
+      "Threshold (tau)": 0.4,
+      "True Match Recall (%)": 81.52000000000001,
+      "Decoy False Positive (%)": 3.345425231761386,
+      "Precision Estimate (%)": 96.05796444949655
+    }
+  ]
+}

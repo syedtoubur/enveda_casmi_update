@@ -56,7 +56,23 @@ colab:
   exec_timeout_s: 3600
   drive_root: /content/drive/MyDrive/casmi_2026
 
+campaign:                   # research/bin/campaign.py defaults; a charter's `## Stop rules` overrides them
+  max_cycles: 5
+  max_lb_probes: 4
+  dead_streak: 2            # consecutive harness deaths on one branch close it
+  quota_pause_h: 12         # retry a Claude usage-limit pause every 30 min up to this long, then stop
+
+harness:                    # research/harness/gate_report.md holds the pre-registered gates
+  lb_slot_delta: 0.005      # harness delta MRR@25 on the target slice
+  ci: 0.90                  # paired bootstrap, lower bound > 0
+  dumps: [C2, C1_npx]       # val_key cohorts with a val-mode dump
+
 claude:
+  models:                   # model per campaign step (claude -p --model)
+    replan: opus
+    spec: opus
+    attack: opus
+    build: sonnet
   lock_file: research/queue/claude.lock
   queue_file: research/queue/claude_queue.txt
   settings: .claude/settings.headless.json

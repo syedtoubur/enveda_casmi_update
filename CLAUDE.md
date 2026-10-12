@@ -28,11 +28,10 @@
 - **Token-Efficient Notebook Inspection**: NEVER read, view, or grep raw `.ipynb` JSON files directly (wastes up to 98% of context on JSON formatting and base64 plots). Always use the `/analyze-notebook` skill or run `python .agents/skills/analyze-notebook/scripts/compare.py [notebooks...]` which converts to `py:percent` and extracts semantic diffs.
 
 ## 4. Multi-agent research workflow (`research/`)
-- Two lines run in parallel: **exploit** (patches on `casmi-notebook-0-433.ipynb`) and **explore** (`scratch_pkg`). Each line has its own git worktree under `C:/casmi/lines/`, outside OneDrive. Write code only there.
-- One idea is one folder, `research/<line>/<idea>/`; its first STATUS line is the state. Roles, the state machine and entry points: `research/README.md`. Config: `research/config.yaml`.
-- Antigravity (Gemini Flash): `/cycle <line>` (grill, research, spike, spec), `/critic`, `/daily-digest`. Claude: `/judge`, plus `/run-idea`, which `research/bin/call_claude.py` starts headless (one job at a time).
-- Critic and judge checklist: `research/LESSONS.md`. Cite lessons by ID. Only the Reporter edits EXPERIMENTS.md and LESSONS.md.
-- Agents push Kaggle kernels (`research/bin/kaggle_push.py`). Only the human submits.
+- **Exploit** line only (patches on `casmi-notebook-0-433.ipynb`, worktree `C:/casmi/lines/exploit`, outside OneDrive; write code only there). Explore (`scratch_pkg`) is frozen.
+- One grill → one campaign: `/campaign-grill` writes `research/campaigns/<id>/charter.md`, then `research/bin/campaign.py` runs 3–5 cycles headless: Opus `/replan`, `/spec`, `/attack`; Sonnet `/build`; Gemini `/scout`, `/daily-digest`. Roles, STATUS machine, entry points: `research/README.md`.
+- Every idea is measured on the replay harness (`research/harness/`, gates in `gate_report.md`) before it earns an LB slot. Post-scoring changes are `build/casmi_post.py` knobs.
+- Decisions are code: `poll_lb.decide()` (paired control, counter values > 0, replicate), `preflight.py` + `research/rules/` (each new mistake becomes a rule with a fixture). Agents push Kaggle kernels (`research/bin/kaggle_push.py`); only the human submits.
 
 ## Agent skills
 

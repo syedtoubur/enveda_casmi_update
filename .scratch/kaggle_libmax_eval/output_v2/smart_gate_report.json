@@ -1,0 +1,94 @@
+{
+  "num_tp_pairs": 2538,
+  "num_decoy_pairs": 2519,
+  "decoy_autopsy": {
+    "n_high_decoys": 80,
+    "low_peaks_pct": 0.5125,
+    "no_high_mz_pct": 0.5625,
+    "precursor_inflation_pct": 0.75,
+    "eliminated_pct": 0.8
+  },
+  "ablation_table": [
+    {
+      "Threshold (tau)": 0.9,
+      "Base Recall (%)": 2.206461780929866,
+      "Base Decoy FPR (%)": 0.0,
+      "N>=3 Decoy FPR (%)": 0.0,
+      "Smart Recall (%)": 2.955082742316785,
+      "Smart Decoy FPR (%)": 0.0,
+      "Smart Precision (%)": 99.99999996616
+    },
+    {
+      "Threshold (tau)": 0.8,
+      "Base Recall (%)": 19.227738376674548,
+      "Base Decoy FPR (%)": 0.07939658594680428,
+      "N>=3 Decoy FPR (%)": 0.07939658594680428,
+      "Smart Recall (%)": 21.788810086682428,
+      "Smart Decoy FPR (%)": 0.11909487892020643,
+      "Smart Precision (%)": 99.45638398513341
+    },
+    {
+      "Threshold (tau)": 0.7,
+      "Base Recall (%)": 43.262411347517734,
+      "Base Decoy FPR (%)": 0.3175863437872171,
+      "N>=3 Decoy FPR (%)": 0.3175863437872171,
+      "Smart Recall (%)": 45.31126871552404,
+      "Smart Decoy FPR (%)": 0.23818975784041285,
+      "Smart Precision (%)": 99.47707444431097
+    },
+    {
+      "Threshold (tau)": 0.65,
+      "Base Recall (%)": 54.57052797478329,
+      "Base Decoy FPR (%)": 0.3175863437872171,
+      "N>=3 Decoy FPR (%)": 0.3175863437872171,
+      "Smart Recall (%)": 54.80693459416863,
+      "Smart Decoy FPR (%)": 0.23818975784041285,
+      "Smart Precision (%)": 99.56728273095928
+    },
+    {
+      "Threshold (tau)": 0.6,
+      "Base Recall (%)": 63.31757289204097,
+      "Base Decoy FPR (%)": 0.43668122270742354,
+      "N>=3 Decoy FPR (%)": 0.39698292973402144,
+      "Smart Recall (%)": 61.30811662726556,
+      "Smart Decoy FPR (%)": 0.277888050813815,
+      "Smart Precision (%)": 99.54878051716153
+    },
+    {
+      "Threshold (tau)": 0.55,
+      "Base Recall (%)": 69.3853427895981,
+      "Base Decoy FPR (%)": 0.833664152441445,
+      "N>=3 Decoy FPR (%)": 0.5954743946010321,
+      "Smart Recall (%)": 66.43026004728132,
+      "Smart Decoy FPR (%)": 0.43668122270742354,
+      "Smart Precision (%)": 99.3469400343322
+    },
+    {
+      "Threshold (tau)": 0.5,
+      "Base Recall (%)": 74.50748620961387,
+      "Base Decoy FPR (%)": 1.627630011909488,
+      "N>=3 Decoy FPR (%)": 0.9527590313616514,
+      "Smart Recall (%)": 70.56737588652481,
+      "Smart Decoy FPR (%)": 0.43668122270742354,
+      "Smart Precision (%)": 99.38499116602662
+    },
+    {
+      "Threshold (tau)": 0.45,
+      "Base Recall (%)": 78.76280535855004,
+      "Base Decoy FPR (%)": 2.3818975784041285,
+      "N>=3 Decoy FPR (%)": 1.1512504962286623,
+      "Smart Recall (%)": 73.9558707643814,
+      "Smart Decoy FPR (%)": 0.5160778086542279,
+      "Smart Precision (%)": 99.30701717957443
+    },
+    {
+      "Threshold (tau)": 0.4,
+      "Base Recall (%)": 81.75728920409772,
+      "Base Decoy FPR (%)": 3.1758634378721715,
+      "N>=3 Decoy FPR (%)": 1.5482334259626835,
+      "Smart Recall (%)": 76.63514578408196,
+      "Smart Decoy FPR (%)": 0.6748709805478365,
+      "Smart Precision (%)": 99.12705880844166
+    }
+  ]
+}

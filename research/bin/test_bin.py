@@ -22,6 +22,7 @@ import run_tests  # noqa: E402
 
 
 HOOKS: dict[str, list] = {"spawn": [], "toast": [], "queue": [], "fix": []}
+PUSH_OK = "Kernel version 1 successfully pushed.  Please check progress at https://www.kaggle.com/code/x"
 
 
 def repo(tmp_path, monkeypatch):
@@ -289,7 +290,7 @@ def test_push_never_submits_and_logs_g4(repo):
 
     def run(args, timeout=600):
         calls.append(args)
-        out = 'has status "KernelWorkerStatus.COMPLETE"' if args[1] == "status" else "ok"
+        out = 'has status "KernelWorkerStatus.COMPLETE"' if args[1] == "status" else PUSH_OK
         if args[1] == "output":
             d = Path(args[args.index("-p") + 1]); d.mkdir(parents=True, exist_ok=True)
             (d / "k.log").write_text("TRACK4 fired 37\nother\n")
@@ -305,7 +306,7 @@ def test_push_never_submits_and_logs_g4(repo):
 def _kaggle_run(calls, log):
     def run(args, timeout=600):
         calls.append(args)
-        out = 'has status "KernelWorkerStatus.COMPLETE"' if args[1] == "status" else "ok"
+        out = 'has status "KernelWorkerStatus.COMPLETE"' if args[1] == "status" else PUSH_OK
         if args[1] == "output":
             assert "--file-pattern" in args
             d = Path(args[args.index("-p") + 1]); d.mkdir(parents=True, exist_ok=True)
@@ -651,7 +652,7 @@ def test_push_spawns_watcher_only_without_wait(repo):
     args = json.loads((idea / "kaggle_push" / "push_args.json").read_text())
     assert args["counters"] == ["TRACK4"] and args["notebook"].endswith("probe.ipynb")
     assert kaggle_push.main([str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "TRACK4"],
-                            run=_kaggle_run([], "TRACK4 x\n"), sleep=lambda s: None) == 0
+                            run=_kaggle_run([], "TRACK4 x 3\n"), sleep=lambda s: None) == 0
     assert len(HOOKS["spawn"]) == 1
 
 
@@ -703,7 +704,84 @@ def test_poll_matches_by_slug_in_description(repo, capsys):
     out = capsys.readouterr().out
     assert "UNMATCHED" in out and "LB=0.430" in out
     state, meta = _common.read_status(idea)
-    assert state == "scored" and meta["lb"] == "0.430"
+    assert state == "scored-unpaired" and meta["lb"] == "0.430"  # no control on the line
+
+
+def test_decide_rules():
+    assert poll_lb.decide([0.432], None, True)[0] == "scored-unpaired"
+    assert poll_lb.decide([0.440], 0.433, False)[0] == "revert"          # counters never fired
+    assert poll_lb.decide([0.436], 0.433, True)[0] == "revert"           # inside the noise floor
+    assert poll_lb.decide([0.437], 0.433, True)[0] == "keep-pending"
+    assert poll_lb.decide([0.437, 0.437], 0.433, True)[0] == "keep"
+    assert poll_lb.decide([0.437, 0.433], 0.433, True)[0] == "revert"    # replicate regressed
+
+
+def _probe_with_g4_log(idea, log, counters="X fired\n"):
+    (idea / "kaggle_push").mkdir(exist_ok=True)
+    (idea / "kaggle_push" / "counters.txt").write_text(counters)
+    (idea / "kaggle_output").mkdir(exist_ok=True)
+    (idea / "kaggle_output" / "k.log").write_text(log)
+
+
+def test_poll_pairs_probe_with_line_control(repo, capsys):
+    root, idea = repo
+    import yaml
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text())
+    ctl = root / "research" / "exploit" / "20261010-ctl"
+    ctl.mkdir()
+    (ctl / "STATUS").write_text("ready-to-submit\nline: exploit\nkernel: syedtoubur/casmi-ctl\n")
+    cfg["lines"]["exploit"]["control"] = "research/exploit/20261010-ctl"
+    cfgp.write_text(yaml.safe_dump(cfg))
+    _common.write_status(idea, "submitted", kernel="syedtoubur/casmi-foo", lb_skip=1)
+    _probe_with_g4_log(idea, "X fired 5\n")
+    subs = [{"date": "2026-10-11", "description": "casmi-foo", "publicScore": "0.440"},
+            {"date": "2026-10-10", "description": "casmi-foo broken v1", "publicScore": "0.371"}]
+    poll_lb.main(["--write"], fetcher=lambda cfg: subs)
+    assert _common.read_status(idea)[0] == "scored-unpaired"          # control not scored yet
+    subs.append({"date": "2026-10-11", "description": "casmi-ctl", "publicScore": "0.433"})
+    poll_lb.main(["--write"], fetcher=lambda cfg: subs)
+    state, meta = _common.read_status(idea)
+    assert state == "keep-pending" and meta["lb"] == "0.440"           # lb_skip dropped 0.371
+    assert _common.read_status(ctl)[0] == "scored"
+    subs.append({"date": "2026-10-12", "description": "casmi-foo rep", "publicScore": "0.438"})
+    poll_lb.main(["--write"], fetcher=lambda cfg: subs)
+    assert _common.read_status(idea)[0] == "keep"
+
+
+def test_instrument_pass_is_not_submittable_and_fail_skips_fix_agent(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    _common.write_status(idea, None, kind="instrument")
+    args = [str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "POST EQUIV ok"]
+    assert kaggle_push.main(args, run=_kaggle_run([], "POST EQUIV ok 12 of 12\n"), sleep=lambda s: None) == 0
+    assert _common.read_status(idea)[0] == "instrument-ready"
+    assert kaggle_push.main(args, run=_kaggle_run([], "Traceback (most recent call last):\n"),
+                            sleep=lambda s: None) == 2
+    assert _common.read_status(idea)[0] == "needs-human" and not HOOKS["fix"]
+
+
+def test_push_error_with_rc0_starts_no_watcher(repo):
+    # 10-10: "Kernel push error: Maximum batch GPU session count of 2 reached." with exit code 0
+    root, idea = repo
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    run = lambda args, timeout=600: types.SimpleNamespace(
+        returncode=0, stdout="Kernel push error: Maximum batch GPU session count of 2 reached.", stderr="")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=run) == 1
+    assert _common.read_status(idea)[0] == "g4-failed" and not HOOKS["spawn"]
+
+
+def test_counter_value_zero_fails_g4():
+    # the real adduct-iceberg-rerank G4 log line that passed on presence alone (10-10)
+    log = ("[ADDUCT_ICE] eligible molecules 1\n[ADDUCT_ICE] eligible 1 | base_reranked 0 | "
+           "fused_reranked 0 | molecules reranked 0 | changed_top25 0 | candidates added 16\n")
+    bad = kaggle_push.check_log(log, [r"\[ADDUCT_ICE\] eligible", r"\[ADDUCT_ICE\].*molecules reranked"], [])
+    assert len(bad) == 1 and "molecules reranked" in bad[0] and "value 0" in bad[0]
+    assert kaggle_push.counter_value(log, "candidates added") == 16
+    assert not kaggle_push.check_log(log, [r"?\[ADDUCT_ICE\].*molecules reranked"], [])
+    assert "value missing" in kaggle_push.check_log("TRACK4 ok\n", ["TRACK4"], [])[0]
 
 
 # ---------------- plain runner (the repo runs tests as scripts; see build/run_all_tests.sh)

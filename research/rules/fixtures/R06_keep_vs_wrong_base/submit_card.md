@@ -1,0 +1,20 @@
+# Submit card: 20261010-adduct-iceberg-rerank
+
+- **Kaggle kernel**: `syedtoubur/casmi-adduct-iceberg-rerank` (v2)
+- **Notebook**: `C:/casmi/lines/exploit/casmi26-adduct-ice.ipynb`
+- **What changed**: Selectively re-enable ICEBERG forward MS/MS simulation in C8 & C10 for molecules with non-[M+H]+ adducts (`[M-H]-`, `[M+Na]+`) where GLACIER is inactive (`not bool(_g)`). Protonated species remain GLACIER-only.
+- **Spec**: `research/exploit/20261010-adduct-iceberg-rerank/spec.md`
+- **Gates**:
+  - G1: PASS (cells C8 and C10 modified; AST/IK14 dedupe intact)
+  - G2: PASS (`test_patch_adduct_ice.py`: 27 checks passed)
+  - G3a: Bypassed (`colab: off`, falls back to Kaggle draft run)
+  - G4: PASS (`casmi-adduct-iceberg-rerank` v2 COMPLETE)
+- **Paired control**: `syedtoubur/casmi-control-0433` (G4 PASS)
+- **KEEP bar**: Control LB + 0.004 (L05)
+- **Expected effect bound**: +0.010 realistic / +0.068 ceiling (L13)
+- **Recommended priority**: control > exploit probe
+- **G4 result (2026-10-10 06:04)**: FAIL (complete; counter '\\[ADDUCT_ICE\\] molecules reranked' not printed); counters: [ADDUCT_ICE] eligible molecules 1 / [ADDUCT_ICE] eligible 1 | base_reranked 0 | fused_reranked 0 | molecules reranked 0 | changed_top25 0 | candidates added 16
+- **G4 result (2026-10-10 06:08)**: PASS; counters: [ADDUCT_ICE] eligible molecules 1 / [ADDUCT_ICE] eligible 1 | base_reranked 0 | fused_reranked 0 | molecules reranked 0 | changed_top25 0 | candidates added 16 / [ADDUCT_ICE] eligible 1 | base_reranked 0 | fused_reranked 0 | molecules reranked 0 | changed_top25 0 | candidates added 16
+- **Public LB Score (v2)**: **0.432** — **NEW WORKSPACE SOTA (+0.007 vs zenith 0.425)**
+- **Public LB Score (v1)**: **0.371** — Infra Bug (L30): incomplete dataset preset unmounted Engine 2 files; silent fallback to single-engine v4g
+- **Decision**: **KEEP**

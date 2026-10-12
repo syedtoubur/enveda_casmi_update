@@ -89,15 +89,37 @@ def queue_write(cfg, items: list[str]) -> None:
     _queue(cfg).write_text("".join(i + "\n" for i in items))
 
 
-def build_cmd(cfg, rel: str, worktree: Path | None) -> list[str]:
-    cmd = ["claude", "-p", f"/run-idea {rel}",
+def build_cmd(cfg, rel: str, worktree: Path | None, prompt: str | None = None,
+              model: str | None = None) -> list[str]:
+    """Headless, allowlisted Claude command. Default prompt: /run-idea <rel>; campaign.py passes its own
+    prompt (/replan, /spec, /attack, /build) and the step's model."""
+    cmd = ["claude", "-p", prompt or f"/run-idea {rel}",
            "--output-format", "stream-json", "--verbose",
            "--permission-mode", "dontAsk", "--permission-prompts", "none",
            "--settings", str(REPO / cfg["claude"]["settings"]),
            "--strict-mcp-config"]
     if worktree is not None:
         cmd += ["--add-dir", str(worktree)]
+    if model:
+        cmd += ["--model", model]
     return cmd
+
+
+def run_prompt(cfg, prompt: str, log: Path, model: str | None = None, worktree: Path | None = None) -> str:
+    """Run one headless Claude prompt, streaming to `log`. Returns 'done' | 'paused' (usage limit)."""
+    cmd = build_cmd(cfg, "", worktree, prompt=prompt, model=model)
+    env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+    hit = False
+    with open(log, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "call_claude", "start": dt.datetime.now().isoformat(), "cmd": cmd}) + "\n")
+        p = subprocess.Popen(cmd, cwd=REPO, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, encoding="utf-8")
+        for ln in p.stdout:
+            f.write(ln)
+            hit |= is_limit_line(ln)
+        rc = p.wait()
+        f.write(json.dumps({"type": "call_claude", "end": dt.datetime.now().isoformat(), "rc": rc}) + "\n")
+    return "paused" if hit else "done"
 
 
 def is_limit_line(ln: str) -> bool:

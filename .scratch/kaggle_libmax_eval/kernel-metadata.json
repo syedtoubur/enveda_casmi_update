@@ -1,0 +1,16 @@
+{
+  "id": "syedtoubur/casmi26-cross-instrument-libmax-eval",
+  "title": "casmi26-cross-instrument-libmax-eval",
+  "code_file": "casmi_cross_instrument_libmax_eval.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "competition_sources": [
+    "enveda-CASMI26-molecule-id-mass-spectra"
+  ],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

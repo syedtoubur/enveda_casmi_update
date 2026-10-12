@@ -6,11 +6,9 @@ description: Daily report for the human. Polls Kaggle LB results, records them, 
 # Daily digest (Reporter)
 
 0. Run `python research/bin/kaggle_push.py --check`. It is the backup for the detached G4 watcher (L34). It finishes G4 for every `g4-pushed` or `g4-timeout` idea whose kernel is done and that no live watcher owns: the result is `ready-to-submit`, `g4-fix` (a fix agent is queued) or `needs-human`, with the reason in gates.md. Under "Pipeline", list `g4-pushed` and `g4-fix` (fix round = STATUS `g4_fixes`) as in progress. A control in `needs-human`, `g4-timeout` or `g4-failed` blocks its whole line (L31): put it first under "Needs you".
-1. Run `python research/bin/poll_lb.py --write`. For each idea that is newly `scored`:
-   - Compare its LB with the paired control in submit_card.md. KEEP iff LB ≥ control + 0.004 **and** its counters fired (L05). Set STATUS to `keep` or `revert`.
+1. Run `python research/bin/poll_lb.py --write`. It decides in code (`decide()`), never you: `scored-unpaired` (control not scored), `keep-pending` (LB ≥ control + 0.004 and counter values > 0: list it under "Submit today" as a replicate), `keep` (replicate mean still ≥ the bar) or `revert`. Copy its `DECIDE` lines; never set keep/revert yourself. For each idea it moved to `keep` or `revert`:
    - Record it with the update-experiments skill (one EXPERIMENTS.md row).
    - If it taught something new, append **one** cited line to `research/LESSONS.md` under "Appended by the Reporter", using the next free L-ID. Also read the `## Lesson candidates` of every verdict.md written since the last digest; turn a candidate into a lesson only if it is not already covered.
-   - If it was the exploit line's control, set `lines.exploit.keep_bar` = control + 0.004 in config.yaml.
    - List the `UNMATCHED` submissions and ask the human which idea each one belongs to.
 2. Collect every idea folder whose STATUS changed since the last digest (by mtime), plus all ideas in `ready-to-submit`, `escalate`, `paused-quota`, `needs-human` or `g4-timeout`, and every `questions.md`.
 3. Write `research/daily/YYYY-MM-DD.md` with these sections:
