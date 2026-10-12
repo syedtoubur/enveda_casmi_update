@@ -60,6 +60,20 @@ def test_gate_promotion_and_fallbacks():
     assert off['m2'][:3] == [SM[0], SM[5], SM[1]]        # aggressive slots [2, 4, ...] interleave instead
 
 
+def test_rel_promote_band_counter():
+    s = state()
+    s['pc']['m2']['pc_fz'] = [300.0, 1.0]                # rel 300: inside the (250, 500] band
+    st0, st1 = {}, {}
+    d0 = cp.run(s, deps(), st0, USE_ENG=False, FINAL_PASS=False)
+    d1 = cp.run(s, deps(), st1, USE_ENG=False, FINAL_PASS=False, REL_PROMOTE=500.0)
+    assert d0['m2'][0] == SM[5] and st0.get('promote_rel_skipped', 0) == 0 and st0['promoted'] == 1
+    assert d1['m2'][:4] == SM[:3] + [SM[5]]              # merged into gentle slot 4
+    assert st1['promote_rel_skipped'] == 1 and st1.get('promoted', 0) == 0
+    s['pc']['m2']['pc_fz'] = [900.0, 1.0]                # rel 900 > 500: still promoted
+    st2 = {}
+    assert cp.run(s, deps(), st2, REL_PROMOTE=500.0)['m2'][0] == SM[5] and st2.get('promote_rel_skipped', 0) == 0
+
+
 def test_fusion_and_gl_knobs():
     on = cp.run(state(), deps())['m3']
     no_gl = cp.run(state(), deps(), FUSED_GL=False)['m3']

@@ -229,11 +229,13 @@ def run(state, deps, stats=None, **overrides):
             rel = ((p['fz_top'] if p.get('fz_top') is not None else p['pc_fz'][0]) - bp) if math.isfinite(bp) else 1e9
             slots = c['SLOTS_AGG'] if rel > c['REL_TH'] else c['SLOTS_GENTLE']
             S = p.get('S'); pop_top = float(p.get('top_pop') or 0.0)
-            if c['PROMOTE'] and ((S is not None and float(S) > c['S_TAU'] and pop_top >= c['POP_TAU'])
-                                 or (rel > c['REL_PROMOTE'])):
+            spop = S is not None and float(S) > c['S_TAU'] and pop_top >= c['POP_TAU']
+            if c['PROMOTE'] and (spop or (rel > c['REL_PROMOTE'])):
                 stats['promoted'] = stats.get('promoted', 0) + 1
                 final = promote(smis, keys, p['pc'], p['pc_keys'], slots)
             else:
+                if c['PROMOTE'] and not spop and 250.0 < rel <= c['REL_PROMOTE']:
+                    stats['promote_rel_skipped'] = stats.get('promote_rel_skipped', 0) + 1
                 final = merge(smis, keys, p['pc'], p['pc_keys'], slots)
         if not final:
             final = ['CCO']
