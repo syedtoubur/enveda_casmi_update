@@ -44,6 +44,7 @@ for _nb in casmi26-v4n-mutator-submit.ipynb casmi26-v4n-mutator-bio-submit.ipynb
   [ -f "$_nb" ] && run build/test_mut_cell.py "$_nb"
 done
 
+run build/test_patch_b2_nl_sim.py   # B2 NL similarity knob + runner/notebook patch
 run research/bin/test_bin.py         # multi-agent research bus scripts
 
 if [ -n "$_SOFT_FAILED" ]; then

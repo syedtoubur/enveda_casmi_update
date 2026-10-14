@@ -50,6 +50,8 @@ CFG = dict(
     # engine2-fppair knobs: read by the Engine 2 cell upstream of the dump, no-ops in run() (replay reads stored ENG)
     ENGINE2_ROWS='nofp',     # 'nofp' (base) | 'fppair': "ours" ranker on sim_rank_rows_fppair.npz + leak-free FPNets
     ENGINE2_W_PV=0.88,       # Engine 2 blend weight of the pv ranker (base 0.88; fppair probe 0.50)
+    # B2 knob: neutral-loss entropy similarity vs GLACIER predictions as a 3rd z-term next to [ice, gl]
+    NL_LAM=None,             # None = off (byte-identical); float = weight of z(gl_nl_mean) (state['nl'] = NL_SCORES)
 )
 
 
@@ -177,16 +179,28 @@ def run(state, deps, stats=None, **overrides):
     ENG = state.get('eng') or {}
     ICE = state.get('ice') or {}
     GL = state.get('gl') or {}
+    NL = state.get('nl') or {}
     TAIL = {str(k): list(v[0]) for k, v in BASE.items()}          # BASE_TAIL_CANDIDATES (C7)
 
     def gl_of(m):
         g = GL.get(str(m), {}) if isinstance(GL, dict) else {}
         return g if isinstance(g, dict) and any(v is not None for v in g.values()) else {}
 
-    def gl_rerank(order0, smis, keys, scs, forms, ice, gl, top_n):
+    nl_mols = set()
+
+    def nl_of(m):
+        return _nl_scores(NL, m, c)
+
+    def gl_rerank(order0, smis, keys, scs, forms, ice, gl, top_n, mid=None):
         if not gl:
             return order0
         try:
+            nl = nl_of(mid) if mid is not None else {}
+            if nl:
+                o = gl_multi(smis, keys, scs, forms, [ice, gl, nl], [c['ICE_LAM'], c['GL_LAM'], c['NL_LAM']],
+                             top_n=top_n)
+                nl_mols.add(str(mid)); stats['nl_rerank_mols'] = len(nl_mols)
+                return o
             return gl_multi(smis, keys, scs, forms, [ice, gl], [c['ICE_LAM'], c['GL_LAM']], top_n=top_n)
         except Exception:
             return order0
@@ -199,7 +213,7 @@ def run(state, deps, stats=None, **overrides):
         if c['BASE_ICE'] and ice and any(v is not None for v in ice.values()):
             try:
                 order = ice_rerank(smis, keys, scs, forms, ice, lam=c['ICE_LAM'], top_n=c['TOPN'])
-                order = gl_rerank(order, smis, keys, scs, forms, ice, gl, c['TOPN'])
+                order = gl_rerank(order, smis, keys, scs, forms, ice, gl, c['TOPN'], m)
                 smis, keys = [smis[i] for i in order], [keys[i] for i in order]
             except Exception:
                 pass
@@ -208,7 +222,7 @@ def run(state, deps, stats=None, **overrides):
         if c['PC_SIM_RERANK'] and p and p.get('pc_form') and ice:
             try:
                 o = ice_rerank(p['pc'], p['pc_keys'], p['pc_fz'], p['pc_form'], ice, lam=c['ICE_LAM'], top_n=25)
-                o = gl_rerank(o, p['pc'], p['pc_keys'], p['pc_fz'], p['pc_form'], ice, gl, 25)
+                o = gl_rerank(o, p['pc'], p['pc_keys'], p['pc_fz'], p['pc_form'], ice, gl, 25, m)
                 fz0 = p['pc_fz'][0]
                 p['pc'] = [p['pc'][i] for i in o]; p['pc_keys'] = [p['pc_keys'][i] for i in o]
                 p['pc_fz'] = [fz0] + [p['pc_fz'][i] for i in o][1:]
@@ -274,7 +288,14 @@ def run(state, deps, stats=None, **overrides):
                         o = ice_rerank(fsm, fk, fsc, fforms, ice_col, lam=c['ICE_LAM'], top_n=len(fsm))
                         g = gl_of(mid)
                         if g and c['FUSED_GL']:
-                            o = gl_multi(fsm, fk, fsc, fforms, [ice_col, g], [c['ICE_LAM'], c['GL_LAM']], top_n=len(fsm))
+                            nl = nl_of(mid)
+                            if nl:
+                                o = gl_multi(fsm, fk, fsc, fforms, [ice_col, g, nl],
+                                             [c['ICE_LAM'], c['GL_LAM'], c['NL_LAM']], top_n=len(fsm))
+                                nl_mols.add(str(mid)); stats['nl_rerank_mols'] = len(nl_mols)
+                            else:
+                                o = gl_multi(fsm, fk, fsc, fforms, [ice_col, g], [c['ICE_LAM'], c['GL_LAM']],
+                                             top_n=len(fsm))
                         elif base_fallback and not g:
                             o = ice_rerank(fsm, fk, fsc, fforms, ice, lam=c['ICE_LAM'], top_n=len(fsm))
                             stats['ice_fallback'] = stats.get('ice_fallback', 0) + 1
@@ -292,12 +313,20 @@ def run(state, deps, stats=None, **overrides):
         out = _final_pass(sub, state, active, OVER, TAIL, ENG, PC, dreams)
     if c['METRIC_FUSION'] and ENG and c['USE_ENG']:
         out = _metric_overlay(out, PREFUSION, active, ENG, ICE, gl_of, c, window, score_key, form,
-                              ice_rerank, gl_multi, stats)
+                              ice_rerank, gl_multi, stats, NL, nl_mols)
     return out
 
 
+def _nl_scores(NL, m, c):
+    """B2: the molecule's {smiles: gl_nl_mean} when the knob is on and at least one candidate is scored, else {}."""
+    if c.get('NL_LAM') is None or not isinstance(NL, dict):
+        return {}
+    g = NL.get(str(m), {})
+    return g if isinstance(g, dict) and any(v is not None for v in g.values()) else {}
+
+
 def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_key, form, ice_rerank, gl_multi,
-                    stats):
+                    stats, NL=None, nl_mols=None):
     """E006 cell 30 rerank_row (cell 28 metric_fusion + GL-present gate + optional ICE fallback), applied to the
     final rows: `original` is the reference E006 reads (C12 output, i.e. submission_reference.csv)."""
     res = {}
@@ -316,8 +345,15 @@ def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_ke
         gl = gl_of(mid)
         try:
             if ice and gl and c['FUSED_GL']:
-                order = gl_multi(cands, keys, scores, [form(s) for s in cands], [{}, gl],
-                                 [c['ICE_LAM'], c['GL_LAM']], top_n=len(cands))
+                nl = _nl_scores(NL, mid, c)
+                if nl:
+                    order = gl_multi(cands, keys, scores, [form(s) for s in cands], [{}, gl, nl],
+                                     [c['ICE_LAM'], c['GL_LAM'], c['NL_LAM']], top_n=len(cands))
+                    if nl_mols is not None:
+                        nl_mols.add(str(mid)); stats['nl_rerank_mols'] = len(nl_mols)
+                else:
+                    order = gl_multi(cands, keys, scores, [form(s) for s in cands], [{}, gl],
+                                     [c['ICE_LAM'], c['GL_LAM']], top_n=len(cands))
                 cands = [cands[i] for i in order]
             elif c['ICE_FALLBACK'] and ice and not gl:
                 order = ice_rerank(cands, keys, scores, [form(s) for s in cands], ice,
