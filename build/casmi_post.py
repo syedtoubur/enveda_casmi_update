@@ -50,6 +50,8 @@ CFG = dict(
     # engine2-fppair knobs: read by the Engine 2 cell upstream of the dump, no-ops in run() (replay reads stored ENG)
     ENGINE2_ROWS='nofp',     # 'nofp' (base) | 'fppair': "ours" ranker on sim_rank_rows_fppair.npz + leak-free FPNets
     ENGINE2_W_PV=0.88,       # Engine 2 blend weight of the pv ranker (base 0.88; fppair probe 0.50)
+    # A1 test-set network vote: ranks 2-10 get + w * (neighbour-top-3 similarity); needs state['net'] (None = off)
+    NET_VOTE_W=None,
 )
 
 
@@ -293,7 +295,168 @@ def run(state, deps, stats=None, **overrides):
     if c['METRIC_FUSION'] and ENG and c['USE_ENG']:
         out = _metric_overlay(out, PREFUSION, active, ENG, ICE, gl_of, c, window, score_key, form,
                               ice_rerank, gl_multi, stats)
+    # ---- A1 test-set network vote: LAST step, after every other rule (incl. lib-isomer when it is shipped)
+    if c.get('NET_VOTE_W') is not None and state.get('net'):
+        out, nst = net_vote_rows(out, state['net'], float(c['NET_VOTE_W']), morgan_fp)
+        stats.update(nst)
     return out
+
+
+# ---------------------------------------------------------------- A1 test-set network vote
+def modified_cosine(mz1, it1, prec1, mz2, it2, prec2, tol=0.01):
+    """Greedy modified cosine (direct + precursor-shifted matches), sqrt intensities, peaks > prec-0.5 dropped,
+    top 60 peaks each. -> (score, n_matched)."""
+    a = _prep_spec(mz1, it1, prec1)
+    b = _prep_spec(mz2, it2, prec2)
+    return _mcos_pair(a, b, prec1 - prec2, tol)
+
+
+def _prep_spec(mz, it, prec, top=60):
+    import numpy as np
+    mz = np.asarray(mz, dtype=float)
+    it = np.asarray(it, dtype=float)
+    k = mz <= prec - 0.5
+    mz, it = mz[k], it[k]
+    if len(mz) > top:
+        o = np.argsort(-it)[:top]
+        mz, it = mz[o], it[o]
+    w = np.sqrt(np.clip(it, 0.0, None))
+    n = float(np.sqrt((w * w).sum()))
+    if n > 0:
+        w = w / n
+    o = np.argsort(mz)
+    return mz[o], w[o]
+
+
+def _greedy(mask, prod):
+    import numpy as np
+    ii, jj = np.nonzero(mask)
+    if len(ii) == 0:
+        return 0.0, 0
+    p = prod[ii, jj]
+    o = np.argsort(-p, kind='stable')
+    ui, uj, tot, n = set(), set(), 0.0, 0
+    for t in o:
+        i, j = int(ii[t]), int(jj[t])
+        if i in ui or j in uj:
+            continue
+        ui.add(i); uj.add(j); tot += float(p[t]); n += 1
+    return tot, n
+
+
+def _mcos_pair(a, b, dprec, tol):
+    import numpy as np
+    (m1, w1), (m2, w2) = a, b
+    if len(m1) == 0 or len(m2) == 0:
+        return 0.0, 0
+    d = m1[:, None] - m2[None, :]
+    mask = (np.abs(d) <= tol) | (np.abs(d - dprec) <= tol)
+    tot, n = _greedy(mask, w1[:, None] * w2[None, :])
+    return min(tot, 1.0), n
+
+
+def test_network(spectra, tau=0.7, min_match=4, max_nbrs=5, tol=0.01, max_dprec=400.0, return_all=False):
+    """spectra: {mid: [(mz, it, prec, polarity), ...]}. Pair score S_ij = max over same-polarity spectrum pairs.
+    Edge if S_ij >= tau and n_matched >= min_match. -> {mid: [(nbr_mid, S_ij), ...]} sorted desc, <= max_nbrs.
+    return_all=True also returns {(mi, mj): (S, n)} for every candidate pair (all edges before the tau cut)."""
+    import numpy as np
+    P = 60
+    mids = [m for m in spectra if spectra[m]]
+    rec = []                                   # flat spectrum table
+    for mi, m in enumerate(mids):
+        for (mz, it, prec, pol) in spectra[m]:
+            mzp, wp = _prep_spec(mz, it, prec)
+            if len(mzp):
+                rec.append((mi, float(prec), str(pol), mzp, wp))
+    N = len(rec)
+    MZ = np.full((N, P), -1e9)
+    W = np.zeros((N, P))
+    for r, (_, _, _, mzp, wp) in enumerate(rec):
+        MZ[r, :len(mzp)] = mzp
+        W[r, :len(wp)] = wp
+    mol = np.array([r[0] for r in rec])
+    prec = np.array([r[1] for r in rec])
+    pol = np.array([r[2] for r in rec])
+    best = {}                                  # (mi, mj) mi<mj -> (S, n)
+    for r in range(N):
+        cand = np.nonzero((mol > mol[r]) & (pol == pol[r]) & (np.abs(prec - prec[r]) <= max_dprec))[0]
+        if len(cand) == 0:
+            continue
+        mzA, wA = MZ[r][MZ[r] > -1e8], W[r][MZ[r] > -1e8]
+        B = MZ[cand]                                                   # (nb, P)
+        d = mzA[None, :, None] - B[:, None, :]                         # (nb, na, P)
+        dp = (prec[r] - prec[cand])[:, None, None]
+        mask = (np.abs(d) <= tol) | (np.abs(d - dp) <= tol)
+        ok = mask.reshape(len(cand), -1).sum(1) >= min_match
+        for t in np.nonzero(ok)[0]:
+            q = cand[t]
+            prod = wA[:, None] * W[q][None, :]
+            tot, n = _greedy(mask[t], prod)
+            key = (int(mol[r]), int(mol[q]))
+            sc = min(tot, 1.0)
+            if key not in best or sc > best[key][0]:
+                best[key] = (sc, n)
+    nb = {}
+    for (i, j), (sc, n) in best.items():
+        if sc >= tau and n >= min_match:
+            nb.setdefault(mids[i], []).append((mids[j], sc))
+            nb.setdefault(mids[j], []).append((mids[i], sc))
+    net = {m: sorted(v, key=lambda x: -x[1])[:max_nbrs] for m, v in nb.items()}
+    if return_all:
+        return net, {(mids[i], mids[j]): v for (i, j), v in best.items()}
+    return net
+
+
+@lru_cache(maxsize=None)
+def morgan_fp(smiles):
+    """RDKit Morgan r2 2048-bit vector, or None."""
+    try:
+        from rdkit import Chem, RDLogger
+        from rdkit.Chem import AllChem
+        RDLogger.DisableLog('rdApp.*')
+        m = Chem.MolFromSmiles(smiles) if isinstance(smiles, str) else None
+        return AllChem.GetMorganFingerprintAsBitVect(m, 2, nBits=2048) if m is not None else None
+    except Exception:
+        return None
+
+
+def net_vote_rows(rows_by_mid, net, w, fp_of, top_k=3, lo=1, hi=10):
+    """For each mid with neighbours: v(c) = max_j S_ij * max_{t in rows_by_mid[j][:top_k]} Tanimoto(fp(c), fp(t)).
+    Slots lo..hi-1 (0-based, i.e. ranks 2..10) are re-sorted by 1/(3+rank) + w*v(c); slot 0 and slots >= hi are
+    untouched; output is a permutation of the input row. fp_of(smiles) -> RDKit Morgan r2 2048 bitvect or None.
+    -> (new_rows_by_mid, stats{net_mols, net_edges, net_vote_moved_mols})"""
+    from rdkit import DataStructs
+    out = {m: list(r) for m, r in rows_by_mid.items()}
+    st = dict(net_mols=0, net_edges=0, net_vote_moved_mols=0)
+    for mid, nbrs in (net or {}).items():
+        row = rows_by_mid.get(mid)
+        if not row or not nbrs:
+            continue
+        st['net_mols'] += 1
+        st['net_edges'] += len(nbrs)
+        if not w:
+            continue
+        tfps = []
+        for (j, s) in nbrs:
+            fps = [fp_of(t) for t in (rows_by_mid.get(j) or [])[:top_k] if t and t != 'CCO']
+            tfps.append((float(s), [f for f in fps if f is not None]))
+        top = min(hi, len(row))
+        if top - lo < 2:
+            continue
+        def key(slot):
+            v = 0.0
+            f = fp_of(row[slot])
+            if f is not None:
+                for s, fl in tfps:
+                    if fl:
+                        v = max(v, s * max(DataStructs.BulkTanimotoSimilarity(f, fl)))
+            return -(1.0 / (3 + slot + 1) + w * v)
+        order = sorted(range(lo, top), key=lambda k: (key(k), k))
+        new = row[:lo] + [row[k] for k in order] + row[top:]
+        if new != row:
+            st['net_vote_moved_mols'] += 1
+        out[mid] = new
+    return out, st
 
 
 def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_key, form, ice_rerank, gl_multi,
