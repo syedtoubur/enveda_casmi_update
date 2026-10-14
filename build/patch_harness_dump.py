@@ -275,7 +275,7 @@ if VAL_SHARD:
 """
 
 
-def build(shard: str, src: str = SRC, ranker=None) -> dict:
+def build(shard: str, src: str = SRC, ranker=None, a6_runner: bool = False) -> dict:
     if shard not in SHARDS:
         raise SystemExit(f"--shard must be one of {SHARDS}")
     if shard in NP_SHARDS and not (ranker and ranker[0] and ranker[1]):
@@ -286,6 +286,11 @@ def build(shard: str, src: str = SRC, ranker=None) -> dict:
     for c in nb["cells"]:
         if c["cell_type"] == "code":
             c["outputs"], c["execution_count"] = [], None
+    if a6_runner:      # A6: the PubChem runner also records pool_fz / pc_rawfz, so the dump can replay FZ_MERGE
+        import sys as _sys; _sys.path.insert(0, HERE)
+        import patch_a6_fz_merge as a6
+        r = find(nb, lambda s: "RUNNER = '" in s and "best = float((F @ z" in s, "PubChem runner cell")
+        set_src(nb["cells"][r], a6.patch_runner_cell(src_of(nb["cells"][r]), with_load_hook=False))
     i = find(nb, lambda s: s.startswith("# SMOKE switch"), "commit switch cell")
     nb["cells"].insert(i + 1, code_cell(VAL_CELL.replace("@SHARD@", repr(shard))))
     e2 = find(nb, lambda s: s.startswith("# Our engine (two-ranker"), "Engine 2 cell")
@@ -309,12 +314,13 @@ def main(argv=None) -> int:
     ap.add_argument("--shard", default="")
     ap.add_argument("--src", default=SRC)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--a6-runner", action="store_true", help="patch the PubChem runner to dump pool_fz + pc_rawfz (A6)")
     ap.add_argument("--ranker-field", default="")
     ap.add_argument("--ranker-drop", default="")
     ap.add_argument("--ranker-names", default="", help="name table the field codes index (e.g. sets)")
     a = ap.parse_args(argv)
-    out = a.out or os.path.join(ROOT, f"casmi-0433-harness{('-' + a.shard.lower().replace('_', '')) if a.shard else ''}.ipynb")
-    nb = build(a.shard, a.src, ranker=(a.ranker_field, a.ranker_drop, a.ranker_names))
+    out = a.out or os.path.join(ROOT, f"casmi-0433-harness{('-' + a.shard.lower().replace('_', '')) if a.shard else ''}{'-a6' if a.a6_runner else ''}.ipynb")
+    nb = build(a.shard, a.src, ranker=(a.ranker_field, a.ranker_drop, a.ranker_names), a6_runner=a.a6_runner)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(nb, f, indent=1, ensure_ascii=False)
     print("wrote", out)

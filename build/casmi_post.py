@@ -50,6 +50,8 @@ CFG = dict(
     # engine2-fppair knobs: read by the Engine 2 cell upstream of the dump, no-ops in run() (replay reads stored ENG)
     ENGINE2_ROWS='nofp',     # 'nofp' (base) | 'fppair': "ours" ranker on sim_rank_rows_fppair.npz + leak-free FPNets
     ENGINE2_W_PV=0.88,       # Engine 2 blend weight of the pv ranker (base 0.88; fppair probe 0.50)
+    # A6: f.z common-scale merge in C9 (replaces merge + promote when the PC row carries pool_fz + pc_rawfz)
+    FZ_MERGE=None,           # None = off (base); a float = the margin (raw f.z units) and turns it on
 )
 
 
@@ -138,6 +140,62 @@ def promote(base, base_keys, pc, pc_keys, slots, n=25):
     return ([top] + [x for x in usual if x != top])[:n]
 
 
+def fz_merge(base, base_keys, pc, pc_keys, pc_fz, pool_fz, margin, n=25):
+    """A6. BASE keeps its order; PubChem-only (keys not in BASE) keeps its order. Envelope e_i = max pool f.z over
+    BASE[i:] (suffix max over the keys known in pool_fz; unknown are skipped; none known -> -inf). Walk i (BASE) and
+    j (PC): emit PC[j] before BASE[i] iff pc_fz[j] > e_i + margin, else emit BASE[i]; then drain. Dedup by key, cut n.
+    pc_fz must be RAW f.z (same scale as pool_fz), aligned with pc/pc_keys."""
+    import math
+    ninf = -math.inf
+    nb = len(base)
+    env = [ninf] * (nb + 1)
+    for i in range(nb - 1, -1, -1):
+        v = pool_fz.get(base_keys[i])
+        v = float(v) if v is not None and math.isfinite(float(v)) else ninf
+        env[i] = max(env[i + 1], v)
+    bk = set(base_keys)
+    pcs, seen = [], set()
+    for s, k, f in zip(pc, pc_keys, pc_fz):
+        if k in bk or k in seen:
+            continue
+        seen.add(k)
+        pcs.append((s, k, None if f is None else float(f)))
+    out, used, i, j = [], set(), 0, 0
+
+    def emit(s, k):
+        if k not in used:
+            used.add(k); out.append(s)
+    while i < nb and j < len(pcs):
+        f = pcs[j][2]
+        if margin == math.inf:
+            thr = math.inf
+        elif env[i] == ninf:
+            thr = ninf
+        else:
+            thr = env[i] + margin
+        if f is not None and math.isfinite(f) and f > thr:
+            emit(pcs[j][0], pcs[j][1]); j += 1
+        else:
+            emit(base[i], base_keys[i]); i += 1
+    for ii in range(i, nb):
+        emit(base[ii], base_keys[ii])
+    for jj in range(j, len(pcs)):
+        emit(pcs[jj][0], pcs[jj][1])
+    return out[:n]
+
+
+def fz_merge_row(p, smis, keys, margin, n=25):
+    """C9 row for one molecule: the fz_merge list, or None when the PC row lacks pool_fz / raw f.z (-> base path).
+    p['_fzmap'] ({key: raw f.z}) is built before any PubChem-list rerank; else zip(pc_keys, pc_rawfz) is used."""
+    pool_fz = p.get('pool_fz')
+    fmap = p.get('_fzmap')
+    if fmap is None and p.get('pc_rawfz') is not None and len(p['pc_rawfz']) == len(p['pc_keys']):
+        fmap = dict(zip(p['pc_keys'], p['pc_rawfz']))
+    if not pool_fz or not fmap:
+        return None
+    return fz_merge(smis, keys, p['pc'], p['pc_keys'], [fmap.get(k) for k in p['pc_keys']], pool_fz, margin, n=n)
+
+
 def metric_fusion(first, second, identity, alpha=0.6, offset=3.0, limit=40):
     """E006 cell 28, verbatim: RRF with one vote per metric identity per engine; rank = unique identities so far."""
     scores, representatives = {}, {}
@@ -191,6 +249,12 @@ def run(state, deps, stats=None, **overrides):
         except Exception:
             return order0
 
+    # ---- A6: raw f.z per PubChem key, taken before the C8 PubChem rerank reorders pc/pc_keys
+    if c['FZ_MERGE'] is not None:
+        for p in PC.values():
+            if isinstance(p, dict) and p.get('pc_rawfz') is not None and len(p['pc_rawfz']) == len(p.get('pc_keys', [])):
+                p['_fzmap'] = dict(zip(p['pc_keys'], p['pc_rawfz']))
+
     # ---- C8 rerank loop
     for m in list(BASE):
         smis, keys, lib_max, scs, forms = BASE[m]
@@ -237,6 +301,20 @@ def run(state, deps, stats=None, **overrides):
                 if c['PROMOTE'] and not spop and 250.0 < rel <= c['REL_PROMOTE']:
                     stats['promote_rel_skipped'] = stats.get('promote_rel_skipped', 0) + 1
                 final = merge(smis, keys, p['pc'], p['pc_keys'], slots)
+            if c['FZ_MERGE'] is not None:
+                fm = None
+                try:
+                    fm = fz_merge_row(p, smis, keys, float(c['FZ_MERGE']))
+                except Exception:
+                    stats['fz_merge_err'] = stats.get('fz_merge_err', 0) + 1
+                if fm is None:
+                    stats['fz_merge_nofz'] = stats.get('fz_merge_nofz', 0) + 1
+                else:
+                    stats['fz_merge_mols'] = stats.get('fz_merge_mols', 0) + 1
+                    stats['fz_merge_changed_vs_base'] = stats.get('fz_merge_changed_vs_base', 0) + int(fm[:25] != final[:25])
+                    slot = next((q for q, s in enumerate(fm, 1) if s == p['pc'][0]), 0)
+                    stats[f'fz_merge_pc1_slot_{slot}'] = stats.get(f'fz_merge_pc1_slot_{slot}', 0) + 1
+                    final = fm
         if not final:
             final = ['CCO']
         rows[str(mid)] = ';'.join(final[:25])
