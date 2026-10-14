@@ -36,6 +36,7 @@ run build/test_mut_runner_v2.py
 run build/test_patch_c3v2.py
 run build/test_patch_c3cal.py
 run build/test_patch_adduct_ice.py
+run build/test_patch_a1_test_network.py
 run build/test_patch_engine2_fppair.py
 run build/test_patch_promo-soften.py
 run build/test_np_signals_core.py
