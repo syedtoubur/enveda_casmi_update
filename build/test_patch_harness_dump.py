@@ -171,20 +171,83 @@ def test_e006_config_runs_metric_unique():
         assert 1 <= len(out[m]) <= 25 and len(set(map(k, out[m]))) == len(out[m])
 
 
+def test_e180_drop_default_is_base():
+    assert cp.CFG['E180_DROP'] is False
+    for d in (deps(), deps_ice_reverses()):
+        for cfg in ({}, E006_ON):
+            st = {}
+            assert cp.run(state_dup(), d, **cfg) == cp.run(state_dup(), d, E180_DROP=False, E180_KEYS={'x'}, **cfg)
+            cp.run(state_dup(), d, stats=st, **cfg)
+            assert 'e180_dropped' not in st
+
+
+def test_e180_drop_removes_keyed_and_backfills():
+    keyed = {k(SM[7]), k(SM[1])}                         # OCCO, CCCO
+    for d in (deps(), deps_ice_reverses()):
+        for cfg in (E006_ON, dict(E006_ON, METRIC_FUSION=False), {}):
+            base = cp.run(state_dup(), d, **cfg)
+            st = {}
+            on = cp.run(state_dup(), d, stats=st, E180_DROP=True, E180_KEYS=keyed, **cfg)
+            n_rows = n_mols = 0
+            for m, row in base.items():
+                assert not keyed & {k(s) for s in on[m]}
+                assert len(set(map(cp.metric_identity, on[m]))) == len(on[m])
+                assert [s for s in row if k(s) not in keyed] == on[m][:len([s for s in row if k(s) not in keyed])]
+                hit = sum(k(s) in keyed for s in row[:25])
+                n_rows += hit; n_mols += hit > 0
+            assert (st['e180_dropped'], st['e180_mols']) == (n_rows, n_mols) and n_mols >= 1
+
+
+def test_e180_drop_backfills_from_beyond_25():
+    # 30 distinct alkanols-like candidates in the fused window: dropping a keyed top-25 row pulls rank 26
+    smis = ['C' * i + 'O' for i in range(1, 31)]
+    s = state()
+    s['base']['m3'] = (smis, [k(x) for x in smis], 0.95, list(range(30, 0, -1)), ['F'] * 30)
+    keyed = {k(smis[0]), k(smis[2])}                     # not 'CCO' (smis[1]): the placeholder string is filtered
+    base = cp.run(s, deps(gl_reverse=False), **E006_ON)['m3']
+    on = cp.run(s, deps(gl_reverse=False), E180_DROP=True, E180_KEYS=keyed, **E006_ON)['m3']
+    assert len(base) == len(on) == 25 and keyed <= {k(x) for x in base} and not keyed & {k(x) for x in on}
+
+
+def test_e180_drop_without_key_file_raises():
+    for keys, err in (('/nonexistent/e180_only_ik14.txt', FileNotFoundError), (set(), ValueError)):
+        try:
+            cp.run(state(), deps(), E180_DROP=True, E180_KEYS=keys)
+        except err:
+            continue
+        raise AssertionError('E180_DROP=True with no usable key list must raise')
+
+
 def test_patch_only_adds():
     nb = phd.build('C2', ranker=RANKER)
     base = [''.join(c['source']) for c in json.load(open(phd.SRC, encoding='utf-8'))['cells'] if c['cell_type'] == 'code']
     code = [''.join(c['source']) for c in nb['cells'] if c['cell_type'] == 'code']
-    kept = [s.replace(phd.SNAP, '') for s in code if not s.startswith(('# === HARNESS', 'POST_SRC'))]
+    kept = [s.replace(phd.SNAP, '').replace(phd.PRESEED_NEW, phd.PRESEED_OLD)
+            .replace(phd.LIB_SIM_INIT_NEW, phd.LIB_SIM_INIT_OLD).replace(phd.LIB_SIM_LOOP_NEW, phd.LIB_SIM_LOOP_OLD)
+            for s in code if not s.startswith(('# === HARNESS', 'POST_SRC'))]
     assert kept == base and len(code) == len(base) + 6
     assert "VAL_SHARD = 'C2'" in code[2] and "VAL_SHARD = ''" in ''.join(''.join(c['source']) for c in phd.build('', ranker=RANKER)['cells'])
     assert sum(phd.SNAP in s for s in code) == 1 and 'POST EQUIV ok' in code[-1]
 
 
+def test_preseed_picks_wheel_by_interpreter_tag():
+    code = ''.join(''.join(c['source']) for c in phd.build('C2', ranker=RANKER)['cells'] if c['cell_type'] == 'code')
+    assert code.count(phd.PRESEED_NEW) == 1 and phd.PRESEED_OLD not in code and "-cp313*.whl" not in code
+    from pip._vendor.packaging.tags import sys_tags
+    from pip._vendor.packaging.utils import parse_wheel_filename
+    me = f'cp{sys.version_info.major}{sys.version_info.minor}'
+    plat = next(t.platform for t in sys_tags() if t.interpreter == me)
+    names = ['rdkit-2025.3.6-cp311-cp311-manylinux_2_28_x86_64.whl.ice',
+             f'rdkit-2025.3.6-{me}-{me}-{plat}.whl.ice']
+    ok = set(sys_tags())
+    hit = [n for n in names if ok.intersection(parse_wheel_filename(n.removesuffix('.ice'))[3])]
+    assert hit == [names[1]], hit                                   # only the interpreter's own build is taken
+
+
 def test_inserted_cells_bind_their_names():
     # harness-c2 v1 died on `NameError: np`: the VAL cell sits above the base's numpy import, and the draft
     # (VAL_SHARD = '') never runs that branch. Rule R07 (research/rules/_nbnames.py).
-    sys.path.insert(0, 'C:/Users/h/OneDrive/Desktop/ENVEDA_casmi/research/rules')
+    sys.path.insert(0, 'E:/ENVEDA_casmi/research/rules')
     from _nbnames import unbound
     for shard in phd.SHARDS:
         code = [''.join(c['source']) for c in phd.build(shard, ranker=RANKER)['cells'] if c['cell_type'] == 'code']
@@ -198,7 +261,7 @@ RANKER = ('Q', 'np')          # test values; the real field/label come from the 
 
 
 def _nbn():
-    sys.path.insert(0, 'C:/Users/h/OneDrive/Desktop/ENVEDA_casmi/research/rules')
+    sys.path.insert(0, 'E:/ENVEDA_casmi/research/rules')
     import _nbnames
     return _nbnames
 
@@ -235,6 +298,20 @@ def test_np_shards_registered():
     assert [r['molecule_id'] for r in ns['_hx_val_records'](recs, 'C2')] == ['V2']
     out = phd.main(['--shard', 'C2_np', '--ranker-field', 'Q', '--ranker-drop', 'np', '--out', os.devnull])
     assert out == 0
+
+
+def test_battery_shards_take_their_own_cohort():
+    # scorecard battery (2026-10-13): C2_hard / C1_xlib are plain val_key cohorts, records passed through as is
+    assert 'C2_hard' in phd.SHARDS and 'C1_xlib' in phd.SHARDS
+    val = next(s for s in _code('C2_hard') if 'VAL_SHARD = ' in s)
+    ns = {}
+    exec(val[val.index('def _hx_val_records'):val.index('# end _hx_val_records')], ns)
+    recs = [dict(molecule_id='H1', inchikey14='AAA', cohort='C2_hard', cls=2, ban_rows=[3, 9], ban_keys=['AAA', 'NB1']),
+            dict(molecule_id='X1', inchikey14='BBB', cohort='C1_xlib', cls=1, ban_rows=[4], ban_keys=[]),
+            dict(molecule_id='V2', inchikey14='CCC', cohort='C2', cls=2, ban_rows=[5], ban_keys=['CCC'])]
+    hard = ns['_hx_val_records'](recs, 'C2_hard')
+    assert [r['molecule_id'] for r in hard] == ['H1'] and hard[0]['ban_keys'] == ['AAA', 'NB1']
+    assert [r['molecule_id'] for r in ns['_hx_val_records'](recs, 'C1_xlib')] == ['X1']
 
 
 def test_new_cells_placed():

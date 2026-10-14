@@ -50,7 +50,16 @@ CFG = dict(
     # engine2-fppair knobs: read by the Engine 2 cell upstream of the dump, no-ops in run() (replay reads stored ENG)
     ENGINE2_ROWS='nofp',     # 'nofp' (base) | 'fppair': "ours" ranker on sim_rank_rows_fppair.npz + leak-free FPNets
     ENGINE2_W_PV=0.88,       # Engine 2 blend weight of the pv ranker (base 0.88; fppair probe 0.50)
+    # lib-isomer-margin knob (default None = off = base behaviour): reorder library-backed top-3 slots by their own
+    # reference similarity; needs state['lib_sim'] (written by the C7 graft, build/patch_harness_dump.py)
+    LIB_ISOMER_MARGIN=None,
+    # e180-drop knob (default False = off = base behaviour): remove R1b enveda-180-only structures from the final rows
+    # before the 25 cut. E180_KEYS = a set of ik14 or a key-file path (None: first existing of E180_KEY_PATHS)
+    E180_DROP=False,
+    E180_KEYS=None,
 )
+
+E180_KEY_PATHS = ('/kaggle/input/casmi26-e180-keys/e180_only_ik14.txt', 'E:/casmi/data/e180/e180_only_ik14.txt')
 
 
 # ---------------------------------------------------------------- C11 metric identity (copied from the notebook)
@@ -115,6 +124,55 @@ def safe_extend(original, extra, limit=25):
     return out
 
 
+# ---------------------------------------------------------------- e180-drop
+@lru_cache(maxsize=4)
+def _read_keys(path):
+    with open(path, encoding='utf-8') as f:
+        return frozenset(line.strip() for line in f if line.strip())
+
+
+def e180_keys(spec=None):
+    """The enveda-180-only ik14 set. spec: a set/list of ik14, a file path, or None (first existing default path).
+    Raises when nothing is found: a silent no-op is the L38 failure."""
+    import os
+    if spec is not None and not isinstance(spec, (str, os.PathLike)):
+        keys = frozenset(spec)
+    else:
+        path = next((p for p in ([spec] if spec else E180_KEY_PATHS) if os.path.exists(p)), None)
+        if path is None:
+            raise FileNotFoundError(f'E180_DROP=True but no key file found (tried {spec or E180_KEY_PATHS})')
+        keys = _read_keys(str(path))
+    if not keys:
+        raise ValueError('E180_DROP=True but the key set is empty')
+    return keys
+
+
+def _is_keyed(smi, keys):
+    ident = metric_identity(str(smi).strip())
+    return ident is not None and ident[0] in keys
+
+
+def _e180_final(out, keys, active, OVER, TAIL, ENG, PC, dropped):
+    """Step 2: on every active row still holding a keyed structure, drop it and back-fill from the C12 extras
+    (keyed rows excluded), as _final_pass builds them. A no-op on rows the overlay already cleaned."""
+    res = {}
+    for mid, rows in out.items():
+        rows = list(rows)
+        n = sum(_is_keyed(s, keys) for s in rows[:25])
+        short = mid in dropped and len(rows) < 25            # step 1 removed rows and its own sources ran dry
+        if mid not in active or not (n or short):
+            res[mid] = rows
+            continue
+        if n:
+            dropped[mid] = dropped.get(mid, 0) + n
+        extras = list(OVER.get(mid, [])) + list(TAIL.get(mid, []))
+        extras.extend((ENG.get(mid) or {}).get('smiles', []))
+        extras.extend((PC.get(mid) or {}).get('pc', []))
+        res[mid] = safe_extend([s for s in rows if not _is_keyed(s, keys)],
+                               [s for s in extras if not _is_keyed(s, keys)]) or rows
+    return res
+
+
 # ---------------------------------------------------------------- C9 pure functions (copied from the notebook)
 def merge(base, base_keys, pc, pc_keys, slots, n=25):
     bk = set(base_keys)
@@ -156,6 +214,27 @@ def metric_fusion(first, second, identity, alpha=0.6, offset=3.0, limit=40):
             representatives.setdefault(key, candidate)
     ordered = sorted(scores, key=lambda key: -scores[key])[:limit]
     return [representatives[key] for key in ordered], [scores[key] for key in ordered], collapsed
+
+
+def lib_isomer_rows(rows, sims, margin, ik):
+    """Last step on one molecule's final rows. S = slots i < 3 whose candidate has a library similarity > 0.
+    If |S| >= 2, the candidates in slots S are sorted by similarity (descending) and the order is applied only when
+    sim(best) - sim(candidate at min(S)) > margin. Other slots and ranks 4-25 never move, so the output is a
+    permutation of the input. sims maps ik14 -> similarity; ik maps a SMILES to its ik14 (or None).
+    -> (new_rows, eligible, swapped)"""
+    rows = list(rows)
+    sims_at = {i: sims.get(ik(rows[i])) for i in range(min(3, len(rows)))}
+    S = [i for i in sorted(sims_at) if sims_at[i] is not None and sims_at[i] > 0]
+    if len(S) < 2:
+        return rows, False, False
+    ranked = sorted(S, key=lambda i: -sims_at[i])           # stable: ties keep their slot order
+    best = sims_at[ranked[0]]
+    if not best - sims_at[min(S)] > margin:
+        return rows, True, False
+    new_rows = list(rows)
+    for slot, src in zip(S, ranked):
+        new_rows[slot] = rows[src]
+    return new_rows, True, new_rows != rows
 
 
 def _dep(deps, name):
@@ -290,14 +369,45 @@ def run(state, deps, stats=None, **overrides):
         out = {m: s.split(';') for m, s in sub.items()}
     else:
         out = _final_pass(sub, state, active, OVER, TAIL, ENG, PC, dreams)
+    e180, dropped = (e180_keys(c['E180_KEYS']) if c['E180_DROP'] else None), {}
     if c['METRIC_FUSION'] and ENG and c['USE_ENG']:
         out = _metric_overlay(out, PREFUSION, active, ENG, ICE, gl_of, c, window, score_key, form,
-                              ice_rerank, gl_multi, stats)
+                              ice_rerank, gl_multi, stats, e180, dropped)
+    if e180 is not None:
+        out = _e180_final(out, e180, active, OVER, TAIL, ENG, PC, dropped)
+        stats['e180_dropped'] = sum(dropped.values())
+        stats['e180_mols'] = len(dropped)
+    if c['LIB_ISOMER_MARGIN'] is not None and state.get('lib_sim'):
+        out = _lib_isomer(out, state, c, stats)
     return out
 
 
+def _lib_isomer(out, state, c, stats):
+    """lib-isomer-margin: final step. state['lib_sim'] = {mid: {smiles: best reference similarity}} (BASE top-10)."""
+    sim_of = {str(m): v for m, v in state['lib_sim'].items()}
+    for k_ in ('lib_sim_mols', 'lib_isomer_eligible', 'lib_isomer_swapped'):
+        stats.setdefault(k_, 0)
+    res = {}
+    for mid, rows in out.items():
+        ls = sim_of.get(str(mid)) or {}
+        if not ls:
+            res[mid] = rows
+            continue
+        stats['lib_sim_mols'] += 1
+        sims = {}
+        for smi, v in ls.items():
+            key = canonicalize_smiles_to_ik14(smi)
+            if key is not None and float(v) > sims.get(key, 0.0):
+                sims[key] = float(v)
+        new_rows, eligible, swapped = lib_isomer_rows(rows, sims, c['LIB_ISOMER_MARGIN'], canonicalize_smiles_to_ik14)
+        stats['lib_isomer_eligible'] += int(eligible)
+        stats['lib_isomer_swapped'] += int(swapped)
+        res[mid] = new_rows
+    return res
+
+
 def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_key, form, ice_rerank, gl_multi,
-                    stats):
+                    stats, e180=None, dropped=None):
     """E006 cell 30 rerank_row (cell 28 metric_fusion + GL-present gate + optional ICE fallback), applied to the
     final rows: `original` is the reference E006 reads (C12 output, i.e. submission_reference.csv)."""
     res = {}
@@ -326,7 +436,16 @@ def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_ke
                 stats['ice_fallback'] = stats.get('ice_fallback', 0) + 1
         except Exception:
             pass
-        res[mid] = safe_extend(cands[:25], cands[25:] + original) if cands else original
+        row = safe_extend(cands[:25], cands[25:] + original) if cands else original
+        if e180 is not None and cands:
+            n = sum(_is_keyed(s, e180) for s in row[:25])
+            if n:
+                # e180-drop step 1: after the rerank, so the rerank's inputs (and every score) match the base
+                kept = [s for s in cands if not _is_keyed(s, e180)]
+                orig = [s for s in original if not _is_keyed(s, e180)]
+                row = safe_extend(kept[:25], kept[25:] + orig) or row
+                dropped[mid] = dropped.get(mid, 0) + n
+        res[mid] = row
     return res
 
 
