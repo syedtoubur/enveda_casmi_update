@@ -490,3 +490,16 @@ Idea chain: pseudo-c3-dump → c3-gen-union → c3-detector → c3-slot2-route. 
 - **LB (poll_lb.decide):** paired control = an E006 v1 replicate pushed in the same window. KEEP iff probe ≥ 0.444 AND probe − control ≥ +0.004; then a replicate before it becomes the base. 0.441–0.443 = MAYBE (replicate); ≤ control = REVERT.
 - **Amendment 2026-10-15 (before any measurement; human decision): leak-free re-scorer.** pseudo_c3 queries are train.parquet rows that FPNet full1 trained on, so every f·z signal is leaky on this cohort. The novel channel therefore uses **no FPNet**: the union is scored by the decoder's teacher-forced log p(SELFIES | DreaMS embedding) (decoder holdout = scaffold group) plus ICEBERG cosine on the top-N (msg_all, MassSpecGym-only; pseudo_c3 excludes MSG structures). The c3v2 mutator's f·z beam is replaced by the decoder log-p beam. `gen_fz_gap` → `gen_ice_gap` = best generated ICE cosine − best ICE cosine over the molecule's scored ENG/PC/BASE candidates. FPNet-derived BASE features (rel, fz_top, S) may enter the detector, but their pseudo_c3 vs test.parquet distribution shift (KS) is reported, and a detector that loses K2 with them dropped is flagged LEAK-DEPENDENT and is not shipped.
 - EV note (ASSUMED, for the record): C3 test share 25%; with h ≈ 4–6% and precision ≥ 50%, the slot-2 gain is +0.004 to +0.012.
+
+### 2026-10-15: K0 MEASURED (pseudo-c3-dump v3, `dumps/pseudo_c3`, replay with the c3 branch's casmi_post.py, E006 cfg)
+- **K0: PASS.** Kernel `POST EQUIV ok 600 of 600 | mismatches 0`. Bans: library 6,714 plain + 132 tautomer rows;
+  Engine 1 601 pool pids; Engine 2 12 of 774,327 (plain 1, tautomer 11). Audit: PC 0, ENG 0, BASE pool 0;
+  BASE generated (pid −1, proven by HX_PID) 88. v2 failed this audit (8 ENG tautomer leaks, L49).
+- pseudo_c3 under E006: MRR@25 **0.0612**, 88/600 in top 25, 12 at rank 1; all hits come from Engine 1
+  `generate=True` (allowed by K0). Ranks: 1:12, 2:28, 3:19, 4:5, 5:4, 6–24: 20, miss 512.
+  FPNet full1 trained on these query spectra, so the generator's hit and rank figures are leak-inflated (amendment).
+- L (slot-2 insert cost on leak-free "other", E006): C1_npx 0.058 (n 26), C1_xlib 0.088 (n 31), C2 0.048 (n 41),
+  C2_hard 0.048 (n 35). Small n: ± wide. Break-even at L ≈ 0.06: p·h/2 > (1−p)·0.06 → h > 12% at p = 0.5, h > 5% at p = 0.7.
+- Not pre-registered (observation, for replan): BASE rank 1 is a generated candidate on 138/600 pseudo_c3 (55 correct)
+  vs 2/245 C1_npx, 1/300 C1_xlib, 6/400 C2 (2 correct), 4/200 C2_hard. Post-scoring moves 44 of the 55 correct ones
+  from rank 1 to ranks 2–7.
