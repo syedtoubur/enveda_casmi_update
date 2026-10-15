@@ -407,6 +407,176 @@ def test_ranker_hook_filters_rows():
         assert "(5," in r.stdout, r.stdout                               # no env -> hook inert
 
 
+# ------------------------------------------------------------------------------------------------
+# pseudo_c3 shard (campaign 20261015-c3-gen-slot2): truth banned from the library AND every pool
+# ------------------------------------------------------------------------------------------------
+C3_SRC = 'E:/ENVEDA_casmi/research/harness/dumps/C2/post_dump/src'     # casmi package (chem.score_key) of the dump
+
+
+def test_c3_shard_cells_placed_and_scoped():
+    code = _code('pseudo_c3')
+    i_val = next(i for i, s in enumerate(code) if s.startswith('# === HARNESS (patch_harness_dump.py): val mode.'))
+    assert 'pseudo_c3 val mode' in code[i_val + 1] and "VAL_SHARD and VAL_SHARD != 'pseudo_c3'" in code[i_val]
+    i_bank = next(i for i, s in enumerate(code) if 'HARNESS fpnet_0 swaps 1' in s)
+    assert 'Engine 1 pool ban' in code[i_bank + 1]
+    i_snap = next(i for i, s in enumerate(code) if phd.SNAP in s)
+    assert 'pseudo_c3 ban audit' in code[i_snap - 1]
+    pc = next(s for s in code if 'pc_runner.py' in s and 'RUNNER' in s)
+    assert pc.count("HX_BAN_KEYS") == 4 and pc.count('HARNESS pseudo_c3') == 2
+    c2 = _code('C2')                                                    # other shards: untouched
+    assert not any('pseudo_c3 val mode' in s or 'Engine 1 pool ban' in s for s in c2)
+    assert 'HX_PK' not in next(s for s in c2 if 'pc_runner.py' in s and 'RUNNER' in s)
+
+
+def test_c3_pc_literals_compile():
+    # the patched runner / probe literals must still be valid Python after the notebook writes them out
+    pc = next(s for s in _code('pseudo_c3') if 'pc_runner.py' in s and 'RUNNER' in s)
+    ns = {}
+    exec(pc[pc.index('CORE = '):pc.index("open('/kaggle/working/probe_core2.py'")], ns)
+    for name in ('CORE', 'RUNNER'):
+        compile(ns[name], name, 'exec')
+    assert 'HX_PK' in ns['RUNNER'] and "_W['pool_keys'] |=" in ns['CORE']
+    eng = next(s for s in _code('pseudo_c3') if s.startswith('# Our engine (two-ranker'))
+    head = "open(os.path.join(ENG_DIR, 'eng_runner.py'), 'w').write("
+    src = eng[eng.index(head) + len(head):]
+    lit = eval(src[:src.index("\n")].rsplit(')', 1)[0])
+    compile(lit, 'eng_runner', 'exec')
+    assert "out + '.c3.json'" in lit and 'HARNESS c3 analog export' in lit
+    assert "c3.json" not in next(s for s in _code('C2') if s.startswith('# Our engine (two-ranker'))
+
+
+def test_c3_engine2_hook_bans_pool():
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        site, eng = os.path.join(d, 'site'), os.path.join(d, 'eng')
+        os.makedirs(site); os.makedirs(eng)
+        open(os.path.join(site, 'hx_ranker_hook.py'), 'w').write(phd.HX_HOOK_SRC)
+        open(os.path.join(eng, 'casmi_engine.py'), 'w').write(
+            'import numpy as np\n'
+            'def build_pool(L, workers):\n'
+            '    k = np.array(["AAA", "BAN1", "CCC", "BAN2"], dtype=object)\n'
+            '    return dict(fp=np.zeros((4, 2)), mass=np.arange(4.0), keys=k, smiles=k.copy(), k2i={})\n')
+        ban = os.path.join(d, 'ban.json')
+        json.dump(dict(pool_ban=['BAN1', 'BAN2', 'ZZZ']), open(ban, 'w'))
+        prog = (f'import sys; sys.path.insert(0, {site!r}); import hx_ranker_hook; sys.path.insert(0, {eng!r}); '
+                f'import casmi_engine as E; P = E.build_pool(None, 1); print(P["keys"].tolist(), P["mass"].tolist(), {{k: int(v) for k, v in P["k2i"].items()}})')
+        env = {k: v for k, v in os.environ.items() if not k.startswith('HX_')}
+        r = subprocess.run([sys.executable, '-c', prog], capture_output=True, text=True, env=dict(env, HX_BAN_KEYS=ban))
+        assert r.returncode == 0, r.stderr
+        assert "['AAA', 'CCC'] [0.0, 2.0] {'AAA': 0, 'CCC': 1}" in r.stdout, r.stdout
+        assert open(ban + '.eng2').read().split() == ['2', '4', '2', '0']
+        r = subprocess.run([sys.executable, '-c', prog], capture_output=True, text=True, env=env)
+        assert "['AAA', 'BAN1', 'CCC', 'BAN2']" in r.stdout, r.stdout     # no env -> hook inert
+
+
+def test_c3_engine2_hook_bans_tautomers():
+    # pseudoc3 v2 died on the audit: Engine 2 keys its pool by plain IK14 but re-keys its lists by canon_key, so a
+    # tautomer of the truth under another plain key reached 8 lists under the banned key. Ban by the emitted key.
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        site, eng = os.path.join(d, 'site'), os.path.join(d, 'eng')
+        os.makedirs(site); os.makedirs(eng)
+        open(os.path.join(site, 'hx_ranker_hook.py'), 'w').write(phd.HX_HOOK_SRC)
+        open(os.path.join(eng, 'casmi_engine.py'), 'w').write(
+            'import numpy as np\n'
+            'CANON = {"t": "BAN1", "f": "BAN1"}\n'
+            'def canon_key(s):\n'
+            '    return CANON.get(s, s.upper() * 3)\n'
+            'def build_pool(L, workers):\n'
+            '    k = np.array(["AAA", "TAUT", "CCC", "FAR"], dtype=object)\n'
+            '    s = np.array(["a", "t", "c", "f"], dtype=object)\n'
+            '    return dict(fp=np.zeros((4, 2)), mass=np.array([100.0, 200.0, 300.0, 200.5]), keys=k, smiles=s, k2i={})\n')
+        ban = os.path.join(d, 'ban.json')
+        json.dump(dict(pool_ban=['BAN1'], masses=[200.0]), open(ban, 'w'))
+        prog = (f'import sys; sys.path.insert(0, {site!r}); import hx_ranker_hook; sys.path.insert(0, {eng!r}); '
+                f'import casmi_engine as E; P = E.build_pool(None, 1); print(P["keys"].tolist())')
+        env = {k: v for k, v in os.environ.items() if not k.startswith('HX_')}
+        r = subprocess.run([sys.executable, '-c', prog], capture_output=True, text=True, env=dict(env, HX_BAN_KEYS=ban))
+        assert r.returncode == 0, r.stderr
+        assert "['AAA', 'CCC', 'FAR']" in r.stdout, r.stdout             # FAR: canon BAN1 but outside 10 ppm
+        assert open(ban + '.eng2').read().split() == ['1', '4', '0', '1']
+
+
+def test_c3_audit_separates_generated_from_pool():
+    cell = _cell(_code('pseudo_c3'), 'pseudo_c3 ban audit')
+    base = {'m1': (['x', 'y'], ['BAN', 'OK'], 0.0, [2.0, 1.0], ['F', 'F']),
+            'm2': (['z'], ['OK2'], 0.0, [1.0], ['F'])}
+    clean = dict(VAL_SHARD='pseudo_c3', HX_C3_BAN={'BAN'}, BASE=base, PC={}, ENG={'m2': dict(keys=['OK2'])})
+    exec(cell, dict(clean, HX_PID={'m1': {'BAN': -1, 'OK': 5}}))           # generated truth: allowed
+    for pid in ({'m1': {'BAN': 7, 'OK': 5}}, {}):                         # pool pid, or provenance unknown: fail
+        try:
+            exec(cell, dict(clean, HX_PID=pid))
+        except AssertionError:
+            continue
+        raise AssertionError(f'pool-sourced banned key passed the audit: {pid}')
+    try:
+        exec(cell, dict(clean, HX_PID={'m1': {'BAN': -1}}, ENG={'m2': dict(keys=['BAN'])}))
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('ENG leak passed the audit')
+
+
+def test_c3_base_pid_graft():
+    c7 = next(s for s in _code('pseudo_c3') if 'BASE, n_err = {}, 0' in s)
+    assert phd.C7_PID_NEW in c7 and c7.index('HX_PID[mid] = dict(zip(keys, pids_))') < c7.index('o_[isg_]')
+    assert not any('HX_PID' in s for s in _code('C2'))
+    val = _cell(_code('pseudo_c3'), 'pseudo_c3 val mode')
+    assert 'HX_C3_BAN, HX_PID = set(), {}' in val and "masses=_tm.tolist()" in val
+
+
+def test_c3_engine1_window_ban():
+    import types
+    import numpy as np
+    cell = _cell(_code('pseudo_c3'), 'Engine 1 pool ban')
+    P = types.SimpleNamespace(key=np.array(['A', 'B', 'C', 'D'], dtype=object), key2pid={'A': 0, 'B': 1, 'C': 2, 'D': 3})
+    P.window = lambda t, ppm: np.arange(4)
+    exec(cell, dict(VAL_SHARD='pseudo_c3', HX_C3_BAN={'B', 'D'}, P=P))
+    assert list(P.window(100.0, 10)) == [0, 2] and set(P.key2pid) == {'A', 'C'}
+    P2 = types.SimpleNamespace(key=P.key, key2pid={}, window=lambda t, ppm: np.arange(4))
+    exec(cell, dict(VAL_SHARD='C2', HX_C3_BAN=set(), P=P2))
+    assert list(P2.window(1.0, 1)) == [0, 1, 2, 3]
+
+
+def test_c3_val_cell_bans_library_and_writes_inputs():
+    import tempfile
+    import numpy as np
+    import pandas as pd
+    sys.path.insert(0, C3_SRC)
+    from casmi import chem
+    cell = _cell(_code('pseudo_c3'), 'pseudo_c3 val mode')
+    truth, other, taut_a = 'CC(=O)Nc1ccc(O)cc1', 'CCCCCCCCO', 'O=C(C)Nc1ccc(O)cc1'   # taut_a: same structure, other SMILES
+    ik = lambda s: chem.score_key(s)
+    with tempfile.TemporaryDirectory() as d:
+        mz = 151.0633 + 1.00728
+        tr = pd.DataFrame(dict(inchikey14=[ik(truth), ik(other), 'NOTAKEY0000000', ik(truth)],
+                               normalized_smiles=[truth, other, taut_a, truth], adduct=['[M+H]+'] * 4,
+                               precursor_mz=[mz, 131.143, mz, mz], ionization_mode=['positive'] * 4,
+                               spectrum_id=['s0', 's1', 's2', 's3']))
+        tr.to_parquet(os.path.join(d, 'train.parquet'))
+        tr.head(1).assign(molecule_id='T0')[['molecule_id', 'spectrum_id', 'precursor_mz', 'adduct', 'ionization_mode']] \
+            .to_parquet(os.path.join(d, 'test.parquet'))
+        pd.DataFrame(dict(molecule_id=['C3_00000'], inchikey14=[ik(truth)], smiles=[truth], in_scope=[True],
+                          train_rows=[np.array([3])], lib_ban_keys=[np.array([ik(truth)], dtype=object)],
+                          pool_ban_keys=[np.array([ik(truth)], dtype=object)])).to_parquet(os.path.join(d, 'pseudo_c3.parquet'))
+        cell = cell.replace('/kaggle/working', d.replace(os.sep, '/'))
+        ns = dict(VAL_SHARD='pseudo_c3', find=lambda n: os.path.join(d, n), V4CODE=C3_SRC)
+        try:
+            exec(cell, ns)
+        finally:
+            ban_env = os.environ.pop('HX_BAN_KEYS', '')
+        vd = os.path.join(d, 'val_comp')
+        q = pd.read_parquet(os.path.join(vd, 'test.parquet'))
+        t2 = pd.read_parquet(os.path.join(vd, 'train.parquet'))
+        assert list(q.molecule_id) == ['C3_00000'] and list(q.spectrum_id) == ['s3']
+        assert list(t2.spectrum_id) == ['s1'], list(t2.spectrum_id)        # plain-key rows AND the tautomer row banned
+        assert os.path.normpath(ns['COMP']) == os.path.normpath(vd) and ns['IS_RERUN'] is True and ik(truth) in ns['HX_C3_BAN']
+        assert json.load(open(os.path.join(d, 'hx_ban.json')))['pool_ban'] == sorted(ns['HX_C3_BAN'])
+        assert ban_env.endswith('hx_ban.json')
+
+
 if __name__ == '__main__':
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith('test_')]
     bad = 0

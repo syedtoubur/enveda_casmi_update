@@ -157,6 +157,13 @@ def test_runner_default_path_is_base():
     assert files
 
 
+def test_pv88_variant_differs_only_in_weight():
+    """engine2-pv88 (cycle 3): fppair rows at the base blend weight; the cell differs from v2 only in the w_pv literal."""
+    v2, pv88 = _engine_cell(pe.build()), _engine_cell(pe.build(rows='fppair', w_pv=0.88))
+    assert "ENGINE2_ROWS, ENGINE2_W_PV = 'fppair', 0.88" in pv88
+    assert pv88.replace("'fppair', 0.88", "'fppair', 0.5") == v2
+
+
 if __name__ == '__main__':
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith('test_')]
     bad = 0

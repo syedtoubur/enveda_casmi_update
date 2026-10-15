@@ -3,7 +3,7 @@
 > **Purpose**: Single entry-point for humans and AI agents navigating the research tracks, architectural roadmaps, and code files for the Enveda CASMI 2026 competition.  
 > **Official Metric**: MRR@25 on InChIKey14 (tautomer-canonical)  
 > **Current Best Score**: **0.399 Public LB** (Track 1)  
-> **Master Experiment Ledger**: See [EXPERIMENTS.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md)
+> **Master Experiment Ledger**: See [EXPERIMENTS.md](file:///e:/ENVEDA_casmi/EXPERIMENTS.md)
 
 ---
 
@@ -11,11 +11,11 @@
 
 | Track | Directory | SOTA / Status | Focus |
 |---|---|---|---|
-| **specs_scratch: own pipeline** | [`specs_scratch/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/specs_scratch) | **Active (10-05)**: S0 done, R0 ready to submit | Our own tested package (`scratch_pkg/`) built rung by rung from the Track 3 base; Tracks 1–4 are its read-only knowledge base. |
-| **Track 1: Retrieval & Fusion** | [`track1_retrieval_fusion/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion) | **0.399 LB** (Current Best) | Class 1 & 2 retrieval, candidate expansion (PubChem/BIO), dual-engine rank fusion, and scaffold mutation. |
-| **Track 2: Novel De Novo** | [`track2_novel_generation/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation) | **Phase 3 (G3.1 PASS)** | Class 3 de novo molecule generation via SELFIES decoder on frozen DreaMS embeddings. |
-| **Track 3: Forward MS Simulator** | [`track3_ms_simulator/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track3_ms_simulator) | **Validated (+0.035 LB)** | Physical MS/MS forward spectrum prediction (ICEBERG/GLACIER) for candidate re-ranking. |
-| **Archive** | [`archive/`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/archive) | Historical Drafts | Superseded early simulator drafts and initial brainstorm notes. |
+| **specs_scratch: own pipeline** | [`specs_scratch/`](file:///e:/ENVEDA_casmi/specs/specs_scratch) | **Active (10-05)**: S0 done, R0 ready to submit | Our own tested package (`scratch_pkg/`) built rung by rung from the Track 3 base; Tracks 1–4 are its read-only knowledge base. |
+| **Track 1: Retrieval & Fusion** | [`track1_retrieval_fusion/`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion) | **0.399 LB** (Current Best) | Class 1 & 2 retrieval, candidate expansion (PubChem/BIO), dual-engine rank fusion, and scaffold mutation. |
+| **Track 2: Novel De Novo** | [`track2_novel_generation/`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation) | **Phase 3 (G3.1 PASS)** | Class 3 de novo molecule generation via SELFIES decoder on frozen DreaMS embeddings. |
+| **Track 3: Forward MS Simulator** | [`track3_ms_simulator/`](file:///e:/ENVEDA_casmi/specs/track3_ms_simulator) | **Validated (+0.035 LB)** | Physical MS/MS forward spectrum prediction (ICEBERG/GLACIER) for candidate re-ranking. |
+| **Archive** | [`archive/`](file:///e:/ENVEDA_casmi/specs/archive) | Historical Drafts | Superseded early simulator drafts and initial brainstorm notes. |
 
 ---
 
@@ -24,11 +24,11 @@
 **Objective**: Maximize retrieval precision on **Class 1** (reference library present) and **Class 2** (known structure in database, no public spectra). Combines multiple candidate pools (Train, COCONUT, PubChem, ChEBI, LIPID MAPS), multi-channel GBDT ranking, reciprocal rank fusion (RRF), and scaffold mutation.
 
 ### Core Specs
-- [`roadmap.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/roadmap.md) — Operational roadmap for pushing the baseline from 0.384 toward 0.399+.
-- [`plan_v2.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/plan_v2.md) — The fusion philosophy and R1–R5 rules (why orthogonality pays and deepening single views fails).
-- [`baseline_intro.txt`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/baseline_intro.txt) — Comprehensive architecture and cell-by-cell audit of the v4n baseline.
-- [`c3_routing.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/c3_routing.md) — **Start here for the mutator channel.** Self-contained: why the two mutator submissions scored 0.399 and 0.397, the Class-3 detector and rank-promotion design, every measurement with how to reproduce it, the code map, and the open gates.
-- [`validate_mutator.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/validate_mutator.md) — Mutator validation on the `pseudo_c3` Class-3 cohort. **Read §8 alongside §1–§7**: the headline 17.2% is an oracle-scaffold number and the production-viable ceiling is 4.2%.
+- [`roadmap.md`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/roadmap.md) — Operational roadmap for pushing the baseline from 0.384 toward 0.399+.
+- [`plan_v2.md`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/plan_v2.md) — The fusion philosophy and R1–R5 rules (why orthogonality pays and deepening single views fails).
+- [`baseline_intro.txt`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/baseline_intro.txt) — Comprehensive architecture and cell-by-cell audit of the v4n baseline.
+- [`c3_routing.md`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/c3_routing.md) — **Start here for the mutator channel.** Self-contained: why the two mutator submissions scored 0.399 and 0.397, the Class-3 detector and rank-promotion design, every measurement with how to reproduce it, the code map, and the open gates.
+- [`validate_mutator.md`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/validate_mutator.md) — Mutator validation on the `pseudo_c3` Class-3 cohort. **Read §8 alongside §1–§7**: the headline 17.2% is an oracle-scaffold number and the production-viable ceiling is 4.2%.
 
 ### Key Files Produced & Used
 - `casmi26-v4n-engine-fusion-union-lb-0-399.ipynb`: **Current SOTA submission (0.399 LB)** — Weighted RRF fusion (α=0.6) between v4n and a second orthogonal engine, with `ICE_UNION` scoring engine candidates via ICEBERG/GLACIER.
@@ -51,11 +51,11 @@
 **Objective**: Solve **Class 3** (completely novel structures absent from all chemical databases, where pure retrieval has a 0% ceiling) using an autoregressive SELFIES decoder conditioned on frozen DreaMS spectrum embeddings.
 
 ### Core Specs
-- [`roadmap.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation/roadmap.md) — Gate-driven roadmap (Phases P0 to P7). All thresholds are pre-registered before measuring.
-- [`gate_report.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation/gate_report.md) — Central record of pre-registered thresholds, decision rules, and verified gate measurements.
-- [`phase3_plan.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation/phase3_plan.md) — Architectural design for P3 decoder training and evaluation.
-- [`search_plan.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation/search_plan.md) — Combinatorial chemical search design (prefix-seeded, diverse-beam, masked-beam).
-- [`printouts.txt`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation/printouts.txt) — Latest raw training output and evaluation logs (P3 converged at epoch 19; G3.1 passed).
+- [`roadmap.md`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation/roadmap.md) — Gate-driven roadmap (Phases P0 to P7). All thresholds are pre-registered before measuring.
+- [`gate_report.md`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation/gate_report.md) — Central record of pre-registered thresholds, decision rules, and verified gate measurements.
+- [`phase3_plan.md`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation/phase3_plan.md) — Architectural design for P3 decoder training and evaluation.
+- [`search_plan.md`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation/search_plan.md) — Combinatorial chemical search design (prefix-seeded, diverse-beam, masked-beam).
+- [`printouts.txt`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation/printouts.txt) — Latest raw training output and evaluation logs (P3 converged at epoch 19; G3.1 passed).
 
 ### Key Files Produced & Used
 - `build/novel_decoder.py`: Core Python module — SELFIES vocabulary tokenization, tracker logic, legal token masking, and chemical graph validation.
@@ -74,9 +74,9 @@
 **Objective**: Score and re-rank candidate structures by forward-simulating their tandem mass spectra using the ICEBERG deep-learning fragmentation simulator.
 
 ### Core Specs
-- [`gate_report.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track3_ms_simulator/gate_report.md) — Results of the paired control ablation test proving ICEBERG forward simulation contributes +0.035 LB.
-- [`new_gate_results.txt`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track3_ms_simulator/new_gate_results.txt) — Empirical adduct coverage gate (G2b): 6 covered adducts (`[M+H]+`, `[M-H]-`, etc.) and 4 routed to MetFrag fallback.
-- [`mission.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track3_ms_simulator/mission.md) — Scope and architecture of the forward simulator pipeline.
+- [`gate_report.md`](file:///e:/ENVEDA_casmi/specs/track3_ms_simulator/gate_report.md) — Results of the paired control ablation test proving ICEBERG forward simulation contributes +0.035 LB.
+- [`new_gate_results.txt`](file:///e:/ENVEDA_casmi/specs/track3_ms_simulator/new_gate_results.txt) — Empirical adduct coverage gate (G2b): 6 covered adducts (`[M+H]+`, `[M-H]-`, etc.) and 4 routed to MetFrag fallback.
+- [`mission.md`](file:///e:/ENVEDA_casmi/specs/track3_ms_simulator/mission.md) — Scope and architecture of the forward simulator pipeline.
 
 ### Key Files Produced & Used
 - `casmi_simple_sim_submission.ipynb`: Phase 4 submission notebook (0.289 LB) — Evaluated ICEBERG forward spectrum scoring on test spectra.

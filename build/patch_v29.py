@@ -302,7 +302,7 @@ def main(argv=None):
     dst = a.out or os.path.join(ROOT, f"casmi26-t4v2-{'-'.join(tg) or 'base'}.ipynb")
     nb = build(a)
     json.dump(nb, open(dst, "w", encoding="utf-8"), indent=1)
-    print("wrote", os.path.relpath(dst, ROOT), "| flags:", ", ".join(tg) or "none (instrumentation only)")
+    print("wrote", os.path.abspath(dst), "| flags:", ", ".join(tg) or "none (instrumentation only)")
     return dst
 
 

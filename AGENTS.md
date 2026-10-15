@@ -12,12 +12,12 @@
   - **Class 3**: Completely novel (de novo generation via Track 2 or scaffold mutation via Track 1; pure database retrieval has a 0% ceiling).
 
 ## 2. How to Navigate This Repo
-- **Master Ledger**: Always check [EXPERIMENTS.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md) to see current SOTA, past scores, deltas, and proven dead ends.
-- **Never guess notebooks**: Consult [specs/README.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/README.md) to find the canonical files for each track:
+- **Master Ledger**: Always check [EXPERIMENTS.md](file:///e:/ENVEDA_casmi/EXPERIMENTS.md) to see current SOTA, past scores, deltas, and proven dead ends.
+- **Never guess notebooks**: Consult [specs/README.md](file:///e:/ENVEDA_casmi/specs/README.md) to find the canonical files for each track:
   - **Track 1** (SOTA Fusion & Mutator): `specs/track1_retrieval_fusion/`
   - **Track 2** (Novel De Novo SELFIES): `specs/track2_novel_generation/`
   - **Track 3** (MS Simulator): `specs/track3_ms_simulator/`
-- **Logging**: When completing a gate or submission, use the `/update-experiments` skill to record results in [EXPERIMENTS.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md).
+- **Logging**: When completing a gate or submission, use the `/update-experiments` skill to record results in [EXPERIMENTS.md](file:///e:/ENVEDA_casmi/EXPERIMENTS.md).
 - **Pre-Registration**: Write numerical gate thresholds in `gate_report.md` before running measurements on Colab or Kaggle.
 
 ## 3. Hard Guardrails & Constraints
@@ -28,7 +28,7 @@
 - **Token-Efficient Notebook Inspection**: NEVER read, view, or grep raw `.ipynb` JSON files directly (wastes up to 98% of context on JSON formatting and base64 plots). Always use the `/analyze-notebook` skill or run `python .agents/skills/analyze-notebook/scripts/compare.py [notebooks...]` which converts to `py:percent` and extracts semantic diffs.
 
 ## 4. Multi-agent research workflow (`research/`)
-- Two lines run in parallel: **exploit** (patches on `casmi-notebook-0-433.ipynb`) and **explore** (`scratch_pkg`). Each line has its own git worktree under `C:/casmi/lines/`, outside OneDrive. Write code only there.
+- Two lines run in parallel: **exploit** (patches on `casmi-notebook-0-433.ipynb`) and **explore** (`scratch_pkg`). Each line has its own git worktree under `E:/casmi/lines/`, outside OneDrive. Write code only there.
 - One idea is one folder, `research/<line>/<idea>/`; its first STATUS line is the state. Roles, the state machine and entry points: `research/README.md`. Config: `research/config.yaml`.
 - Antigravity (Gemini Flash): `/cycle <line>` (grill, research, spike, spec), `/critic`, `/daily-digest`. Claude: `/judge`, plus `/run-idea`, which `research/bin/call_claude.py` starts headless (one job at a time).
 - Critic and judge checklist: `research/LESSONS.md`. Cite lessons by ID. Only the Reporter edits EXPERIMENTS.md and LESSONS.md.

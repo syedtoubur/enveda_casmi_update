@@ -12,7 +12,7 @@ import warnings
 warnings.filterwarnings('ignore')
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-CODE = os.environ.get('CASMI_V4CODE', 'C:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/casmi_v4')
+CODE = os.environ.get('CASMI_V4CODE', 'E:/ENVEDA_casmi/.scratch/casmi_v4')
 os.environ.setdefault('NUMBA_CACHE_DIR', os.path.join(tempfile.gettempdir(), 'fold_audit_numba'))
 
 import numpy as np

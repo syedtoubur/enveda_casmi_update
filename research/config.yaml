@@ -5,14 +5,14 @@ catalog: specs/Dataset_intro/dataset_catalog.json
 
 lines:
   exploit:
-    worktree: C:/casmi/lines/exploit
+    worktree: E:/casmi/lines/exploit
     branch: line/exploit
     base_notebook: casmi-notebook-0-433.ipynb
     kaggle_preset: sota_0433_inference_preset
     code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (base .ipynb -> probe .ipynb)"
     keep_bar: null          # = own-account control LB + 0.004; set after the control run
   explore:
-    worktree: C:/casmi/lines/explore
+    worktree: E:/casmi/lines/explore
     branch: line/explore
     base_notebook: scratch_pkg (mk_notebook.py), best run r3_full1_r2gl 0.346
     kaggle_preset: scratch_r1_to_r3_preset

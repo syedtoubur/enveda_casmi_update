@@ -292,7 +292,7 @@ def main(argv=None):
     dst = a.out or os.path.join(ROOT, f"casmi26-t4c-classvote{a.classvote:g}.ipynb")
     nb = build(a)
     json.dump(nb, open(dst, "w", encoding="utf-8"), indent=1)
-    print("wrote", os.path.relpath(dst, ROOT), "| classvote mu", a.classvote)
+    print("wrote", os.path.abspath(dst), "| classvote mu", a.classvote)
     return dst
 
 

@@ -161,7 +161,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     nb = build(a.src)
     json.dump(nb, open(a.out, "w", encoding="utf-8"), indent=1)
-    print("wrote", os.path.relpath(a.out, ROOT))
+    print("wrote", os.path.abspath(a.out))
     return a.out
 
 
