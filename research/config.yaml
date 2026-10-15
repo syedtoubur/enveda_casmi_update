@@ -5,25 +5,38 @@ catalog: specs/Dataset_intro/dataset_catalog.json
 
 lines:
   exploit:
-    worktree: C:/casmi/lines/exploit
+    worktree: E:/casmi/lines/exploit
     branch: line/exploit
-    base_notebook: casmi-notebook-0-433.ipynb
+    base_notebook: casmi26-e006-window-40-ice-fallback-true.ipynb   # E006 v1 (0.440) since 2026-10-12; was casmi-notebook-0-433.ipynb
+    base_export: scratch/casmi26-e006.py                             # py:percent export of base_notebook; cite base lines here
+    post_module: build/casmi_post.py                                 # post-scoring knobs (relative = inside the worktree)
+    harness_base_cfg: 'METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40'   # harness.py compare --a (KEY=value,...; NOT json); ship: same keys as casmi_post.run kwargs
     kaggle_preset: sota_0433_inference_preset
     code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (base .ipynb -> probe .ipynb)"
-    keep_bar: null          # = own-account control LB + 0.004; set after the control run
-    control: research/exploit/20261010-control-0433   # probes are refused until its G4 PASS (L31)
+    keep_bar: 0.444         # = own-account control LB (E006 0.440) + 0.004
+    control: research/exploit/20261012-control-e006   # probes are refused until its G4 PASS (L31); was 20261010-control-0433
+    control_draft: research/exploit/20261013-control-draft/kaggle_output/submission.csv   # E006 v1 draft run; G4 diffs probes against it
     g4_required:            # regexes the G4 log must contain (the HEALTH line's "NOT RUN" is a stale default label)
       - 'engine lists \d+'
       - 'ICE meta \{"status": "ok".*"device": "cuda"'
       - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
-  explore:
-    worktree: C:/casmi/lines/explore
+  explore:                  # grill 2026-10-13: Class-3 de novo, new Class-2 models, literature ideas, built as modules
+    worktree: E:/casmi/lines/explore      # grafted onto the exploit base (E006 v1), paired with the same control
     branch: line/explore
-    base_notebook: scratch_pkg (mk_notebook.py), best run r3_full1_r2gl 0.346
-    kaggle_preset: scratch_r1_to_r3_preset
-    code_form: "scratch_pkg/casmi_scratch modules + tests, notebook via scratch_pkg/tools/mk_notebook.py"
-    keep_bar: 0.350         # 0.346 + 0.004; replace with a paired-control mean when one exists
-    control: null           # set to the explore control idea once one exists (L31)
+    base_notebook: E:/casmi/lines/exploit/casmi26-e006-window-40-ice-fallback-true.ipynb
+    base_export: E:/casmi/lines/exploit/scratch/casmi26-e006.py
+    post_module: E:/casmi/lines/exploit/build/casmi_post.py   # the graft point the module's candidates enter
+    harness_base_cfg: 'METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40'
+    kaggle_preset: sota_0433_inference_preset
+    code_form: "a module build/<module>.py + test in the explore worktree, grafted onto the E006 notebook by build/patch_<idea>.py (default-off switch)"
+    keep_bar: 0.444         # same control as exploit
+    control: research/exploit/20261012-control-e006
+    control_draft: research/exploit/20261013-control-draft/kaggle_output/submission.csv
+    g4_required:
+      - 'engine lists \d+'
+      - 'ICE meta \{"status": "ok".*"device": "cuda"'
+      - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
+    # was: scratch_pkg base (r3_full1_r2gl 0.346), frozen; superseded by the graft model
 
 judge:
   max_bounces: 3            # REVISE rounds before ESCALATE
@@ -40,12 +53,20 @@ gates:
     - "ICE FAILED"
     - 'Traceback .most recent call last.'
     - "FileNotFoundError"
+    - "E2_ROWS FALLBACK"    # Engine 2 fell back to the nofp rows: an engine2 probe ran without its change
+  g4_draft_diff: true       # G4 also needs the probe's draft submission.csv to differ from the control's (L36)
+  g4_min_changed: 1         # molecules that must differ; a probe's STATUS `g4_min_changed:` overrides it
+  g4_draft_noise: 0         # control-vs-control draft differences seen so far (raise it if a replicate differs)
   colab_infra_retries: 1    # Colab infra failures per gate before falling back to the Kaggle draft run
   g4_fix_rounds: 2          # automatic fix agent -> re-push rounds after a G4 FAIL; then needs-human
 
 kaggle:
   watch_interval_s: 30      # detached G4 watcher poll (heartbeat in <idea>/kaggle_watch/watch.log)
   watch_timeout_s: 3600     # then STATUS g4-timeout; kaggle_push.py --check still finalizes it
+  weekly_gpu_h: 30          # one shared autonomous pool per ISO week: G4 runs + harness dumps + training (gpu.py)
+  g4_reserve_h: 8           # dumps and training must leave this much for G4 probe runs
+  per_run_h_max: 4          # a Kaggle training run may plan at most this; more = Colab training_request.md (human)
+  est_h: {probe: 0.5, control: 0.5, instrument: 3.0, training: 4.0}   # planned hours when STATUS has no gpu_h_est
 
 colab:
   cli: "~/.local/bin/colab"          # run through: wsl -- bash -lc
@@ -53,6 +74,7 @@ colab:
   cu_per_hour: 2.0                   # conservative T4 estimate for budget accounting
   cu_cap_smoke: 0.5
   cu_cap_val: 4.0
+  cu_cap_train: 30.0                 # per idea; a Colab training run also needs STATUS colab_train: approved (human)
   exec_timeout_s: 3600
   drive_root: /content/drive/MyDrive/casmi_2026
 
@@ -61,18 +83,42 @@ campaign:                   # research/bin/campaign.py defaults; a charter's `##
   max_lb_probes: 4
   dead_streak: 2            # consecutive harness deaths on one branch close it
   quota_pause_h: 12         # retry a Claude usage-limit pause every 30 min up to this long, then stop
+  max_ideation_rounds: 2    # scout/diagnose/ideate rounds per campaign when the idea pool runs dry
+  scout_max_age_days: 7     # re-scout the literature when the newest research/scout/*.md is older
+  step_retries: 2           # a model step that leaves STATUS unchanged (or exits non-zero) this often -> needs-human
+  call_caps:                # model calls per campaign; hitting one stops the campaign (raise it, then --resume)
+    opus: 25
+    sonnet: 40
+    haiku: 60
 
 harness:                    # research/harness/gate_report.md holds the pre-registered gates
-  lb_slot_delta: 0.005      # harness delta MRR@25 on the target slice
-  ci: 0.90                  # paired bootstrap, lower bound > 0
-  dumps: [C2, C1_npx]       # val_key cohorts with a val-mode dump
+  # gate.py (rank-only, grill 2026-10-13): dead only on no gain or real harm; everything else is queued and ranked
+  harm_margin: 0.004        # a non-target cohort whose 90% CI upper bound is below -harm_margin kills the idea
+  displace_max_frac: 0.01   # rank-1 truths displaced on the target cohort, as a fraction of its molecules
+  lb_slot_delta: 0.005      # superseded 2026-10-13 (rank-only gate); kept for old harness_result.json files
+  ci: 0.90                  # paired bootstrap
+  dumps: [C2, C1_npx]       # val_key cohorts with a val-mode dump (suite / lossmap)
+  cohorts:                  # the scorecard battery; a cohort counts once research/harness/dumps/<name>/ holds its dump
+    C2: {cls: C2}
+    C1_npx: {cls: C1}
+    C2_hard: {cls: C2}      # dump pending (VAL_SHARD only)
+    C1_xlib: {cls: C1}      # dump pending (VAL_SHARD only)
+    pseudo_c3: {cls: C3}    # dump pending (needs the patch_c3cal pool-ban port into VAL_CELL)
+    c2_displace: {cls: C2}  # dump pending (same port)
+    C2_np: {cls: C2, advisory: true}   # failed its BASE bar (top-1 0.947): reported, never vetoes
+  class_weights: {C1: 1.0, C2: 1.0, C3: 1.0}   # composite; refit on LB once >= 5 scored pairs (grill 2026-10-13)
 
 claude:
-  models:                   # model per campaign step (claude -p --model)
+  models:                   # model per campaign step (claude -p --model); tier H = opus, M = sonnet, L = haiku
     replan: opus
     spec: opus
     attack: opus
     build: sonnet
+    scout: haiku            # web
+    fetch: haiku            # web: answers research/requests/
+    diagnose: sonnet
+    ideate: opus
+  web_settings: .claude/settings.headless.web.json   # the human creates it (headless + WebSearch/WebFetch); absent = no web steps
   lock_file: research/queue/claude.lock
   queue_file: research/queue/claude_queue.txt
   settings: .claude/settings.headless.json

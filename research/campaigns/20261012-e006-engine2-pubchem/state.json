@@ -1,0 +1,34 @@
+{
+ "cycle": 3,
+ "lb_probes": 3,
+ "branch_streak": {
+  "engine2-model": 0,
+  "pubchem-voice": 0
+ },
+ "closed_branches": [],
+ "current": null,
+ "stop": null,
+ "history": [
+  {
+   "idea": "research/exploit/20261012-engine2-fppair",
+   "status": "revert",
+   "branch": "engine2-model",
+   "reason": "LB 0.429 vs bar 0.444 (bundled rows + w_pv 0.50)",
+   "t": "2026-10-12 14:19"
+  },
+  {
+   "idea": "research/exploit/20261012-promo-soften",
+   "status": "revert",
+   "branch": "pubchem-voice",
+   "reason": "A3 died (p* 0.379 < r 0.757); human override at checkpoint 3: LB slot as the harness-vs-LB test (prior.md); LB 0.437 vs bar 0.444",
+   "t": "2026-10-12 15:28"
+  },
+  {
+   "idea": "research/exploit/20261012-engine2-pv88",
+   "status": "g4-pushed",
+   "branch": "engine2-model",
+   "reason": "human-directed cycle 3 (charter amendment): unbundle w_pv",
+   "t": "2026-10-12"
+  }
+ ]
+}

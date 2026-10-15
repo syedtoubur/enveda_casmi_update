@@ -1,0 +1,29 @@
+- 2026-10-12 12:49 replan (opus) brief 6361 chars  OVER 6000
+- 2026-10-12 replan pick: research/exploit/20261012-engine2-fppair (branch engine2-model, charter order IDEA1). EV: reach 204 C2 rank 2–5 (+20 C1_npx) × ASSUMED +0.01–0.02 LB (card 0.655→0.710 Engine 2 CV) × P 0.4 ÷ cost 5; risk: Engine 2 holds the C2 truth in 3.7% of harness lists.
+- 2026-10-12 13:10 spec (opus) brief 6527 chars  OVER 6000
+- 2026-10-12 13:22 spec (opus) brief 6648 chars  OVER 6000
+- 2026-10-12 13:23 spec (opus) brief 6648 chars  OVER 6000
+- 2026-10-12 13:26 preflight 20261012-engine2-fppair: 0 finding(s)
+- 2026-10-12 13:26 attack (opus) brief 6754 chars  OVER 6000
+- 2026-10-12 13:41 build-harness (sonnet) brief 6641 chars  OVER 6000
+- 2026-10-12 13:58 harness gate 20261012-engine2-fppair: LB slot (family engine2_model BLIND on the harness, written prior present (LB decides))
+- 2026-10-12 13:59 build-ship (sonnet) brief 6135 chars  OVER 6000
+- 2026-10-12 14:19 cycle 1 closed: 20261012-engine2-fppair -> g4-pushed
+- 2026-10-12 14:19 replan (opus) brief 6361 chars  OVER 6000
+- 2026-10-12 replan pick: research/exploit/20261012-promo-soften (branch pubchem-voice, charter order A; cycle 1 engine2-fppair g4-pushed, LB pending). EV: reach 224 C2+C1_npx rank 2–5 × ASSUMED +0.003–0.008 LB (harness REL_PROMOTE 500 +0.019 C2 / +0.009 C1_npx on 0.433 cfg, BASE-COUPLED 0.156) × P 0.35 ÷ cost 1; risk: harness blind to PubChem-only rescues.
+- 2026-10-12 14:57 spec (opus) brief 6321 chars  OVER 6000
+- 2026-10-12 14:59 preflight 20261012-promo-soften: 7 finding(s)
+- 2026-10-12 14:59 preflight 20261012-promo-soften: 7 finding(s)
+- 2026-10-12 14:59 spec (opus) brief 6321 chars  OVER 6000
+- 2026-10-12 14:59 spec (opus) brief 6321 chars  OVER 6000
+- 2026-10-12 15:00 preflight 20261012-promo-soften: 0 finding(s)
+- 2026-10-12 15:00 attack (opus) brief 6645 chars  OVER 6000
+- 2026-10-12 15:01 attack (opus) brief 6645 chars  OVER 6000
+- 2026-10-12 15:11 build-harness (sonnet) brief 6528 chars  OVER 6000
+- 2026-10-12 15:20 harness gate 20261012-promo-soften: LB slot (family promotion BASE-COUPLED on the harness, written prior present (LB decides))
+- 2026-10-12 15:20 build-ship (sonnet) brief 6026 chars  OVER 6000
+- 2026-10-12 15:21 build-ship (sonnet) brief 6026 chars  OVER 6000
+- 2026-10-12 15:21 build-ship (sonnet) brief 6026 chars  OVER 6000
+- 2026-10-12 15:28 cycle 2 closed: 20261012-promo-soften -> g4-pushed
+- 2026-10-12 21:34 human checkpoint: LBs engine2-fppair 0.429, promo-soften 0.437 (both revert); charter amendment: cycle 3 = engine2-pv88 (unbundle w_pv), slots-gentle dropped
+- 2026-10-12 21:35 cycle 3 pushed: 20261012-engine2-pv88 (syedtoubur/casmi-engine2-pv88 v1), G4 watcher running; lb_probes 3/3

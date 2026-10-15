@@ -18,7 +18,7 @@ In the CASMI 2026 challenge, test molecules belong to three novelty classes:
 
 ## 2. The Track 1 Mechanism: The Formula-Space $\Delta M$ Mutator
 
-Track 1 implemented an autonomous chemical generator: [`build/delta_m_mutator.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/build/delta_m_mutator.py).
+Track 1 implemented an autonomous chemical generator: [`build/delta_m_mutator.py`](file:///e:/ENVEDA_casmi/build/delta_m_mutator.py).
 
 ### How the Mutator Works:
 1. **Scaffold Harvesting**: 
@@ -113,7 +113,7 @@ Track 1 tested 4 distinct notebook iterations attempting to merge the mutator in
 
 ### Failure Mode 4: The Harvestability Wall (`casmi26-v4n-mutator-c3-submit` → 0.399, 0.000 delta)
 
-* **The Design**: Solved the `bio2` disaster by creating [`build/c3_gate.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/build/c3_gate.py):
+* **The Design**: Solved the `bio2` disaster by creating [`build/c3_gate.py`](file:///e:/ENVEDA_casmi/build/c3_gate.py):
   1. Scale-free $[0, 1]$ signals: Library match $< 0.90$, mass-shifted analog similarity $\ge 0.50$, analog margin $\ge 0.15$.
   2. Formula reachability: Analog-to-target formula delta must be reachable in $\le 1$ step (`C3_MAX_STEPS = 1`).
   3. Safe reserved slots: `sure → [1, 2, 3]`, `likely → [2, 3, 4]`.
@@ -144,7 +144,7 @@ Track 1 tested 4 distinct notebook iterations attempting to merge the mutator in
 
 ## 5. Blueprint: Integrating Novel Scaffold Generation into Track 4 (0.411 SOTA)
 
-Track 4 currently holds the competition record at **`0.411 Public LB`** ([`casmi26-v29-glacier-m-h-full-fusion-0-411.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-v29-glacier-m-h-full-fusion-0-411.ipynb)). Its core strengths are:
+Track 4 currently holds the competition record at **`0.411 Public LB`** ([`casmi26-v29-glacier-m-h-full-fusion-0-411.ipynb`](file:///e:/ENVEDA_casmi/casmi26-v29-glacier-m-h-full-fusion-0-411.ipynb)). Its core strengths are:
 1. Multi-view retrieval fusion (v4n + Engine-A + PubChem).
 2. PubChem Popularity Prior ($0.25 \cdot \text{lsid} + 0.15 \cdot \text{lpmid}$).
 3. **Uncorrupted `fz_top` Gate**: Basing merge decisions strictly on raw spectral similarity without popularity scale distortion.
@@ -212,7 +212,7 @@ If retrieval was correct at Rank 1, placing the novel candidate at Rank 2 preser
 ### Rule 4: Combine the Mutator with Track 2's De Novo Decoder
 To break through the 53.2% unique Murcko scaffold wall:
 - **For Harvestable Relatives ($\le 1$ transform delta)**: Use the Track 1 $\Delta M$ mutator (precise, 69.2% reachability on shallow deltas).
-- **For Unharvestable Unique Scaffolds**: Use Track 2's DreaMS $\rightarrow$ SELFIES decoder ([`specs/track2_novel_generation`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation)), which generates de novo structures directly from spectrum embeddings with 0% database dependence (8.17% exact@25).
+- **For Unharvestable Unique Scaffolds**: Use Track 2's DreaMS $\rightarrow$ SELFIES decoder ([`specs/track2_novel_generation`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation)), which generates de novo structures directly from spectrum embeddings with 0% database dependence (8.17% exact@25).
 - Blend the top 10 mutator candidates with the top 15 SELFIES decoder candidates before splicing.
 
 ### Rule 5: Check the Entry Payoff Before Shipping
@@ -224,9 +224,9 @@ If the projected gain is $< +0.001$, do not submit without widening the candidat
 
 ## 6. Relevant Code & Spec References
 
-- **Track 1 Routing Specification**: [`specs/track1_retrieval_fusion/c3_routing.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/c3_routing.md)
-- **Mutator Offline Benchmark**: [`specs/track1_retrieval_fusion/validate_mutator.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/validate_mutator.md)
-- **Scale-Free Router Implementation**: [`build/c3_gate.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/build/c3_gate.py)
-- **Chemical Mutator Generator**: [`build/delta_m_mutator.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/build/delta_m_mutator.py)
-- **Track 4 Comparison Summary**: [`specs/track4_priors_probes/comparision_summary.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/comparision_summary.md)
-- **Master Experiment Ledger**: [`EXPERIMENTS.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md)
+- **Track 1 Routing Specification**: [`specs/track1_retrieval_fusion/c3_routing.md`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/c3_routing.md)
+- **Mutator Offline Benchmark**: [`specs/track1_retrieval_fusion/validate_mutator.md`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/validate_mutator.md)
+- **Scale-Free Router Implementation**: [`build/c3_gate.py`](file:///e:/ENVEDA_casmi/build/c3_gate.py)
+- **Chemical Mutator Generator**: [`build/delta_m_mutator.py`](file:///e:/ENVEDA_casmi/build/delta_m_mutator.py)
+- **Track 4 Comparison Summary**: [`specs/track4_priors_probes/comparision_summary.md`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/comparision_summary.md)
+- **Master Experiment Ledger**: [`EXPERIMENTS.md`](file:///e:/ENVEDA_casmi/EXPERIMENTS.md)

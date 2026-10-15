@@ -112,7 +112,7 @@ casmi-v4-models/
 **No.** The zip archive does **not** contain the standalone generator script that created the splits. Instead, the code is designed to **consume** an existing split file: `work/split.parquet`.
 
 ### 4.2 How `casmi/traindata.py` Implements the Split
-Inside [casmi/traindata.py](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/casmi_v4/casmi/traindata.py#L11-L43):
+Inside [casmi/traindata.py](file:///e:/ENVEDA_casmi/.scratch/casmi_v4/casmi/traindata.py#L11-L43):
 ```python
 class Data:
     def __init__(self, device, K=63, ppm=10.0, seed=0,

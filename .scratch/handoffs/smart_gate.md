@@ -1,8 +1,8 @@
 # Comprehensive Master Dossier: Smart Library Gate for CASMI 2026 SOTA
 
-> **Document Location**: `C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\handoffs\smart_gate.md`  
-> **Target Notebook**: [`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-e006-window-40-ice-fallback-true.ipynb) (Public LB: **~0.440**, Experiment E006)  
-> **Baseline Reference**: [`casmi-notebook-0-433.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi-notebook-0-433.ipynb) (Public LB: **0.433**, Author: `@obstacledeveloper`)  
+> **Document Location**: `E:\ENVEDA_casmi\.scratch\handoffs\smart_gate.md`  
+> **Target Notebook**: [`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///e:/ENVEDA_casmi/casmi26-e006-window-40-ice-fallback-true.ipynb) (Public LB: **~0.440**, Experiment E006)  
+> **Baseline Reference**: [`casmi-notebook-0-433.ipynb`](file:///e:/ENVEDA_casmi/casmi-notebook-0-433.ipynb) (Public LB: **0.433**, Author: `@obstacledeveloper`)  
 > **Official Scoring Metric**: `MRR@25` evaluated strictly on tautomer-canonical `InChIKey14` (RDKit 2026.03.3).  
 > **Status**: Empirically Proven on Kaggle (`syedtoubur/casmi26-cross-instrument-libmax-eval`) & Implementation-Ready.  
 > **Purpose**: Master handoff document providing complete theoretical, empirical, architectural context and an exact cell-by-cell implementation plan for autonomous coding agents.
@@ -37,7 +37,7 @@ $$\text{If } lib\_max \ge 0.90 \implies \text{Class 1 Library Hit (Untouched)}$$
 
 To quantify this phenomenon, two phases of empirical evaluations were conducted directly on Kaggle against the full CASMI corpus:
 - **Kaggle Kernel**: [`syedtoubur/casmi26-cross-instrument-libmax-eval`](https://www.kaggle.com/code/syedtoubur/casmi26-cross-instrument-libmax-eval)
-- **Local Artifacts**: [`.scratch/kaggle_libmax_eval/output/cross_instrument_libmax_report.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output/cross_instrument_libmax_report.json) & [`.scratch/kaggle_libmax_eval/output/summary_threshold_metrics.csv`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output/summary_threshold_metrics.csv).
+- **Local Artifacts**: [`.scratch/kaggle_libmax_eval/output/cross_instrument_libmax_report.json`](file:///e:/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output/cross_instrument_libmax_report.json) & [`.scratch/kaggle_libmax_eval/output/summary_threshold_metrics.csv`](file:///e:/ENVEDA_casmi/.scratch/kaggle_libmax_eval/output/summary_threshold_metrics.csv).
 
 ### Phase 1 Findings: The 0.90 Scalar Failure
 Evaluated on **2,500 True Positive cross-instrument pairs** (identical `InChIKey14`, timsTOF vs. Orbitrap/Q-TOF) and **2,481 Isobaric Decoys** ($\pm 10\text{ ppm}$ precursor window, different `InChIKey14`):
@@ -437,4 +437,4 @@ Before submitting the upgraded notebook to Kaggle:
    - In hidden re-run across 400 molecules, Tier 1 + Tier 2 + Tier 3 should protect **~25–40 authentic library matches**, recovering up to $+0.008\text{ – }+0.015\text{ MRR}$ on the public leaderboard.
 
 ---
-*Dossier compiled and archived in `C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\handoffs\smart_gate.md`.*
+*Dossier compiled and archived in `E:\ENVEDA_casmi\.scratch\handoffs\smart_gate.md`.*

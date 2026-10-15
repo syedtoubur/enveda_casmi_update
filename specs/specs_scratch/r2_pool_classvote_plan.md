@@ -269,7 +269,7 @@ F, B, ok, meta = npc.fp_subprocess(smiles, cmd=[r"C:\Users\h\AppData\Local\Temp\
 ```
 
 ### 13.4 Diagnostic scripts and fingerprint dumps — session scratchpad
-`C:\Users\h\AppData\Local\Temp\claude\C--Users-h-OneDrive-Desktop-ENVEDA-casmi\59f19e3a-c614-491d-9e4c-e93a8b8292f6\scratchpad\`
+`C:\Users\h\AppData\Local\Temp\claude\E--ENVEDA-casmi\59f19e3a-c614-491d-9e4c-e93a8b8292f6\scratchpad\`
 | File | What | Run |
 |---|---|---|
 | `fp_dump.py` | fingerprints of the 14 known structures with the repo's `calculate_fingerprint` → npz (`X` (14, 6144), `names`, `ver`) | `<env python> -I fp_dump.py OUT.npz %TEMP%\npc_idx` |

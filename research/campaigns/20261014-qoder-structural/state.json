@@ -1,0 +1,46 @@
+{
+ "cycle": 2,
+ "lb_probes": 0,
+ "branch_streak": {
+  "evidence-channel": 0,
+  "candidate-recall": 0
+ },
+ "closed_branches": [],
+ "current": "research/exploit/20261014-lib-isomer-margin",
+ "stop": "human (grill 2026-10-14): superseded by 20261014-e180-npool-mutator; lib-isomer-margin already submitted, bind its LB with poll_lb.py --claim",
+ "ideate": null,
+ "history": [
+  {
+   "idea": "research/exploit/20261014-refspectra-lib",
+   "status": "needs-human",
+   "branch": "evidence-channel",
+   "reason": "pre-slot spike: no signal on leak-free molecules (dother=0 all cohorts; GNPS/MoNA 0/6, 3 rank-1 displacements); human chose no LB probe 2026-10-14",
+   "override": "",
+   "t": "2026-10-14 06:22",
+   "now": "needs-human",
+   "lb": "",
+   "decision": ""
+  },
+  {
+   "idea": "research/exploit/20261014-formula-window",
+   "status": "needs-human",
+   "branch": "candidate-recall",
+   "reason": "human: dropped before attack 2026-10-14; go to new ideas (library-gate diagnosis seed)",
+   "override": "",
+   "t": "2026-10-14 06:45",
+   "now": "needs-human",
+   "lb": "",
+   "decision": ""
+  }
+ ],
+ "calls": {
+  "qoder": 2,
+  "sonnet": 3,
+  "opus": 6,
+  "haiku": 1
+ },
+ "stalls": {},
+ "ideation_rounds": 1,
+ "submitted": 0,
+ "report_pending": null
+}

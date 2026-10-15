@@ -1,9 +1,9 @@
 # Executive Summary: Colab CLI + Google Drive Integration (Agent Brief)
 
-> **File Location**: [`specs/specs_scratch/summary_colab.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/specs_scratch/summary_colab.md)  
-> **Master Reference**: [`specs/specs_scratch/colab_drive_cli_integration.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/specs_scratch/colab_drive_cli_integration.md)  
-> **Drive Manifest**: [`specs/Dataset_intro/drive_folder_structure.txt`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/Dataset_intro/drive_folder_structure.txt)  
-> **Kaggle Slugs Catalog**: [`specs/Dataset_intro/dataset_catalog.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/Dataset_intro/dataset_catalog.json)  
+> **File Location**: [`specs/specs_scratch/summary_colab.md`](file:///e:/ENVEDA_casmi/specs/specs_scratch/summary_colab.md)  
+> **Master Reference**: [`specs/specs_scratch/colab_drive_cli_integration.md`](file:///e:/ENVEDA_casmi/specs/specs_scratch/colab_drive_cli_integration.md)  
+> **Drive Manifest**: [`specs/Dataset_intro/drive_folder_structure.txt`](file:///e:/ENVEDA_casmi/specs/Dataset_intro/drive_folder_structure.txt)  
+> **Kaggle Slugs Catalog**: [`specs/Dataset_intro/dataset_catalog.json`](file:///e:/ENVEDA_casmi/specs/Dataset_intro/dataset_catalog.json)  
 
 ---
 
@@ -18,7 +18,7 @@ An **autonomous research and code execution pipeline** designed for the 2-month 
 ## 2. Immediate Task for the New Session: "Ticket 0" Viability Spike
 
 **Status**: **PASS (Ticket 0 Completed & Verified on 2026-10-10)**  
-Full verification report: [`specs/specs_scratch/colab_spike_result.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/specs_scratch/colab_spike_result.md)
+Full verification report: [`specs/specs_scratch/colab_spike_result.md`](file:///e:/ENVEDA_casmi/specs/specs_scratch/colab_spike_result.md)
 
 ### Standard Operational Sequence for Future Runs:
 

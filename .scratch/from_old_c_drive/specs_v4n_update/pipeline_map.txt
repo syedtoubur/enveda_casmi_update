@@ -1,0 +1,89 @@
+                                  ┌────────────────────────────────────────────────────────┐
+                                  │                  Query Mass Spectrum                   │
+                                  │        (precursor_mz, ms2_mzs, intensities, mode)      │
+                                  └───────────────────┬────────────────────────────────────┘
+                                                      │
+         ┌────────────────────────────────────────────┼────────────────────────────────────────────┐
+         │                                            │                                            │
+         ▼                                            ▼                                            ▼
+┌─────────────────────────────────┐   ┌─────────────────────────────────┐   ┌─────────────────────────────────┐
+│     ROUTE 1: POOL (v4n Base)    │   │    ROUTE 2: PUBCHEM (Gated)     │   │   ROUTE 3: BIO + AFIX (Eng 2)   │
+├─────────────────────────────────┤   ├─────────────────────────────────┤   ├─────────────────────────────────┤
+│ • Candidate Database:           │   │ • Candidate Database:           │   │ • Candidate Database:           │
+│   COCONUT + Train (710k mols)   │   │   PubChem Tier (>100M mols)     │   │   COCONUT + Train + ChEBI +     │
+│   Dataset: [casmi26-v2-pool]    │   │   Dataset: [casmi26-pubchem]    │   │   LIPID MAPS (BIO expansion)    │
+│                                 │   │                                 │   │   Dataset: [chebi-lipidmaps]    │
+│ • Spectrum -> Fingerprint Model:│   │ • Spectrum -> Fingerprint Model:│   │                                 │
+│   fpnet_full1.pt (10,226 bits)  │   │   fpnet_0.pt & fpnet_1.pt       │   │ • Precursor Calibration (AFIX): │
+│   Dataset: [casmi26-fpnet-full1]│   │   (Ensemble of FPNet A & B)     │   │   Neutral formula mass arithmetic│
+│                                 │   │   Dataset: [casmi26-v3-models]  │   │   Prioritizes timsTOF reps      │
+│ • In-Silico Fragmentation & FE: │   │                                 │   │                                 │
+│   fe_v4 (Derivation evidence,   │   │ • Search Screening:             │   │ • Spectrum -> Fingerprint Model:│
+│   class-3 priors, frag 2.0)     │   │   Pass 1: ECFP4 dot product     │   │   fp_single_s0/s1.pt            │
+│   Dataset: [casmi26-v4b-models] │   │           (top N1 = 5,000)      │   │   fp_merged_m0/m1.pt (6,930-bit)│
+│                                 │   │   Pass 2: Full 10,226-bit f · z │   │   Dataset: [fp-models-v2]       │
+│ • Ranker Model:                 │   │                                 │   │                                 │
+│   4-Booster LightGBM Ensemble   │   │ • Output Filtering:             │   │ • Dual Rankers:                 │
+│   (31+ features from RK_B)      │   │   Drop if InChIKey14 in pool    │   │   Ranker A: pv (prvsiyan base)  │
+│   Dataset: [casmi26-v4b-models] │   │   Stop at top 25 candidates     │   │   Ranker B: ours (custom)       │
+│                                 │   │                                 │   │   Blend: 0.88·pv + 0.12·ours    │
+├─────────────────────────────────┤   ├─────────────────────────────────┤   ├─────────────────────────────────┤
+│ Output: BASE (Top-60 per mol)   │   │ Output: PC (Top-25 per mol)     │   │ Output: ENG (Top-40 per mol)    │
+└────────────────┬────────────────┘   └────────────────┬────────────────┘   └────────────────┬────────────────┘
+                 │                                     │                                     │
+                 └──────────────────────────┬──────────┴─────────────────────────────────────┘
+                                            │
+                                            ▼
+                         ┌──────────────────────────────────────┐
+                         │      CANDIDATE UNION FORMATION       │
+                         │   Union = BASE(60) ∪ ENG(40) ∪ PC(25)│
+                         └──────────────────┬───────────────────┘
+                                            │
+                                            ▼
+                         ┌──────────────────────────────────────┐
+                         │   FORWARD PHYSICS SIMULATION LAYER   │
+                         │   Simulates MS/MS for entire Union   │
+                         ├──────────────────────────────────────┤
+                         │ Model 1: ICEBERG (GNN fragmentation) │
+                         │   Dataset: [casmi26-iceberg]         │
+                         │   Budget: 5,400s | Weight λ = 1.0    │
+                         │                                      │
+                         │ Model 2: GLACIER (Transformer MS/MS) │
+                         │   Dataset: [casmi26-glacier]         │
+                         │   Budget: 4,000s | Weight λ = 1.0    │
+                         └──────────────────┬───────────────────┘
+                                            │
+                    ┌───────────────────────┴───────────────────────┐
+                    │                                               │
+                    ▼                                               ▼
+   ┌─────────────────────────────────┐             ┌─────────────────────────────────┐
+   │    STAGE A: v4n BASE MERGE      │             │    STAGE B: RANK FUSION (RRF)   │
+   ├─────────────────────────────────┤             ├─────────────────────────────────┤
+   │ 1. Within-formula re-score:     │             │ 1. Weighted Reciprocal Rank:    │
+   │    z(LightGBM) + z(ICE) + z(GL) │             │    v4n list weight = 1.0        │
+   │                                 │             │    Engine 2 list weight = 0.6   │
+   │ 2. Gated PubChem Slot Insertion:│             │    K_RR = 3.0                   │
+   │    If lib_max < 0.90 & rel > 600│             │    Score = 1/(3+r_v) + 0.6/(3+r)│
+   │    -> Inject PC into fixed slots│             │                                 │
+   │    Produces interim v4n list    │             │    Combines into Top-40 fused   │
+   └────────────────┬────────────────┘             └────────────────┬────────────────┘
+                    │                                               │
+                    └───────────────────────┬───────────────────────┘
+                                            │
+                                            ▼
+                         ┌──────────────────────────────────────┐
+                         │      POST-FUSION FORWARD RERANK      │
+                         ├──────────────────────────────────────┤
+                         │ Re-rank fused Top-40 inside same-    │
+                         │ formula groups using cached physics: │
+                         │                                      │
+                         │  Score = z(RRF) + 1.0·z(ICE) +       │
+                         │                   1.0·z(GL)          │
+                         └──────────────────┬───────────────────┘
+                                            │
+                                            ▼
+                         ┌──────────────────────────────────────┐
+                         │           FINAL SUBMISSION           │
+                         │      Top-25 InChIKey14 per row       │
+                         │            LB: 0.399                 │
+                         └──────────────────────────────────────┘

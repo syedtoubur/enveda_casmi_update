@@ -10,7 +10,7 @@ fpnet_1.pt
 ranker_0.pkl
 code path
 
-C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\casmi-v3-models.zip
+E:\ENVEDA_casmi\casmi-v3-models.zip
 
 
 MODEL 2 :casmi-v2 model
@@ -58,4 +58,4 @@ ranker_v4b.pkl
 
 kaggle https://www.kaggle.com/datasets/ahmedberatozer/casmi26-v4b-models
 
-path C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\casmi-v4-models.zip
+path E:\ENVEDA_casmi\casmi-v4-models.zip

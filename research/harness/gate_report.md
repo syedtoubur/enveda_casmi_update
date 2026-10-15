@@ -280,7 +280,7 @@ fused_gl_off −0.090 | 0; cell19_ice +0.033 | 0.
 ### 2026-10-12: C2_np BASE-leak diagnosis (CPU, no new run; diagnostic only, no gate)
 Probes `.scratch/valgen/c2np_leak_probe{1,3,4}.py` on the existing dumps; pool files `pool_meta.parquet`
 (ahmedberatozer/casmi26-v2-pool) + `pool_lsid/lpmid.npy` (dmitriigluzdov/casmi26-pubchem-popularity-prior) in
-`C:/casmi/dl_pool`. Outputs `dumps/<shard>/leak_probe{1,3}.csv`.
+`E:/casmi/dl_pool`. Outputs `dumps/<shard>/leak_probe{1,3}.csv`.
 
 | hypothesis | test | result | verdict |
 |---|---|---|---|
@@ -337,3 +337,156 @@ Full tables: research/harness/capability_map.md
 Global: λ sweep FAIL, mechanical sanity PASS.
 
 Full tables: research/harness/capability_map.md
+
+### 2026-10-13: LB-slot effect-size bar, PRE-REGISTERED (supersedes 'Gates' @ 18 and config harness.lb_slot_delta 0.005; written before any measurement under it)
+Grill 2026-10-13, campaign `20261013-e006-structural`. Written before cycle 1 measures anything.
+- A probe may spend an LB slot on a harness number only if **harness Δ ≥ +0.008 MRR@25 on its target slice** and the
+  **grouped-bootstrap 90% CI lower bound > 0** (grouping = molecule_id, so multi-spectrum molecules are not resampled apart).
+- Heavy-path ideas (harness BLIND) need a **measured ceiling ≥ +0.016** on the target slice instead, from a stress/ceiling
+  script that reads real data in its measuring loop (R03), not a formula.
+- BASE-COUPLED and BLIND families: the harness number is **not citable** (capability_map 2026-10-12 11:06 unchanged);
+  they proceed on a written prior.md + the ceiling clause above, and the LB decides.
+- Rationale and calibration honesty: the value 0.008 is a **guess, not a fit** — we hold only 6 harness-vs-LB pairs in
+  total, and their ratios are wildly unstable (e006 +0.0005 C2 / +0.0027 C1_npx for a +0.007 LB win; promo-soften
+  +0.0185 C2 for a −0.003 LB loss). Doubling 0.005 is the direction the evidence supports; the magnitude is provisional
+  and **must be refit when this campaign's pairs land**. `config.yaml:68` is loop code and stays 0.005 this campaign
+  (the loop is a constant, charter Scope) — the bar is enforced by charter + judge.
+
+### 2026-10-13: rank-only gate + multi-cohort scorecard, PRE-REGISTERED (supersedes 'LB-slot bar for ideas' @ 36, the 2026-10-13 effect-size bar @ 341, and the BLIND/BASE-COUPLED + prior.md pass in campaign.py; written before any `harness.py scorecard` run)
+Grill 2026-10-13 (loop v3; plan `~/.claude/plans/read-scratch-handoffs-loop-audit-md-the-ancient-cerf.md`). The human
+alone submits, so the gate no longer rations LB slots; it removes ideas that show no gain or real harm, and the submit
+queue ranks the rest. Enforced in code: `research/bin/gate.py` (recomputes; never trusts a written verdict).
+- **Instrument**: `harness.py scorecard` replays the change on every cohort with a dump (config `harness.cohorts`): C2,
+  C1_npx now; C2_hard, C1_xlib, pseudo_c3, c2_displace once dumped; C2_np **advisory** (failed its BASE bar @ 247; it
+  is reported and never vetoes). Per cohort: paired Δ MRR@25, 90% CI from 2000 bootstrap resamples (seed 0) of whole
+  Bemis-Murcko scaffold groups of the truths, the Δ split leak-hit (BASE rank 1 = truth) vs other, and rank-1 truths
+  displaced (truth at rank 1 in A, not in B).
+- **Dead** iff any of: target-cohort Δ ≤ 0; target CI upper bound < 0; a non-advisory non-target cohort with CI upper
+  bound < −0.004 (one LB noise unit); rank-1 displacements on the target > 1% of its molecules; a blocking attack died
+  or is UNTESTED (stress_result.json). Heavy-path ideas (no replay): dead unless a measured ceiling > 0 (R03 applies).
+- **Flags, not deaths**: any cohort with CI lower bound < 0; any attack run on a proxy (`deviation`).
+- **Rank** (submit queue): composite = mean over classes C1, C2, C3 of the mean Δ of that class's non-advisory cohorts,
+  with **equal class weights** until ≥ 5 scored probe pairs exist; then the weights are refit by regressing LB Δ on
+  cohort Δs, and the refit is appended here before it is used.
+- `prior.md` no longer passes a gate. A human override is `campaign.py --override <idea> --reason`, recorded in STATUS,
+  state.json history and the campaign log.
+- **Calibration** (W1): every scored probe adds (cohort Δs, composite, LB Δ vs its paired control) to
+  `research/harness/calibration.md`. Known so far: promo-soften C2 +0.0185 [+0.011, +0.027] / C1_npx +0.0070 → LB
+  0.437 vs 0.440 (−0.003); engine2-fppair (heavy path, ceiling +0.021 C1_npx) → LB 0.429 (−0.011).
+- Rationale: the 10-12 campaign showed a self-certifying gate (prior.md) and a harness that cannot certify (TRUSTED
+  unreachable as coded, audit W1); a fixed bar (0.005 or 0.008) is a guess with ≤ 6 noisy pairs behind it. Rank-only
+  keeps every measured number visible and lets the LB pairs set the bar later.
+
+### 2026-10-14: libgate diagnosis, PRE-REGISTERED (diagnostic only; supersedes nothing; written before `.scratch/libgate_diag/diag.py` ran)
+- Question: is `LIB_TAU = 0.9` (PubChem-merge protection) or E006's overlay (ICE fallback + metric fusion) where Class-1
+  library hits lose MRR? Seed: cross-instrument libmax eval (`.scratch/kaggle_libmax_eval`), smart gate (row 55, −0.011).
+- Instrument: offline replay of the battery dumps (E006 cfg `METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40`).
+- τ rule (not tuned on C1): τ ∈ {0.9 (= LIB_TAU), τ*}, τ* = the lowest edge on the grid {0.5, 0.6, 0.7, 0.8, 0.85, 0.9}
+  at which the share of C2 ∪ C2_hard molecules with `lib_max ≥ τ*` is ≤ 1% (truth spectra banned there, so every such
+  molecule is a library false lock).
+- Counterfactual "protect": molecules with `lib_max ≥ τ` take (a) E006 with ICE scores removed, (b) the overlay-off
+  (0.433 control) list; all others keep E006.
+- A lead exists only if: C1_npx Δ > 0 with 90% paired-bootstrap CI upper bound > 0; C2 and C2_hard CI upper bound
+  ≥ −0.004; rank-1 displacements ≤ 1% of each cohort. A lead is an ideation seed, never an LB slot by itself.
+
+### 2026-10-14: ice-margin-route, PRE-REGISTERED
+- Question: Can routing the ICE fallback by within-molecule relative fused shortlist margin `(s1 - s2) / s1` beat the absolute `lib_max >= 0.9` gate (+0.0054) on Class-1 demotions while preserving Class-2 neutrality?
+- Instrument: Replay on battery dumps (`post_dump/state.pkl`) with `E:/casmi/lines/exploit-b/build/casmi_post.py`.
+- Margin rule and a priori value:
+  - Metric: Within-molecule relative margin `(s1 - s2) / s1` from `metric_fusion` scores in `_metric_overlay`.
+  - Value: `0.1521` fixed a priori (median relative gap on C2_np fallback-fired molecules: 0.152118; all-molecules median is 0.166667; computed via `.scratch/ice_route/margin.py`). No sweep, no tuning (L08).
+- Kill bars (falsifiers):
+  - Dead if target C1_npx Δ ≤ +0.0054 (fails to outperform candidate D `lib_max >= 0.9`);
+  - Dead if C2 or C2_hard 90% bootstrap CI upper bound < −0.004;
+  - Dead if standard rank-only gate fails (target Δ ≤ 0, target CI upper bound < 0, or target rank-1 displacements > 1%).
+
+
+### 2026-10-14: ice-margin-route-gl (ceiling), PRE-REGISTERED
+- Question: does margin-routing the FUSED_GL rerank (`gl_multi(ICE+GL)`, `casmi_post.py:331-333`) reach the C1 ICE loss
+  that ice-margin-route could not (its fallback branch had a C1_npx ceiling of −0.0007, see its result_summary.md)?
+- Instrument: `.scratch/ice_route/gl_ceiling.py ceiling 0.16666666666666666`. For FUSED_GL-path molecules with
+  margin ≥ m, use the diag `r_noice` rank (no fused rerank), else `r_e006`. This is a ceiling for "skip the rerank when
+  confident" and is not a scorecard.
+- Margin, a priori and truth-blind: m = 1/6 = the median `(s1 − s2)/s1` over C2_np FUSED_GL-path molecules
+  (n = 181, `gl_ceiling.py margin`; the median is exactly 1/6). Ties count as ≥. No sweep.
+- Kill bars (same as ice-margin-route): dead if C1_npx Δ ≤ +0.0054, or if the 90% CI upper bound for C2 or C2_hard is
+  < −0.004, or if C1_npx has more than 1% rank-1 displacements. If it is dead → candidate B `test-network-vote`.
+- RESULT (2026-10-14, `.scratch/ice_route/gl_ceiling.json`; e006 reproduces C1_npx 0.9355): **DEAD**. C1_npx +0.0077
+  [+0.0024, +0.0137], with 7 up / 0 down, which clears the +0.0054 bar. But C2 is −0.0328 [−0.0478, −0.0195] with 32
+  rank-1 displacements, and C2_hard is −0.0282 [−0.0519, −0.0045]. Both CI upper bounds are < −0.004. C2_np is
+  −0.0543. The relative RRF margin is not a class signal: ICE rescues confident-wrong C2 lists, and the C2 loss is all in
+  leak-hit molecules (C2 d_leak −0.035).
+
+### 2026-10-14: e180-npool-mutator campaign, PRE-REGISTERED (grill 2026-10-14; written before any measurement under it; supersedes nothing, the rank-only block 2026-10-13 still applies)
+Charter `research/campaigns/20261014-e180-npool-mutator/charter.md`. Battery and replay as in the 2026-10-13 block,
+`--a "METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40"`. The only number known beforehand is the demote-form
+ceiling `.scratch/e180/ceiling.json` (C2 +0.0038 [+0.0007, +0.0078], C2_hard +0.0060, 0 down), and it is not the
+probe being gated (that one is the drop-before-cut form).
+- **e180-drop** (knob `E180_DROP`, default off): the rank-only gate with target C2. Keys = scratch R1b `e180_only`
+  (`scratch_pkg/casmi_scratch/pool.py:91`: enveda-180 bit, no other-train / COCONUT / BIO / NP-table bit), dropped
+  from the fused list before the 25 cut. G4 counters: `e180 dropped N` with N > 0, and the draft submission.csv differs
+  from the control draft. The public test.parquet is enveda-180 rows, so the draft fires heavily; this says nothing
+  about the hidden test (L04).
+- **engine2-npx reach spike** (CPU, before any build): on cohort P (pool-missing NPs, EXPERIMENTS.md B4 R-realism),
+  count the truths absent from Engine 2's pool (COCONUT + BIO + train), present in the NP table, and inside E006's
+  window around the +1.45 ppm-centred target. Build (heavy path) iff that count > 0; otherwise close the idea with no
+  build. Report the "absent from Engine 2 but present in the PubChem tier" share separately (the PubChem channel can
+  already reach those).
+- **pseudo-c3-dump** (instrument): passes iff `dumps/pseudo_c3/post_dump/state.pkl` replays, the E006 cfg run
+  reproduces the dumped submission, and the truth is in no channel list for 100% of molecules.
+- **c3-detector** (knob `C3_ROUTE`, default off): relative or within-molecule signals only (absolute f·z banned,
+  L14), with thresholds fixed a priori on C2_np and never swept (L08). PASS iff it fires on ≥ 30% of pseudo_c3 AND on
+  ≤ 2% of the C2 ∪ C2_hard molecules whose truth E006 holds at ranks 1–5 AND on ≤ 1% of C1_npx ∪ C1_xlib. PASS → the
+  mutator may use slots [2,3,4] on routed molecules; FAIL → the mutator may use ranks 21–25 only (human choice).
+- **mutator-c3v2** (knob `MUT_SLOTS`): the rank-only gate with target pseudo_c3. Dead also if C2 or C2_hard has a
+  90% CI upper bound < −0.004, or if there is any rank-1 displacement on any cohort. Print the L13 ceiling (fired
+  molecules × mean RR gain / n) before an LB slot.
+
+### 2026-10-14: Gemini-dossier wave 1 (B5′, A1, B2), PRE-REGISTERED (written before any measurement; supersedes nothing)
+Plan: one knob per probe on E006 v1 (0.440), cheap falsifier then LB. Verdict: LB ≥ 0.444 KEEP, 0.441–0.443 MAYBE, ≤ 0.440 REVERT; no replicate (user decision).
+- **b5-frag-ppm** (`research/exploit/20261014-b5-frag-ppm/spec.md` §4), timsTOF val truths + C1_npx/C2 BASE decoys. KILL if:
+  - K1: the median fragment drift is outside [+0.75, +2.15] ppm;
+  - K2: |slope| > 1.0 ppm per 500 Da;
+  - K3: fewer than 90% of truth-explained peaks are within 10 ppm after recentring;
+  - K4: the mean per-molecule AUC(truth > decoys) gain over 0.01 Da is < +0.02 at both 10 ppm and 5 ppm.
+- **a1-test-network** (`research/exploit/20261014-a1-test-network/spec.md` §4). KILL if:
+  - K1: fewer than 10% of test.parquet molecules have a neighbour at modified cosine ≥ 0.7;
+  - K2: fewer than 50% of val τ=0.7 edges join truths with Tanimoto ≥ 0.4;
+  - K3: the replay "other" Δ on C2 is < 0 for both W = 0.05 and W = 0.10.
+- **b2-nl-sim**: no offline falsifier (user decision). Must be byte-identical with the knob off, and needs G4 counter `B2_NL nl_scored > 0`.
+
+### 2026-10-14: Gemini-dossier wave 2 (B6, B1, A3), PRE-REGISTERED (written before any measurement; same verdict rule as wave 1)
+- **b6-dual-polarity** (`research/exploit/20261014-b6-dual-polarity/spec.md` §4). KILL if:
+  - K1: the false-demotion rate of dual-polarity val truths is > 1%;
+  - K2: fewer than 5% of decoys are hit;
+  - K3: fewer than 10% of test.parquet molecules have both polarities.
+  SMARTS may be loosened against K1 only.
+- **b1-eer** (`research/exploit/20261014-b1-eer/spec.md` §3). KILL if:
+  - K1: the median truth RCP is > 0.05;
+  - K2: more than 10% of truths have RCP > 0.15;
+  - K3: the mean AUC(truth < decoy RCP) is < 0.55;
+  - K4: truth-moves-down ≥ truth-moves-up at λ = 0.4.
+- **a3-formula-eif** (`research/exploit/20261014-a3-formula-eif/spec.md` §3). KILL if:
+  - K1: the true formula is EIF-rank-1 in fewer than 85% of ≥ 2-formula molecules;
+  - K2: test reach is < 15%;
+  - K3: EIF(truth F) > EIF(rank-1 F) in fewer than 50% of molecules where the formulas differ.
+
+### 2026-10-15: dossier follow-ups, PRE-REGISTERED
+- **a1-test-network τ=0.8, W=0.10: POST-HOC LB probe** (user decision). The K2 kill at τ=0.7 stands, and τ was re-picked after seeing truths. The LB result is evidence only; a KEEP must be confirmed by a replicate before it joins the stack.
+- **a6-fz-merge** (`research/exploit/20261015-a6-fz-merge/spec.md` §4), on new C2 and C1_npx dumps carrying pool_fz, with FZ_MERGE m ∈ {0, 50, 150}. KILL if:
+  - the C2 "other" Δ is ≤ 0 for all m;
+  - "other" is < 25% of the total Δ at the best m;
+  - rank-1 displacements exceed 1%;
+  - the C1_npx 90% CI upper bound is < −0.004.
+- **a3 note:** the A3 K2 (test reach) was computed on a fast-commit placeholder submission and is void. The kill rests on K1 alone.
+
+### 2026-10-15: c3-gen-slot2 campaign, PRE-REGISTERED (plan `~/.claude/plans/here-i-am-working-crispy-matsumoto.md`; written before any measurement under it; supersedes the c3-detector and mutator-c3v2 bullets of the 2026-10-14 e180-npool-mutator block; the rank-only gate 2026-10-13 still applies)
+Idea chain: pseudo-c3-dump → c3-gen-union → c3-detector → c3-slot2-route. Generators: Track 2 SELFIES decoder (specs_novel P3 checkpoint) ∪ c3v2 analog-edit mutator, deduped by IK14 and re-scored on one scale (FPNet f·z via probe_core2 + time-capped ICEBERG cosine + decoder log-prob).
+- **K0 (instrument, pseudo-c3-dump):** PASS iff `dumps/pseudo_c3/post_dump/state.pkl` replays with `POST EQUIV mismatches 0`, the banned truth is in **no** channel list (BASE, PC, ENG, popularity union) for 100% of molecules, and the library ban leaves 0 truth rows (plain IK14 ∪ score_key, 645 keys). Report BASE MRR@25 on pseudo_c3 under the E006 cfg (expected ≈ 0; non-zero only via Engine 1 `generate=True`), and the E006 rank distribution P(r) of truths on the leak-free "other" subsets of C1_npx, C1_xlib, C2, C2_hard → L = Σ_{r=2..25} P(r)·(1/r − 1/(r+1)) (rank 1 and misses cost 0 under a slot-2 insert).
+- **K1 (c3-gen-union, offline):** h = top-1 exact (IK14) rate of the re-scored union on pseudo_c3 with **predicted** formulas (top-k ≤ 3 distinct formulas of BASE/ENG/PC candidates in the +1.45 ppm-centred window; no oracle). DEAD iff h < 3%. Also report G4.0 (oracle formula exact@25; Track 2 kill < 1%), hit@1–4, the acyclic vs ring-bearing split, and the 15-timsTOF sub-split.
+- **K2 (c3-detector):** features are relative/within-molecule only (L14: no absolute f·z threshold): lib_max, rel, S, top_pop, fused margin, ICE/GL coverage, `gen_fz_gap` = best_gen_fz − max(best_pool_fz, fz_top), decoder log-prob. Model: logistic or depth-2 GBDT, 5-fold CV grouped by Murcko scaffold, trained on pseudo_c3 (pos) vs C1_npx, C1_xlib, C2, C2_hard "other" molecules (neg; leak-hit molecules excluded, L40). Operating point τ = the smallest p with p·h_fired/2 > (1−p)·L_fired on out-of-fold predictions (h_fired, L_fired measured on the fired set, not assumed), chosen once and never re-swept against the LB. DEAD iff no τ meets it, OR at τ: C1 fire > 1%, OR fire on C2 ∪ C2_hard molecules whose E006 truth is at ranks 2–5 > 2%. Sanity (not a kill): the predicted fire rate on test.parquet outside [10%, 40%] → flag domain shift before any LB slot.
+- **K3 (c3-slot2-route, harness replay, knob `NOVEL_SLOT`, default off):** DEAD iff pseudo_c3 Δ ≤ 0, OR C1 or C2 "other" Δ < −0.001 on any non-advisory cohort, OR composite Δ ≤ 0, OR any rank-1 displacement on any cohort (structural: the stage never edits rank 1; rule fixture). Report slot 2 vs 3 and NOVEL_N ∈ {1}; tail fill 21–25 reported separately.
+- **K4 (ship):** projected full hidden-run runtime (E006 measured runtime + generator + scoring at the 12-molecule rate × 400) ≤ 8.5 h; the generator runs under a hard budget_s. G4 counters: `novel_fired N` (N > 0 on the draft is NOT required, since the public test is enveda-180; report it) and `novel_gen_mols`.
+- **LB (poll_lb.decide):** paired control = an E006 v1 replicate pushed in the same window. KEEP iff probe ≥ 0.444 AND probe − control ≥ +0.004; then a replicate before it becomes the base. 0.441–0.443 = MAYBE (replicate); ≤ control = REVERT.
+- **Amendment 2026-10-15 (before any measurement; human decision): leak-free re-scorer.** pseudo_c3 queries are train.parquet rows that FPNet full1 trained on, so every f·z signal is leaky on this cohort. The novel channel therefore uses **no FPNet**: the union is scored by the decoder's teacher-forced log p(SELFIES | DreaMS embedding) (decoder holdout = scaffold group) plus ICEBERG cosine on the top-N (msg_all, MassSpecGym-only; pseudo_c3 excludes MSG structures). The c3v2 mutator's f·z beam is replaced by the decoder log-p beam. `gen_fz_gap` → `gen_ice_gap` = best generated ICE cosine − best ICE cosine over the molecule's scored ENG/PC/BASE candidates. FPNet-derived BASE features (rel, fz_top, S) may enter the detector, but their pseudo_c3 vs test.parquet distribution shift (KS) is reported, and a detector that loses K2 with them dropped is flagged LEAK-DEPENDENT and is not shipped.
+- EV note (ASSUMED, for the record): C3 test share 25%; with h ≈ 4–6% and precision ≥ 50%, the slot-2 gain is +0.004 to +0.012.

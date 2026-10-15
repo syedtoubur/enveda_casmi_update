@@ -1,8 +1,8 @@
 ﻿import os, sys, pickle, tempfile, pandas as pd
-sys.path.insert(0, 'C:/casmi/lines/exploit/build'); import patch_harness_dump as phd
+sys.path.insert(0, 'E:/casmi/lines/exploit/build'); import patch_harness_dump as phd
 T = tempfile.mkdtemp(); W = os.path.join(T, 'work')
-vk = [r for r in pickle.load(open('C:/Users/h/OneDrive/Desktop/ENVEDA_casmi/val_scripts/val_key.pkl', 'rb')) if r['cohort'] == 'C2'][:3]
-vq = pd.read_parquet('C:/Users/h/OneDrive/Desktop/ENVEDA_casmi/val_scripts/val.parquet')
+vk = [r for r in pickle.load(open('E:/ENVEDA_casmi/val_scripts/val_key.pkl', 'rb')) if r['cohort'] == 'C2'][:3]
+vq = pd.read_parquet('E:/ENVEDA_casmi/val_scripts/val.parquet')
 vq = vq[vq.molecule_id.isin([r['molecule_id'] for r in vk])]
 q = vq.groupby('molecule_id').precursor_mz.median()
 rows = []                                                  # train: truth rows (some other adduct), a leftover, decoys

@@ -1,7 +1,7 @@
 # Submit card: 20261010-adduct-iceberg-rerank
 
 - **Kaggle kernel**: `syedtoubur/casmi-adduct-iceberg-rerank` (v2)
-- **Notebook**: `C:/casmi/lines/exploit/casmi26-adduct-ice.ipynb`
+- **Notebook**: `E:/casmi/lines/exploit/casmi26-adduct-ice.ipynb`
 - **What changed**: Selectively re-enable ICEBERG forward MS/MS simulation in C8 & C10 for molecules with non-[M+H]+ adducts (`[M-H]-`, `[M+Na]+`) where GLACIER is inactive (`not bool(_g)`). Protonated species remain GLACIER-only.
 - **Spec**: `research/exploit/20261010-adduct-iceberg-rerank/spec.md`
 - **Gates**:

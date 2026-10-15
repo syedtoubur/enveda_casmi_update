@@ -1,9 +1,9 @@
 # Comparative Technical Analysis: `supernext` vs. `v18-sovereign-zenith` & The ICEBERG Investigation
 
-> **Context**: Technical dossier for [Track 4: Priors & Probes](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/roadmap.md)  
+> **Context**: Technical dossier for [Track 4: Priors & Probes](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/roadmap.md)  
 > **Target Notebooks**: 
-> - Baseline: [evenda-casmi-inferencesupernext.ipynb](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/evenda-casmi-inferencesupernext.ipynb) (~0.400 LB)  
-> - Frontier SOTA: [enveda-casmi-2026-v18-sovereign-zenith.ipynb](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/enveda-casmi-2026-v18-sovereign-zenith.ipynb) (~0.425 LB)  
+> - Baseline: [evenda-casmi-inferencesupernext.ipynb](file:///e:/ENVEDA_casmi/evenda-casmi-inferencesupernext.ipynb) (~0.400 LB)  
+> - Frontier SOTA: [enveda-casmi-2026-v18-sovereign-zenith.ipynb](file:///e:/ENVEDA_casmi/enveda-casmi-2026-v18-sovereign-zenith.ipynb) (~0.425 LB)  
 > **Key Topics**: Offline Kaggle Python 3.13 wheel failures, forward simulator mutual noise demotion ("Friendly Fire"), PubChem Rank-1 promotion mechanics, and DreaMS tail candidate backfilling.
 
 > **Correction (2026-10-06, `np_class_sig_high_influence.md`)**: the claim that ICEBERG/GLACIER crashed in **our** supernext runs is **refuted by our own log**. The saved supernext run used the Python 3.12 image (`rdkit-2026.3.3-cp312` wheel, `/usr/local/lib/python3.12/...`) and printed `chunk: 11 mols ... (11/11 covered mols scored)` for ICE and `status ok ... n_mols_scored: 11` for GLACIER. The cp312-wheel crash only happens on the Python 3.13 image, which the zenith author's b415–b417 runs used. The b4xx scores in §4 are the author's single runs, not ours. Zenith's DreaMS tail never ran (`name 'Path' is not defined`).

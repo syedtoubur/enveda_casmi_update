@@ -1,0 +1,115 @@
+{
+  "actual_build": {
+    "builder_sha256": "77f47345b3495b07f526c75b063cf0bbf8d655224db959e77a9cd62b98872574",
+    "checkpoint_rss_cap_bytes": 268435456,
+    "cpu_budget_seconds": 60,
+    "cpu_seconds": 1.085542,
+    "launch_niceness": 5,
+    "max_rss_bytes": 110641152,
+    "observed_at_utc": "2026-10-12T18:06:13.218191+00:00",
+    "original_actual_receipt_sha256": "02d4c31a541022814fba2c639a3e85fcfc4299176ec607c2c7fb0ef47645863d",
+    "original_payload_bytes": 6566926,
+    "payload_budget_bytes": 67108864,
+    "rss_is_os_hard_cap": false,
+    "versions": {
+      "numpy": "2.2.6",
+      "pyarrow": "25.0.0",
+      "python": "3.12.14"
+    },
+    "wall_budget_seconds": 90,
+    "wall_seconds": 1.2752389999986917
+  },
+  "actual_public_table_read_checks": {
+    "all_supplied_masses_positive_finite": true,
+    "condition_occurrence_conservation": true,
+    "each_reference_occurrence_matches_full_key": true,
+    "each_reference_raw_condition_count_matches": true,
+    "exact_copied_build_outputs": true,
+    "exact_standard_library_condition_reader_first_key": true,
+    "exact_standard_library_evidence_reader_first_key": true,
+    "literal_CC0_only": true,
+    "neutral_basis_remains_unqualified": true,
+    "numerical_window_counts_monotone": true,
+    "reference_occurrence_conservation": true,
+    "unique_source_row_positions": true,
+    "valid_full_key_syntax": true
+  },
+  "data_licence_scope": "CC-BY-NC-SA-4.0, including compilation and COCONUT mass derivative; retain all source attribution",
+  "diagram": {
+    "actual_counts_label_source": "This actual build and read-only output checks",
+    "bytes": 84338,
+    "filename": "reference-atlas.png",
+    "kind": "Original schematic, not a measured scientific chart",
+    "pillow_version": "12.3.0",
+    "sha256": "7f1dba382f6f73d6af22d25d95ecd42f8c96392c318d8fb2d0d3fac2b1f2fd37",
+    "visual_inspection": "The actual final PNG was viewed: labels and arrows are visible and unclipped."
+  },
+  "observed_at_utc": "2026-10-12T18:26:19.244487+00:00",
+  "observed_public_table_counts": {
+    "conflicting_supplied_mass_rows": 0,
+    "distinct_full_reference_keys": 616,
+    "invalid_supplied_mass_rows": 0,
+    "missing_supplied_id_occurrences": 0,
+    "raw_condition_groups": 5814,
+    "raw_ion_mode_counts": {
+      "NEGATIVE": 580,
+      "POSITIVE": 6371
+    },
+    "record_attribution_rows": 6951,
+    "reference_structure_rows": 616,
+    "repeated_supplied_id_occurrences": 0,
+    "source_row_positions": 6951
+  },
+  "original_controlled_build_controls": {
+    "actual_control_receipt_sha256": "244dda30aadf0953a1cec485a2aa0e734d254ae20f7ae1a307ff2c113e2656e2",
+    "authored_boundary_controls_executed": 8,
+    "authored_boundary_controls_passed": 8,
+    "real_window_direct_scan_controls_executed": 30,
+    "real_window_direct_scan_controls_passed": 30,
+    "test_source_sha256": "ab835d103fae35bef526e2cb6c4b32afcba3a3f7ffdd9c6b5f0a8f09a7c7397f"
+  },
+  "original_output_pins": {
+    "MANIFEST.json": {
+      "bytes": 1605,
+      "sha256": "c5f1b2e2b375c62ec948a1afae5b294fdd7ebd5e270649ed9d3388e080301f29"
+    },
+    "condition_multiplicity.jsonl": {
+      "bytes": 1107782,
+      "sha256": "5bcd54f4322a75826f171c803fbf2b2610bc0e174c9dd4cd74a63eca92a3ffa2"
+    },
+    "record_attribution.jsonl": {
+      "bytes": 5067266,
+      "sha256": "4074236e8d3d5991dd4d7f17789007148a72b0bbe857d3c024a0e6a837d29a17"
+    },
+    "reference_molecules.jsonl": {
+      "bytes": 390273,
+      "sha256": "c763cfd79f71c872c2cbeb684e520d07440f98d7035cc974d79e783b9753e9b0"
+    },
+    "unmatched_reference_keys.jsonl": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "portable_public_rebuild": {
+    "controlled_original_receipt_does_not_qualify_variant": true,
+    "filename": "rebuild_reference_evidence.py",
+    "real_input_execution": false,
+    "source_sha256": "21e7c135b134ce81ec5723cc10de7bafe064d4dd6e2cd3ac08991c2044aa99f6"
+  },
+  "schema": "actual-public-reference-validation-v1",
+  "scope": {
+    "chemical_structure_overlap_or_training_overlap_measured": false,
+    "competition_or_membership_input_read": false,
+    "descriptor_alignment_or_calibration_measured": false,
+    "fingerprints_smiles_peaks_model_weights_extracted": false,
+    "model_run": false,
+    "official_or_model_score": null,
+    "projected_metadata_columns_only": true,
+    "reference_neutral_mass_basis_qualified": false
+  },
+  "standard_library_reader": {
+    "actual_read_controls_passed": true,
+    "filename": "reference_evidence.py",
+    "source_sha256": "006767cdded8eba16447855825e708b0401560ccb7e4732e7edd2e790a62d06c"
+  }
+}

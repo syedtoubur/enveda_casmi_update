@@ -6,6 +6,8 @@
     python research/harness/harness.py backtest                                # H2 flips -> gate_report.md Results
     python research/harness/harness.py warm     --dump C2 [--procs 7]          # fill dumps/<shard>/ident_cache.pkl once
     python research/harness/harness.py suite    --dump C2 --dump C1_npx [--eng-off]  # back-tests -> capability_map.md/.json
+    python research/harness/harness.py scorecard --a "<base cfg>" --b "<base cfg>,KNOB=v" --target C2 [--line explore]
+                                                 [--json <idea>/harness_result.json]     # every dumped cohort, rank-only verdict
 
 A dump is post_dump/ from a build/patch_harness_dump.py run: state.pkl plus the fuse.py / gl_fuse.py / casmi/*.py
 sources the replay needs. --post defaults to the exploit worktree's build/casmi_post.py, so a probe that adds a knob
@@ -29,8 +31,23 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 DUMPS = HERE / "dumps"
 VAL_KEY = REPO / "val_scripts" / "val_key.pkl"
-WORKTREE = Path("C:/casmi/lines/exploit")
-SHARD_OF = {"20261010-harness-c2": "C2", "20261010-harness-c1npx": "C1_npx", "20261010-harness-draft": "draft"}
+WORKTREE = Path("E:/casmi/lines/exploit")   # default line; --line picks config lines.<line>.worktree / post_module
+SHARD_OF = {"20261010-harness-c2": "C2", "20261010-harness-c1npx": "C1_npx", "20261010-harness-draft": "draft",
+            "20261011-harness-c2np": "C2_np", "20261013-harness-c2hard": "C2_hard", "20261013-harness-c1xlib": "C1_xlib"}
+
+
+def config() -> dict:
+    import yaml
+    return yaml.safe_load((REPO / "research" / "config.yaml").read_text(encoding="utf-8"))
+
+
+def post_of(line: str | None) -> Path | None:
+    """The post-scoring module a line ships (config lines.<line>.post_module, relative to its worktree)."""
+    if not line:
+        return None
+    lc = config()["lines"][line]
+    p = Path(lc.get("post_module", "build/casmi_post.py"))
+    return p if p.is_absolute() else Path(lc["worktree"]) / p
 BACKTEST = [("CELL19_ICE=True", -1), ("USE_ENG=False", -1), ("FUSED_GL=False", -1), ("PROMOTE=False", -1)]
 
 
@@ -150,8 +167,19 @@ def cmd_warm(shard: str, procs: int, post: Path | None = None) -> int:
     return 0
 
 
+PSEUDO_C3 = REPO / "p1_novel" / "pseudo_c3.parquet"
+
+
 def truths() -> dict[str, dict]:
-    return {r["molecule_id"]: r for r in pickle.load(open(VAL_KEY, "rb"))}
+    """val_key.pkl (C1/C2 cohorts) plus the pseudo_c3 cohort (Class 3; its ids C3_* never collide with val_key's)."""
+    out = {r["molecule_id"]: r for r in pickle.load(open(VAL_KEY, "rb"))}
+    if PSEUDO_C3.exists():
+        import pandas as pd
+        c3 = pd.read_parquet(PSEUDO_C3, columns=["molecule_id", "inchikey14", "smiles", "in_scope"])
+        for r in c3[c3.in_scope].itertuples():
+            out.setdefault(r.molecule_id, dict(molecule_id=r.molecule_id, inchikey14=r.inchikey14, smiles=r.smiles,
+                                               cohort="pseudo_c3", cls=3))
+    return out
 
 
 def parse_set(spec: str) -> dict:
@@ -208,10 +236,104 @@ def compare(shard: str, a: dict, b: dict, post: Path | None = None) -> dict:
                delta=float(d.mean()), ci90=[lo, hi], up=int((d > 0).sum()), down=int((d < 0).sum()),
                delta_no_oracle=float(d[~orc].mean()) if (~orc).any() else float("nan"), n_oracle=int(orc.sum()))
     res["leak_sensitive"] = bool(np.sign(res["delta"]) != np.sign(res["delta_no_oracle"]) and res["delta"] != 0)
-    res["family"], res["verdict"] = capmap_verdict(b)
+    res["family"], res["verdict"] = capmap_verdict(knob_diff(a, b))
     res["lb_slot"] = bool(res["delta"] >= 0.005 and lo > 0 and not res["leak_sensitive"]
                           and res["verdict"] not in NOT_CITABLE)
     return res
+
+
+def knob_diff(a: dict, b: dict) -> dict:
+    """The knobs B changes relative to A: the family is the change's, not the base config's (W12)."""
+    return {k: v for k, v in b.items() if k not in a or a[k] != v}
+
+
+# ---------------------------------------------------------------- multi-cohort scorecard (gate_report 2026-10-13)
+COHORT_CLASS = {"C1_npx": "C1", "C1_xlib": "C1", "C2": "C2", "C2_hard": "C2", "c2_displace": "C2",
+                "C2_np": "C2", "pseudo_c3": "C3"}
+
+
+def scaffold_groups(smiles: list[str]) -> list[str]:
+    """Bemis-Murcko scaffold per truth: the bootstrap resamples whole scaffolds, not near-duplicate molecules."""
+    from rdkit import Chem
+    from rdkit.Chem.Scaffolds import MurckoScaffold
+    out = []
+    for s in smiles:
+        try:
+            out.append(MurckoScaffold.MurckoScaffoldSmiles(mol=Chem.MolFromSmiles(s)) or s)
+        except Exception:
+            out.append(s)
+    return out
+
+
+def cohort_score(shard: str, a: dict, b: dict, post: Path | None = None) -> dict:
+    """One cohort's paired result: Δ MRR@25 with a scaffold-grouped 90% CI, the leak split, rank-1 displacements."""
+    from metrics import paired_bootstrap
+    state, deps, cp = load_dump(shard, post)
+    T = truths()
+    mids = [m for m in state["te_mids"] if m in T]
+    tk = {m: cp.canonicalize_smiles_to_ik14(T[m]["smiles"]) for m in mids}
+    ra, rb = ranks_for(state, deps, cp, a, mids, tk), ranks_for(state, deps, cp, b, mids, tk)
+    d = rr(rb) - rr(ra)
+    mean, lo, hi = paired_bootstrap(d, groups=scaffold_groups([T[m]["smiles"] for m in mids]))
+    leak = np.array([bool(state["base"][m][0]) and cp.canonicalize_smiles_to_ik14(state["base"][m][0][0]) == tk[m]
+                     for m in mids])
+    f = lambda x: float(x) if np.isfinite(x) else None   # noqa: E731
+    return dict(n=len(mids), cls=COHORT_CLASS.get(shard, "?"), mrr_a=float(rr(ra).mean()), mrr_b=float(rr(rb).mean()),
+                delta=float(mean), ci90=[f(lo), f(hi)], up=int((d > 0).sum()), down=int((d < 0).sum()),
+                delta_leak_hit=f(d[leak].mean()) if leak.any() else None, n_leak_hit=int(leak.sum()),
+                delta_other=f(d[~leak].mean()) if (~leak).any() else None,
+                displaced=int(((ra == 1) & (rb != 1)).sum()))
+
+
+def composite(cohorts: dict, weights: dict) -> float | None:
+    """Class-weighted mean Δ over non-advisory cohorts (equal C1/C2/C3 weights until refit on LB pairs)."""
+    by = {}
+    for name, c in cohorts.items():
+        if not c.get("advisory") and c.get("delta") is not None:
+            by.setdefault(c["cls"], []).append(c["delta"])
+    if not by:
+        return None
+    w = {k: float(weights.get(k, 1.0)) for k in by}
+    return float(sum(w[k] * np.mean(v) for k, v in by.items()) / sum(w.values()))
+
+
+def available_cohorts(hcfg: dict) -> list[str]:
+    return [c for c in hcfg.get("cohorts", {}) if (DUMPS / c / "post_dump" / "state.pkl").exists()]
+
+
+def scorecard(a: dict, b: dict, target: str, post: Path | None = None, cohorts: list[str] | None = None,
+              scorer=cohort_score) -> dict:
+    """Every replayable cohort, one verdict (research/bin/gate.py recomputes it; this copy is for humans)."""
+    sys.path.insert(0, str(REPO / "research" / "bin"))
+    import gate
+    hcfg = config().get("harness") or {}
+    names = cohorts or available_cohorts(hcfg)
+    if target not in names:
+        raise SystemExit(f"target cohort {target!r} has no dump; available: {names}")
+    res = dict(schema="scorecard-1", a=a, b=b, knobs=knob_diff(a, b), target=target, cohorts={})
+    for c in names:
+        r = scorer(c, a, b, post)
+        r["advisory"] = bool((hcfg.get("cohorts", {}).get(c) or {}).get("advisory"))
+        res["cohorts"][c] = r
+    t = res["cohorts"][target]
+    res.update(n_target=t["n"], displaced=t["displaced"],
+               composite=composite(res["cohorts"], hcfg.get("class_weights") or {}))
+    res["family"], _ = capmap_verdict(res["knobs"])
+    dead, flags = gate.scorecard_findings(res, hcfg)
+    res.update(verdict="DEAD" if dead else "QUEUE", dead=dead, flags=flags)
+    return res
+
+
+def print_scorecard(r: dict) -> None:
+    fmt = lambda x: "-" if x is None else f"{x:+.4f}"   # noqa: E731
+    print(f"SCORECARD  knobs {r['knobs']}  target {r['target']}  composite {fmt(r['composite'])}")
+    print(f"{'cohort':12} {'cls':4} {'n':>4} {'delta':>8} {'90% CI':>19} {'up/dn':>7} {'leak-hit':>9} {'other':>8} disp")
+    for c, x in r["cohorts"].items():
+        tag = (" *target" if c == r["target"] else "") + (" (advisory)" if x["advisory"] else "")
+        print(f"{c:12} {x['cls']:4} {x['n']:>4} {fmt(x['delta']):>8} [{fmt(x['ci90'][0])},{fmt(x['ci90'][1])}] "
+              f"{x['up']:>3}/{x['down']:<3} {fmt(x['delta_leak_hit']):>9} {fmt(x['delta_other']):>8} {x['displaced']}{tag}")
+    print(f"VERDICT {r['verdict']}" + "".join(f"\n  dead: {d}" for d in r["dead"]) +
+          "".join(f"\n  flag: {f}" for f in r["flags"]))
 
 
 # ---------------------------------------------------------------- back-test suite -> capability map
@@ -522,6 +644,11 @@ def main(argv=None) -> int:
     w = sub.add_parser("warm"); w.add_argument("--dump", required=True); w.add_argument("--procs", type=int, default=7)
     s = sub.add_parser("suite"); s.add_argument("--dump", action="append", required=True)
     s.add_argument("--eng-off", action="store_true"); s.add_argument("--no-report", action="store_true")
+    sc = sub.add_parser("scorecard", help="every replayable cohort + the rank-only verdict (gate_report 2026-10-13)")
+    sc.add_argument("--a", default=""); sc.add_argument("--b", required=True); sc.add_argument("--target", required=True)
+    sc.add_argument("--cohort", action="append", help="limit to these cohorts (default: every dumped cohort)")
+    sc.add_argument("--post", type=Path); sc.add_argument("--line", default=None); sc.add_argument("--json", type=Path)
+    c.add_argument("--line", default=None)
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")   # tables print Δ; Windows consoles default to cp1252
@@ -544,7 +671,13 @@ def _main(a) -> int:
         return cmd_lossmap(a.dump)
     if a.cmd == "backtest":
         return cmd_backtest()
-    r = compare(a.dump, parse_set(a.a), parse_set(a.b), a.post)
+    if a.cmd == "scorecard":
+        r = scorecard(parse_set(a.a), parse_set(a.b), a.target, a.post or post_of(a.line), a.cohort)
+        print_scorecard(r)
+        if a.json:
+            a.json.write_text(json.dumps(r, indent=1), encoding="utf-8")
+        return 0
+    r = compare(a.dump, parse_set(a.a), parse_set(a.b), a.post or post_of(a.line))
     print(json.dumps(r, indent=1))
     if a.json:
         a.json.write_text(json.dumps(r, indent=1), encoding="utf-8")

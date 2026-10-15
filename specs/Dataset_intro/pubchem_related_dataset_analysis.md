@@ -1,6 +1,6 @@
 # CASMI 2026: Comprehensive PubChem & Natural Product Dataset Master Guide
 
-> **Target File**: [`specs/Dataset_intro/pubchem_related_dataset_analysis.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/Dataset_intro/pubchem_related_dataset_analysis.md)  
+> **Target File**: [`specs/Dataset_intro/pubchem_related_dataset_analysis.md`](file:///e:/ENVEDA_casmi/specs/Dataset_intro/pubchem_related_dataset_analysis.md)  
 > **Domain**: Enveda CASMI 2026 — Molecule ID from LC-MS/MS Mass Spectra  
 > **Evaluation Metric**: Mean Reciprocal Rank at 25 (`MRR@25`) evaluated on tautomer-canonical `InChIKey14`  
 > **Objective**: Provide an authoritative, self-contained reference on all PubChem-related candidate datasets, natural product knowledge tables, cheminformatics filters, and popularity priors used across the state-of-the-art competitive lineage.
@@ -216,7 +216,7 @@ Compiled from **LOTUS (frozen metadata 2023-01-06)** and **NPAtlas (2026-09-30)*
 * **Missing Pool Structures**: Exactly **2,715 natural products are missing from the 710k public pool**!
 
 ### 6.2 The 2,715 Missing Pool Structures
-In Track 4 probe P3e ([probe3_plan.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/probe3_plan.md)), these 2,715 structures are dynamically retrieved:
+In Track 4 probe P3e ([probe3_plan.md](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/probe3_plan.md)), these 2,715 structures are dynamically retrieved:
 ```python
 npt = pd.read_parquet("natural_products.parquet")
 missing_nps = npt[(~npt.in_casmi_pool.astype(bool)) & (npt.mono_mass.between(150.0, 1250.0))]

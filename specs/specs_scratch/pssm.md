@@ -26,13 +26,13 @@
 
 ## 1. Executive Summary & Why This Lever
 
-In **R4** ([EXPERIMENTS.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md) row 50, LB 0.345), fusing a second neural fingerprint model (prvsiyan Family P next to Ahmed Family A) yielded **-0.001 (neutral drop)**. As formulated in the Graveyard (line 219):
+In **R4** ([EXPERIMENTS.md](file:///e:/ENVEDA_casmi/EXPERIMENTS.md) row 50, LB 0.345), fusing a second neural fingerprint model (prvsiyan Family P next to Ahmed Family A) yielded **-0.001 (neutral drop)**. As formulated in the Graveyard (line 219):
 > *"Orthogonality has to be in the **evidence**, not the model: a second model of the same spectrum $\to$ FP task is a near-copy. Look for channels that read different information (popularity, PubChem candidates, library analogs)."*
 
 All public SOTA submissions above 0.399 (v4n 0.399, v29 0.411, Sovereign Zenith 0.425) rely on **Engine A's AFIX analogue propagation index** ($N_{\text{analog}} = 200$). 
 
 In `casmi_scratch`:
-- [scratch_pkg/casmi_scratch/analog.py](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/scratch_pkg/casmi_scratch/analog.py) already contains Numba-accelerated shift-aware entropy matching (`shift_entropy_sim`), but currently uses it only for **coarse NPClassifier superclass voting** (R2: +0.008 LB).
+- [scratch_pkg/casmi_scratch/analog.py](file:///e:/ENVEDA_casmi/scratch_pkg/casmi_scratch/analog.py) already contains Numba-accelerated shift-aware entropy matching (`shift_entropy_sim`), but currently uses it only for **coarse NPClassifier superclass voting** (R2: +0.008 LB).
 - **R5 proposes direct substructural fingerprint propagation** from these spectral analogues, structured as a **Position-Specific Scoring Matrix (PSSM) / Empirical Log-Odds Profile**.
 - This acts as an **empirical, library-grounded counterpart to FPNet**: while FPNet predicts bits through a neural black-box, the Analogue PSSM computes consensus bits directly from real, experimentally verified reference spectra across the metabolic neighbourhood.
 
@@ -99,7 +99,7 @@ $$\mathbf{s}_{\text{pssm}} = \mathbf{C} \cdot \mathbf{W}$$
 * It operates strictly inside **Tier 2** (unmatched candidates).
 
 ### 4.2 Fused Tier-2 Key in `rank.py`
-In [scratch_pkg/casmi_scratch/rank.py](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/scratch_pkg/casmi_scratch/rank.py), add $\mathbf{s}_{\text{pssm}}$ as a 3rd orthogonal channel in the Tier 2 RRF:
+In [scratch_pkg/casmi_scratch/rank.py](file:///e:/ENVEDA_casmi/scratch_pkg/casmi_scratch/rank.py), add $\mathbf{s}_{\text{pssm}}$ as a 3rd orthogonal channel in the Tier 2 RRF:
 $$\text{Key}_{\text{Tier 2}} = \frac{1}{k + r_{sv + \text{bonus}}} + \frac{1}{k + r_{\text{fp}}} + \frac{w_{\text{pssm}}}{k + r_{\text{pssm}}}$$
 * Tie-breakers: $fr$ (MetFrag-lite), then $|ppm|$.
 * Default hyperparameters: $k = 3.0$, $w_{\text{pssm}} \in [0.4, 0.8]$, $S_{\text{min}} = 0.50$, $N_{\text{analog}} \in [50, 200]$.

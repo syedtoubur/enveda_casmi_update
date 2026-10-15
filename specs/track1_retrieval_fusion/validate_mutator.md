@@ -5,9 +5,9 @@
 **Context:** Track 1 Retrieval Fusion + Novel Mutator Routing (`specs/track1_retrieval_fusion`)  
 **Target Benchmark:** `p1_novel/pseudo_c3.parquet` (Phase 1 Benchmark Cohorts from Track 2)  
 **Code Artifacts:**
-- Mutator Module: [`build/delta_m_mutator.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/build/delta_m_mutator.py)
-- Benchmark Script: [`scratch/eval_mutator_pseudo_c3.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/scratch/eval_mutator_pseudo_c3.py)
-- Raw Results CSV: [`scratch/mutator_pseudo_c3_results.csv`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/scratch/mutator_pseudo_c3_results.csv)
+- Mutator Module: [`build/delta_m_mutator.py`](file:///e:/ENVEDA_casmi/build/delta_m_mutator.py)
+- Benchmark Script: [`scratch/eval_mutator_pseudo_c3.py`](file:///e:/ENVEDA_casmi/scratch/eval_mutator_pseudo_c3.py)
+- Raw Results CSV: [`scratch/mutator_pseudo_c3_results.csv`](file:///e:/ENVEDA_casmi/scratch/mutator_pseudo_c3_results.csv)
 
 ---
 
@@ -27,7 +27,7 @@ This validation experiment evaluates the chemical reconstruction capability, exa
 ## 2. Benchmark Datasets & Provenance
 
 ### Why `val_scripts/val_key.pkl` Is Insufficient Alone
-The local validation dataset ([`val_scripts/val_key.pkl`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/val_scripts/val_key.pkl)) contains 1,145 molecules:
+The local validation dataset ([`val_scripts/val_key.pkl`](file:///e:/ENVEDA_casmi/val_scripts/val_key.pkl)) contains 1,145 molecules:
 - **Class 1 (Library Matches):** 545 molecules
 - **Class 2 (Database Retrieval Matches):** 600 molecules
 - **Class 3 (Novel Molecules Absent from Databases):** **0 molecules**
@@ -35,7 +35,7 @@ The local validation dataset ([`val_scripts/val_key.pkl`](file:///c:/Users/h/One
 Evaluating a novel mutator or de novo generator on `val_scripts` only tests whether it *harms* Class 1 or Class 2 retrieval (displacement). It is impossible to test whether novel candidates score hits on novel queries using `val_scripts` alone.
 
 ### The Ground Truth Benchmark: `p1_novel/pseudo_c3.parquet`
-Constructed in Track 2 ([`specs/track2_novel_generation/phase1_plan.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track2_novel_generation/phase1_plan.md)) and verified in [`p1_novel/p1_gate.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/p1_novel/p1_gate.json):
+Constructed in Track 2 ([`specs/track2_novel_generation/phase1_plan.md`](file:///e:/ENVEDA_casmi/specs/track2_novel_generation/phase1_plan.md)) and verified in [`p1_novel/p1_gate.json`](file:///e:/ENVEDA_casmi/p1_novel/p1_gate.json):
 - **Size:** 600 molecules $\times$ 18 columns.
 - **Source Libraries:** Natural product spectra from GNPS (483), MassBank (35), MoNA (24), RIKEN (22), MSDial (21), and Enveda-NP-Examples (15).
 - **Zero Oracle Leakage:** Every molecule was cross-referenced against MassSpecGym (`msg_ik14.npy`, 28,923 structures). Any structure seen by ICEBERG (`msg_all`) was strictly excluded.
@@ -47,7 +47,7 @@ Constructed in Track 2 ([`specs/track2_novel_generation/phase1_plan.md`](file://
 
 ## 3. Validation Methodology
 
-The experiment was implemented in [`scratch/eval_mutator_pseudo_c3.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/scratch/eval_mutator_pseudo_c3.py) and executed locally under Python 3.13 and RDKit 2026.03.3.
+The experiment was implemented in [`scratch/eval_mutator_pseudo_c3.py`](file:///e:/ENVEDA_casmi/scratch/eval_mutator_pseudo_c3.py) and executed locally under Python 3.13 and RDKit 2026.03.3.
 
 ```mermaid
 flowchart TD
@@ -109,7 +109,7 @@ flowchart TD
 ### 4.3 Failure Mode Breakdown (182 Misses)
 1. **Acyclic Scaffolds (129 / 182 = 70.9%):**
    - Bemis-Murcko framework extraction strips all acyclic sidechains, leaving an empty scaffold.
-   - *Production mitigation:* In `delta_m_mutator.py` ([line 146](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/build/delta_m_mutator.py#L146)), when Murcko extraction yields 0 atoms, `sc = m` (the retrieved hit itself acts as the seed scaffold).
+   - *Production mitigation:* In `delta_m_mutator.py` ([line 146](file:///e:/ENVEDA_casmi/build/delta_m_mutator.py#L146)), when Murcko extraction yields 0 atoms, `sc = m` (the retrieved hit itself acts as the seed scaffold).
 2. **Formula Difference Too Large (39 / 182 = 21.4%):**
    - The Murcko scaffold was a single small ring (e.g. benzene) while the natural product had $>15$ heavy atoms added, exceeding `MAXOPS=6`.
 3. **Missing Specialized Heteroatom Functionalities (14 / 182 = 7.7%):**
@@ -170,8 +170,8 @@ def is_class_3_novel(best_pool_fz: float, top_pc_fz: float) -> bool:
 
 ## 7. Next Actions
 
-1. **Verify Router on Commit Outputs:** Test the dynamic gating function on the 12 smoke molecules in [`pc_lists_bio.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/pc_lists_bio.json) and [`mut_lists_bio.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track1_retrieval_fusion/mut_lists_bio.json).
-2. **Patch Notebook:** Update Cell 17 in [`casmi26-v4n-mutator-bio-submit.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-v4n-mutator-bio-submit.ipynb) with the class-conditional routing engine.
+1. **Verify Router on Commit Outputs:** Test the dynamic gating function on the 12 smoke molecules in [`pc_lists_bio.json`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/pc_lists_bio.json) and [`mut_lists_bio.json`](file:///e:/ENVEDA_casmi/specs/track1_retrieval_fusion/mut_lists_bio.json).
+2. **Patch Notebook:** Update Cell 17 in [`casmi26-v4n-mutator-bio-submit.ipynb`](file:///e:/ENVEDA_casmi/casmi26-v4n-mutator-bio-submit.ipynb) with the class-conditional routing engine.
 3. **Smoke Commit:** Push a 5-minute commit to Kaggle (`SMOKE_N = 12`) to verify offline wheel installation and routing log output before executing full submission.
 
 ---

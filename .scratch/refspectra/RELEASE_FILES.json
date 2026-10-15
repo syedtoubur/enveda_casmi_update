@@ -1,0 +1,84 @@
+{
+  "creation_metadata_scope": "dataset-metadata.json is consumed as native creation fields, not an uploaded/downloadable blob. It is bound separately by the publication freeze. This inventory excludes itself.",
+  "excluded_original_empty_diagnostic": {
+    "bytes": 0,
+    "filename": "unmatched_reference_keys.jsonl",
+    "representation": "UNMATCHED_REPORT.json states actual zero; original empty file remains preserved in the measured build.",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "files": {
+    "COMPATIBILITY.md": {
+      "bytes": 2194,
+      "sha256": "5ee02eb27ed2d0ed42c74002a41e2cdcf264ad9eb636d78318d759f5b86e42dd"
+    },
+    "DATA_DICTIONARY.md": {
+      "bytes": 4479,
+      "sha256": "af0e5c27c133f3fd29286f0ee173e6982a4dcdc8fd24e6cccdc130e63e6a9459"
+    },
+    "DATA_LICENSE.md": {
+      "bytes": 1652,
+      "sha256": "dfc9d15a90674649336cbc4deb5a33db0996e40b0c135b6990f696357d30dafc"
+    },
+    "LICENSE-CODE-MIT.txt": {
+      "bytes": 1517,
+      "sha256": "438b4756a7828d82a27e874af16ddcd7cbbe44c31265fb3ef7103f3d2168ad60"
+    },
+    "MANIFEST.json": {
+      "bytes": 1605,
+      "sha256": "c5f1b2e2b375c62ec948a1afae5b294fdd7ebd5e270649ed9d3388e080301f29"
+    },
+    "PUBLIC_VALIDATION.json": {
+      "bytes": 4639,
+      "sha256": "185fb20fc328309b8bc080e142b8febb5dc561704b9b012a20c53dbe8c18807a"
+    },
+    "README.md": {
+      "bytes": 8124,
+      "sha256": "41a3ad0ffc79d8cea1c3fcc4c052200437a20a8c3c7e468b0a90d440711e07d6"
+    },
+    "SOURCES.md": {
+      "bytes": 5221,
+      "sha256": "0abe5c77ebb56ac0345034a8de824ce14526419e5e8373ea0fedfab18461c1fc"
+    },
+    "UNMATCHED_REPORT.json": {
+      "bytes": 512,
+      "sha256": "ecc800d1e9ae80b21aba826bd8c582ad9ad8d543a8cef2bbfd2d4b2eb08ca9d1"
+    },
+    "condition_multiplicity.jsonl": {
+      "bytes": 1107782,
+      "sha256": "5bcd54f4322a75826f171c803fbf2b2610bc0e174c9dd4cd74a63eca92a3ffa2"
+    },
+    "quickstart.py": {
+      "bytes": 1391,
+      "sha256": "c21211332b5f2f27d99cd82247ba6ae2e259e780d854f23a7afcf16fd153f174"
+    },
+    "rebuild_reference_evidence.py": {
+      "bytes": 16676,
+      "sha256": "21e7c135b134ce81ec5723cc10de7bafe064d4dd6e2cd3ac08991c2044aa99f6"
+    },
+    "record_attribution.jsonl": {
+      "bytes": 5067266,
+      "sha256": "4074236e8d3d5991dd4d7f17789007148a72b0bbe857d3c024a0e6a837d29a17"
+    },
+    "reference-atlas.png": {
+      "bytes": 84338,
+      "sha256": "7f1dba382f6f73d6af22d25d95ecd42f8c96392c318d8fb2d0d3fac2b1f2fd37"
+    },
+    "reference-atlas.svg": {
+      "bytes": 3917,
+      "sha256": "1aa8e3ec656785b9b3362192316763d92e8664d9dfb9e33e072980be5bf845fa"
+    },
+    "reference_evidence.py": {
+      "bytes": 3131,
+      "sha256": "006767cdded8eba16447855825e708b0401560ccb7e4732e7edd2e790a62d06c"
+    },
+    "reference_molecules.jsonl": {
+      "bytes": 390273,
+      "sha256": "c763cfd79f71c872c2cbeb684e520d07440f98d7035cc974d79e783b9753e9b0"
+    },
+    "render_reference_diagram.py": {
+      "bytes": 4059,
+      "sha256": "1d67f9abf0bc1f6d8e2bb97cfc2dcdcf5807e42efa9af2420ef8fe9a394c06a8"
+    }
+  },
+  "schema": "release-file-hashes-v1"
+}

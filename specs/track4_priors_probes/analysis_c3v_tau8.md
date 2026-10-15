@@ -2,10 +2,10 @@
 
 ## 1. Executive Summary & Purpose
 
-- **Target Notebook:** [`casmi26-c3v2-tau8.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-c3v2-tau8.ipynb)
-- **Base Baseline Notebook:** [`casmi26-v29-fusion-pop-glmh-0-415.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-v29-fusion-pop-glmh-0-415.ipynb) (LB 0.415)
-- **Generation Script:** [`build/patch_c3v2.py`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/build/patch_c3v2.py) with `--tau 8`
-- **Spec / Origin Plan:** [`specs/track4_priors_probes/c3v2_plan.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/c3v2_plan.md)
+- **Target Notebook:** [`casmi26-c3v2-tau8.ipynb`](file:///e:/ENVEDA_casmi/casmi26-c3v2-tau8.ipynb)
+- **Base Baseline Notebook:** [`casmi26-v29-fusion-pop-glmh-0-415.ipynb`](file:///e:/ENVEDA_casmi/casmi26-v29-fusion-pop-glmh-0-415.ipynb) (LB 0.415)
+- **Generation Script:** [`build/patch_c3v2.py`](file:///e:/ENVEDA_casmi/build/patch_c3v2.py) with `--tau 8`
+- **Spec / Origin Plan:** [`specs/track4_priors_probes/c3v2_plan.md`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/c3v2_plan.md)
 
 ### The Core Problem (Class 3 Novelty)
 In the **Enveda CASMI 2026** competition (predicting 2D molecular graphs from LC-MS/MS spectra scored on `MRR@25` of tautomer-canonical InChIKey14), test queries fall into three classes:

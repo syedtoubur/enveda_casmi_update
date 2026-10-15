@@ -1,6 +1,6 @@
 # CASMI 2026: Master Dataset & Model Catalog
 
-> **Reference File**: [`specs/Dataset_intro/dataset_catalog.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/Dataset_intro/dataset_catalog.json)  
+> **Reference File**: [`specs/Dataset_intro/dataset_catalog.json`](file:///e:/ENVEDA_casmi/specs/Dataset_intro/dataset_catalog.json)  
 > **Purpose**: Single authoritative registry of all Kaggle dataset slugs, purpose descriptions, file manifests, and `kernel-metadata.json` attachment presets.
 
 ---
@@ -8,7 +8,7 @@
 ## 1. Quick Presets for `kernel-metadata.json`
 
 ### 🚀 SOTA 0.433 / Sovereign Zenith Lineage
-To run [`casmi-notebook-0-433.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi-notebook-0-433.ipynb) or Sovereign Zenith without missing file exceptions, copy this exact `dataset_sources` array:
+To run [`casmi-notebook-0-433.ipynb`](file:///e:/ENVEDA_casmi/casmi-notebook-0-433.ipynb) or Sovereign Zenith without missing file exceptions, copy this exact `dataset_sources` array:
 
 ```json
 {

@@ -1,0 +1,23 @@
+{
+  "experiment": "CASMI 2026 Idea A1: Transductive Molecular Networking Scaffold Congener Falsifier",
+  "total_pairs": 10457,
+  "statistical_separation": {
+    "auc_mod_cosine_vs_isobaric": 0.9483,
+    "cohens_d_mod_cosine_vs_isobaric": 3.0957,
+    "auc_mod_cosine_vs_random": 0.9526,
+    "auc_entropy_vs_isobaric": 0.838,
+    "shift_aware_auc_lift": 0.1103
+  },
+  "operating_at_tau_070": {
+    "same_scaffold_bio_recall": 51.87,
+    "isobaric_decoy_flr": 0.44,
+    "biogenetic_precision": 98.36
+  },
+  "gates": {
+    "G1_Separation_AUC_ge_080": true,
+    "G2_Recall_tau_070_ge_30pct": true,
+    "G3_Precision_tau_070_ge_75pct": true,
+    "G4_Shift_Aware_Lift_ge_010": true,
+    "Overall_Verdict": "PASS (Idea A1 Validated)"
+  }
+}

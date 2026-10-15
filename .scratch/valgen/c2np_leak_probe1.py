@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-R = Path('C:/Users/h/OneDrive/Desktop/ENVEDA_casmi')
+R = Path('E:/ENVEDA_casmi')
 sys.path.insert(0, str(R / 'research/harness'))
 import harness as HX  # noqa: E402
 from rdkit import Chem, RDLogger  # noqa: E402

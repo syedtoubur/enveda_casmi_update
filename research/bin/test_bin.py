@@ -36,6 +36,9 @@ def repo(tmp_path, monkeypatch):
     cfg["lines"]["exploit"]["worktree"] = str(tmp_path / "no_worktree")
     cfg["lines"]["exploit"]["control"] = None
     cfg["lines"]["exploit"]["g4_required"] = []
+    cfg["gates"]["g4_draft_diff"] = False   # the draft-diff tests switch it on with a control draft
+    for lc in cfg["lines"].values():
+        lc.pop("control_draft", None)       # default: <control>/kaggle_output/submission.csv inside the tmp repo
     cfg["catalog"] = "catalog.json"
     (tmp_path / "catalog.json").write_text(json.dumps({"presets": {
         "p": {"enable_gpu": "true", "competition_sources": ["wrong-slug"],
@@ -383,6 +386,7 @@ def test_probe_refused_until_control_passes(repo):
     cfgp.write_text(yaml.safe_dump(cfg))
     ctl = root / "research" / "exploit" / "ctl"
     ctl.mkdir()
+    (ctl / "STATUS").write_text("scored\nline: exploit\nkind: control\ndocker_image: gcr.io/x@sha256:1\n")
     (ctl / "gates.md").write_text("| gate |\n| G4 | t | FAIL (error) | x | |\n")
     nb = root / "probe.ipynb"
     nb.write_text("{}")
@@ -428,6 +432,25 @@ def test_source_audit(repo):
     assert missing == []
 
 
+def test_probe_inherits_control_image(repo):
+    """A probe runs on its control's pinned image (E006 asserts Python 3.12; Kaggle's latest is 3.13)."""
+    import yaml
+    root, idea = repo
+    ctrl = root / "research" / "exploit" / "20261012-control-x"
+    ctrl.mkdir()
+    (ctrl / "STATUS").write_text("scored\nkind: control\ndocker_image: gcr.io/k/python@sha256:abc\n")
+    (ctrl / "gates.md").write_text("| G4 | t | PASS | x |  |\n")
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text())
+    cfg["lines"]["exploit"]["control"] = "research/exploit/20261012-control-x"
+    cfgp.write_text(yaml.safe_dump(cfg))
+    nb = root / "probe.ipynb"
+    nb.write_text("{}")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run([], PUSH_OK)) == 0
+    md = json.loads((idea / "kaggle_push" / "kernel-metadata.json").read_text())
+    assert md["docker_image"] == "gcr.io/k/python@sha256:abc"
+
+
 def test_audit_blocks_push(repo):
     root, idea = repo
     (root / "catalog.json").write_text(json.dumps({"presets": {"p": {"dataset_sources": ["a/b"]}},
@@ -444,15 +467,26 @@ def test_run_tests_uses_worktree_cwd(repo):
     root, idea = repo
     wt = root / "no_worktree"
     (wt / "build").mkdir(parents=True)
-    (wt / "build" / "run_all_tests.sh").write_text("echo ok")
-    seen = {}
+    (wt / "build" / "run_all_tests.sh").write_text(
+        "set -e\npython build/test_a.py | tail -1\nrun build/test_b.py\nsoft build/test_c.py\nrun build/test_gone.py\n")
+    for n in ("a", "b", "c"):
+        (wt / "build" / f"test_{n}.py").write_text("")
+    seen = []
+    outcome = {"build/test_a.py": (0, "ok"), "build/test_b.py": (1, "FileNotFoundError: DreamS/dreams/utils/spectra.py"),
+               "build/test_c.py": (1, "AssertionError: 22 != 21")}
 
     def run(cmd, **kw):
-        seen.update(kw, cmd=cmd)
-        return types.SimpleNamespace(returncode=0, stdout="12 passed\n", stderr="")
-    assert run_tests.main(["exploit", "--idea", str(idea)], run=run) == 0
-    assert Path(seen["cwd"]) == wt and seen["cmd"][-1] == "build/run_all_tests.sh"
-    assert "| G2 suite | " in (idea / "gates.md").read_text()
+        seen.append((kw["cwd"], cmd[1]))
+        rc, out = outcome[cmd[1]]
+        return types.SimpleNamespace(returncode=rc, stdout=out + "\n", stderr="")
+    # keep-going: every test runs in the worktree; a missing input is SKIP-INPUT, a real failure is FAIL
+    assert run_tests.main(["exploit", "--idea", str(idea)], run=run) == 1
+    assert [s[1] for s in seen] == ["build/test_a.py", "build/test_b.py", "build/test_c.py"]
+    assert all(Path(c) == wt for c, _ in seen)
+    g = (idea / "gates.md").read_text()
+    assert "| G2 suite | " in g and "FAIL: build/test_c.py" in g and "SKIP-INPUT: build/test_b.py" in g
+    outcome["build/test_c.py"] = (0, "ok")
+    assert run_tests.main(["exploit"], run=run) == 0                         # skips alone don't fail G2
 
 
 # ---------------- nb_to_colab
@@ -707,6 +741,25 @@ def test_poll_matches_by_slug_in_description(repo, capsys):
     assert state == "scored-unpaired" and meta["lb"] == "0.430"  # no control on the line
 
 
+def test_poll_exact_token_and_claimed_refs(repo, capsys):
+    root, idea = repo
+    _common.write_status(idea, "ready-to-submit", kernel="syedtoubur/casmi-foo")
+    other = root / "research" / "exploit" / "20261010-foo-v2"
+    other.mkdir()
+    (other / "STATUS").write_text("ready-to-submit\nline: exploit\nkernel: syedtoubur/casmi-foo-v2\n")
+    subs = [{"ref": "9", "date": "d2", "description": "casmi-foo-v2", "publicScore": "0.441"},
+            {"ref": "8", "date": "d1", "description": "", "publicScore": "0.437"}]
+    got = poll_lb.match(subs, {"exploit/20261010-foo": "syedtoubur/casmi-foo",
+                               "exploit/20261010-foo-v2": "syedtoubur/casmi-foo-v2"})
+    assert [(i, s["ref"]) for i, s in got] == [("exploit/20261010-foo-v2", "9")]      # no substring match
+    # an empty description is claimed by ref right after the submit
+    assert poll_lb.main(["--claim", "research/exploit/20261010-foo"], fetcher=lambda cfg: subs) == 0
+    state, meta = _common.read_status(idea)
+    assert state == "submitted" and meta["lb_refs"] == "8"
+    poll_lb.main(["--write"], fetcher=lambda cfg: subs)
+    assert _common.read_status(idea)[1]["lb"] == "0.437"
+
+
 def test_decide_rules():
     assert poll_lb.decide([0.432], None, True)[0] == "scored-unpaired"
     assert poll_lb.decide([0.440], 0.433, False)[0] == "revert"          # counters never fired
@@ -749,6 +802,26 @@ def test_poll_pairs_probe_with_line_control(repo, capsys):
     assert _common.read_status(idea)[0] == "keep"
 
 
+def test_poll_two_lines_sharing_one_control(repo, capsys):
+    # 10-14: exploit and explore both point at control-e006; a dict keyed by path kept only the last line,
+    # so exploit probes stayed scored-unpaired against a scored control
+    root, idea = repo
+    import yaml
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text())
+    ctl = root / "research" / "exploit" / "20261010-ctl"
+    ctl.mkdir()
+    (ctl / "STATUS").write_text("scored\nline: exploit\nkind: control\nlb: 0.440\n")
+    for ln in ("exploit", "explore"):
+        cfg["lines"][ln]["control"] = "research/exploit/20261010-ctl"
+    cfgp.write_text(yaml.safe_dump(cfg))
+    _common.write_status(idea, "ready-to-submit", kernel="syedtoubur/casmi-foo", lb="0.431")
+    _probe_with_g4_log(idea, "X fired 5\n")
+    poll_lb.main(["--write"], fetcher=lambda cfg: [])
+    state, meta = _common.read_status(idea)
+    assert state == "revert" and "vs bar 0.444" in meta["decision"]
+
+
 def test_instrument_pass_is_not_submittable_and_fail_skips_fix_agent(repo):
     root, idea = repo
     nb = root / "probe.ipynb"
@@ -782,6 +855,226 @@ def test_counter_value_zero_fails_g4():
     assert kaggle_push.counter_value(log, "candidates added") == 16
     assert not kaggle_push.check_log(log, [r"?\[ADDUCT_ICE\].*molecules reranked"], [])
     assert "value missing" in kaggle_push.check_log("TRACK4 ok\n", ["TRACK4"], [])[0]
+
+
+def test_counter_value_reads_the_matched_count_not_the_runtime():
+    # 10-12: `engine lists \d+` swallowed the count and read the runtime 619 (`engine lists 0 5s` passed)
+    assert kaggle_push.counter_value("engine lists 12 619s\n", r"engine lists \d+") == 12
+    assert kaggle_push.check_log("engine lists 0 5s\n", [r"engine lists \d+"], [])
+    assert kaggle_push.counter_value("lists 7 of 9\n", r"lists (\d+) of") == 7
+    assert kaggle_push.counter_value("TRACK4 fired 37\n", "TRACK4") == 37      # literal digit, not \d
+
+
+def _drafts(root, idea, probe_rows, ctrl_rows, gate=True):
+    import yaml
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text())
+    ctl = root / "research" / "exploit" / "20261010-ctl"
+    (ctl / "kaggle_output").mkdir(parents=True)
+    (ctl / "STATUS").write_text("scored\nline: exploit\nkind: control\ndocker_image: gcr.io/x@sha256:1\n")
+    (ctl / "gates.md").write_text("| G4 | x | PASS | |\n")
+    cfg["lines"]["exploit"]["control"] = "research/exploit/20261010-ctl"
+    cfg["gates"]["g4_draft_diff"] = gate
+    cfgp.write_text(yaml.safe_dump(cfg))
+    csv = lambda rows: "molecule_id,smiles\n" + "".join(f"{k},{v}\n" for k, v in rows.items())
+    if ctrl_rows is not None:
+        (ctl / "kaggle_output" / "submission.csv").write_text(csv(ctrl_rows))
+    return lambda args, timeout=600: _write_probe_out(args, csv(probe_rows))
+
+
+def _write_probe_out(args, sub):
+    out = 'has status "KernelWorkerStatus.COMPLETE"' if args[1] == "status" else PUSH_OK
+    if args[1] == "output":
+        d = Path(args[args.index("-p") + 1]); d.mkdir(parents=True, exist_ok=True)
+        (d / "k.log").write_text("X fired 3\n")
+        (d / "submission.csv").write_text(sub)
+    return types.SimpleNamespace(returncode=0, stdout=out, stderr="")
+
+
+def test_g4_fails_a_probe_whose_draft_equals_the_control(repo):
+    # 10-12 promo-soften: counters print-only, `promoted: 0`, and G4 still passed (N1)
+    root, idea = repo
+    nb = root / "probe.ipynb"; nb.write_text("{}")
+    args = [str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "X fired"]
+    same = {"m1": "A;B", "m2": "C;D"}
+    assert kaggle_push.main(args, run=_drafts(root, idea, same, dict(same)), sleep=lambda s: None) == 2
+    assert "the change never fired" in (idea / "gates.md").read_text()
+    assert _common.read_status(idea)[0] == "g4-fix" and HOOKS["fix"]
+
+
+def test_g4_passes_a_probe_whose_draft_differs(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"; nb.write_text("{}")
+    args = [str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "X fired"]
+    run = _drafts(root, idea, {"m1": "B;A", "m2": "C;D"}, {"m1": "A;B", "m2": "C;D"})
+    assert kaggle_push.main(args, run=run, sleep=lambda s: None) == 0
+    assert _common.read_status(idea)[0] == "ready-to-submit"
+
+
+def test_push_refused_without_control_image_or_after_g2_fail(repo):
+    root, idea = repo
+    import yaml
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text())
+    ctl = root / "research" / "exploit" / "20261010-ctl"
+    ctl.mkdir()
+    (ctl / "STATUS").write_text("scored\nline: exploit\nkind: control\n")
+    (ctl / "gates.md").write_text("| G4 | x | PASS | |\n")
+    cfg["lines"]["exploit"]["control"] = "research/exploit/20261010-ctl"
+    cfgp.write_text(yaml.safe_dump(cfg))
+    nb = root / "probe.ipynb"; nb.write_text("{}")
+    calls = []
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 10
+    assert "docker_image" in (idea / "gates.md").read_text() and not calls
+    (ctl / "STATUS").write_text("scored\nline: exploit\nkind: control\ndocker_image: gcr.io/x@sha256:1\n")
+    with (idea / "gates.md").open("a") as f:
+        f.write("| G2 suite | 2026 | FAIL | x |\n")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 10 and not calls
+    with (idea / "gates.md").open("a") as f:
+        f.write("| G2 suite | 2026 | PASS | x |\n")
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run(calls, "")) == 0
+    md = json.loads((idea / "kaggle_push" / "kernel-metadata.json").read_text())
+    assert md["docker_image"] == "gcr.io/x@sha256:1"
+
+
+def test_gpu_pool_refuses_over_budget_and_keeps_g4_reserve(repo):
+    import gpu
+    root, idea = repo
+    cfg = _common.load_config()
+    assert gpu.refuse_reason(cfg, "training", 5.0).startswith("training run planned")     # > 4 h per run
+    gpu.record("x", "k", 21.0, "instrument")
+    assert gpu.refuse_reason(cfg, "probe", 0.5) == ""                                    # G4 may use the reserve
+    assert "weekly GPU pool" in gpu.refuse_reason(cfg, "instrument", 3.0)                # 21 + 3 > 30 - 8
+    nb = root / "probe.ipynb"; nb.write_text("{}")
+    _common.write_status(idea, None, kind="training", gpu_h_est=3)
+    assert kaggle_push.main([str(idea), str(nb), "--preset", "p"], run=_kaggle_run([], "")) == 8
+    assert "GPU pool" in (idea / "questions.md").read_text()
+    assert gpu.log_hours(json.dumps([{"time": 7.5}, {"time": 1080.0}])) == 0.3
+
+
+def test_colab_train_needs_approval_and_fetches_on_failure(repo):
+    root, idea = repo
+    (idea / "t.py").write_text("print(1)")
+    calls = []
+
+    def runner(cli, args, timeout=None):
+        calls.append(args[0])
+        out = "MOUNT_OK" if args[0] == "exec" and "_mount_probe" in " ".join(args) else ""
+        rc = 1 if args[0] == "exec" and "t.py" in " ".join(args) else 0
+        return types.SimpleNamespace(returncode=rc, stdout=out, stderr="")
+    assert colab_run.main([str(idea), "t.py", "--kind", "train"], runner=runner) == 9 and not calls
+    _common.write_status(idea, None, colab_train="approved")
+    import yaml
+    cfgp = root / "research" / "config.yaml"
+    cfg = yaml.safe_load(cfgp.read_text()); cfg["colab"]["cu_cap_train"] = 10.0; cfgp.write_text(yaml.safe_dump(cfg))
+    rc = colab_run.main([str(idea), "t.py", "--kind", "train", "--fetch", "/content/ckpt.pt:ckpt.pt"], runner=runner)
+    assert rc == 1 and "download" in calls and calls[-1] == "stop"          # outputs pulled although the run failed
+    assert colab_run.check_mount(_common.load_config(), runner, shell=None) == 0
+
+
+PROPOSAL = """# Proposals: cycle 1
+## P1: pin the control image
+- action: add
+- kind: lesson
+- decision: approve
+### Text
+A probe must run on its control's Kaggle image, or the pair is not paired.
+### Reasoning
+engine2-fppair v1 crashed on cp313.
+
+## P2: retire an old lesson
+- action: retire
+- kind: lesson
+- target: L01
+- decision: reject
+### Reasoning
+superseded
+
+## P3: counters need a number
+- action: add
+- kind: rule
+- decision: approve
+### Text
+```python
+ID = "R90"
+TAGS = ["g4"]
+LESSON = "test rule"
+SRC = "test"
+FLAGS = ["rules/fixtures/R90_bad"]
+
+
+def check(idea):
+    return ["bad"] if (idea / "BAD").exists() else []
+```
+### Fixture
+```file:fixtures/R90_bad/BAD
+x
+```
+"""
+
+
+def test_promote_applies_only_approved_items_and_rolls_back_red_rules(repo):
+    import promote
+    root, _ = repo
+    research = root / "research"
+    (research / "LESSONS.md").write_text("- **L35** last.\n")
+    (research / "rules" / "fixtures").mkdir(parents=True)
+    (research / "proposals").mkdir()
+    p = research / "proposals" / "20261013-c1.md"
+    p.write_text(PROPOSAL)
+    rep = promote.promote(p, test=lambda: (True, "ok"))
+    lessons = (research / "LESSONS.md").read_text()
+    assert "- **L36** A probe must run on its control's Kaggle image" in lessons and "L01" not in lessons
+    assert (research / "rules" / "R90_counters_need_a_number.py").exists()
+    assert (research / "rules" / "fixtures" / "R90_bad" / "BAD").exists()
+    md = p.read_text()
+    assert md.count("decision: promoted") == 2 and "decision: reject" in md
+    assert promote.promote(p, test=lambda: (True, "ok")) and lessons == (research / "LESSONS.md").read_text()  # idempotent
+    # a rule that turns the selftest red is rolled back and marked failed
+    (research / "rules" / "R90_counters_need_a_number.py").unlink()
+    __import__("shutil").rmtree(research / "rules" / "fixtures" / "R90_bad")
+    p.write_text(PROPOSAL.replace("- kind: lesson\n- decision: approve", "- kind: lesson\n- decision: reject"))
+    runs = iter([(False, "FAIL R02: a live idea"), (False, "FAIL R02: a live idea\nFAIL R90: flags x")])
+    rep = promote.promote(p, test=lambda: next(runs))                 # before: R02 already red; after: + R90
+    assert not (research / "rules" / "R90_counters_need_a_number.py").exists()
+    assert "promotion: failed" in p.read_text() and any("failed" in r for r in rep)
+    # an existing failure alone (a live idea an old rule flags) does not block a clean new rule
+    p.write_text(PROPOSAL.replace("- kind: lesson\n- decision: approve", "- kind: lesson\n- decision: reject"))
+    promote.promote(p, test=lambda: (False, "FAIL R02: a live idea"))
+    assert (research / "rules" / "R90_counters_need_a_number.py").exists()
+
+
+def test_dossier_ranks_ready_probes_and_writes_cards(repo):
+    import dossier
+    root, idea = repo
+    mk = lambda name, comp, other: _ready(root, name, comp, other)
+    mk("20261013-a", 0.004, 0.003); mk("20261013-b", 0.012, -0.001)
+    _common.write_status(idea, "revert", lb="0.437", decision="0.437 vs bar 0.444")
+    q = dossier.write_queue().read_text(encoding="utf-8")
+    assert q.index("20261013-b") < q.index("20261013-a")                     # ranked by composite
+    assert "leak-hit molecules only" in q and "| submit |" in q              # b's gain is leak-hit only
+    assert "`syedtoubur/casmi-a` v3" in q and "LB 0.437" in q
+    assert (root / "research" / "exploit" / "20261013-a" / "card.md").exists()
+
+
+def _ready(root, name, comp, other):
+    d = root / "research" / "exploit" / name
+    d.mkdir(parents=True)
+    (d / "STATUS").write_text(f"ready-to-submit\nline: exploit\nkernel: syedtoubur/casmi-{name[-1]}\nkernel_version: 3\n")
+    (d / "harness_result.json").write_text(json.dumps(dict(
+        schema="scorecard-1", target="C2", composite=comp, flags=[], knobs={"K": 1},
+        cohorts={"C2": dict(n=400, delta=comp, ci90=[comp / 2, comp * 2], up=1, down=0, delta_leak_hit=comp,
+                            delta_other=other, displaced=0)})))
+    return d
+
+
+def test_g4_without_control_draft_needs_human_not_a_fix_agent(repo):
+    root, idea = repo
+    nb = root / "probe.ipynb"; nb.write_text("{}")
+    args = [str(idea), str(nb), "--preset", "p", "--wait", "100", "--counter", "X fired"]
+    assert kaggle_push.main(args, run=_drafts(root, idea, {"m1": "A"}, None), sleep=lambda s: None) == 2
+    assert _common.read_status(idea)[0] == "needs-human" and not HOOKS["fix"]
+    assert "no control draft" in (idea / "questions.md").read_text()
 
 
 # ---------------- plain runner (the repo runs tests as scripts; see build/run_all_tests.sh)

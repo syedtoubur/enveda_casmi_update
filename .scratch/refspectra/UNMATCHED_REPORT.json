@@ -1,0 +1,12 @@
+{
+  "diagnostic_row_count": 0,
+  "invented_rows": false,
+  "original_build_diagnostic": {
+    "bytes": 0,
+    "filename": "unmatched_reference_keys.jsonl",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "publication_representation": "Empty original diagnostic is preserved in the original build. This nonempty report records actual zero; the 0-byte JSONL is excluded from this clean release.",
+  "schema": "actual-unmatched-source-report-v1",
+  "unmatched_raw_keys": 0
+}

@@ -90,13 +90,13 @@ def queue_write(cfg, items: list[str]) -> None:
 
 
 def build_cmd(cfg, rel: str, worktree: Path | None, prompt: str | None = None,
-              model: str | None = None) -> list[str]:
+              model: str | None = None, settings: str | None = None) -> list[str]:
     """Headless, allowlisted Claude command. Default prompt: /run-idea <rel>; campaign.py passes its own
-    prompt (/replan, /spec, /attack, /build) and the step's model."""
+    prompt (/replan, /spec, /attack, /build, /scout, ...), the step's model and, for web steps, the web settings."""
     cmd = ["claude", "-p", prompt or f"/run-idea {rel}",
            "--output-format", "stream-json", "--verbose",
            "--permission-mode", "dontAsk", "--permission-prompts", "none",
-           "--settings", str(REPO / cfg["claude"]["settings"]),
+           "--settings", str(REPO / (settings or cfg["claude"]["settings"])),
            "--strict-mcp-config"]
     if worktree is not None:
         cmd += ["--add-dir", str(worktree)]
@@ -105,9 +105,11 @@ def build_cmd(cfg, rel: str, worktree: Path | None, prompt: str | None = None,
     return cmd
 
 
-def run_prompt(cfg, prompt: str, log: Path, model: str | None = None, worktree: Path | None = None) -> str:
-    """Run one headless Claude prompt, streaming to `log`. Returns 'done' | 'paused' (usage limit)."""
-    cmd = build_cmd(cfg, "", worktree, prompt=prompt, model=model)
+def run_prompt(cfg, prompt: str, log: Path, model: str | None = None, worktree: Path | None = None,
+               settings: str | None = None) -> str:
+    """Run one headless Claude prompt, streaming to `log`.
+    Returns 'done' | 'paused' (usage limit) | 'error' (non-zero exit; campaign.py counts it as no progress)."""
+    cmd = build_cmd(cfg, "", worktree, prompt=prompt, model=model, settings=settings)
     env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
     hit = False
     with open(log, "a", encoding="utf-8") as f:
@@ -119,7 +121,7 @@ def run_prompt(cfg, prompt: str, log: Path, model: str | None = None, worktree: 
             hit |= is_limit_line(ln)
         rc = p.wait()
         f.write(json.dumps({"type": "call_claude", "end": dt.datetime.now().isoformat(), "rc": rc}) + "\n")
-    return "paused" if hit else "done"
+    return "paused" if hit else ("error" if rc else "done")
 
 
 def is_limit_line(ln: str) -> bool:

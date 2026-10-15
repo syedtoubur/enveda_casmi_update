@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-R = Path('C:/Users/h/OneDrive/Desktop/ENVEDA_casmi')
-D = Path('C:/casmi/dl_pool')
+R = Path('E:/ENVEDA_casmi')
+D = Path('E:/casmi/dl_pool')
 sys.path.insert(0, str(R / 'research/harness'))
 import harness as HX  # noqa: E402
 

@@ -1,21 +1,22 @@
 ---
 name: spec
-description: Campaign step (Opus, headless): turn a CASMI hypothesis into a measurable spec with a casmi_post knob and pre-registered bars. Invoked as `/spec research/exploit/<idea> --brief <path>`.
+description: Campaign step (tier H, headless): turn a CASMI hypothesis into a measurable spec with a default-off switch and a scorecard experiment. Invoked as `/spec research/<line>/<idea> --brief <path>`.
 ---
 
 # Spec
 
-Read the brief first. If `preflight.md` exists, this is the one fix round: resolve every finding in it.
+Read the brief first; it names the line, its worktree, the base export, the post module and the scorecard cohorts. If `preflight.md` exists, this is the one fix round: resolve every finding in it.
 
-1. **Ground the premise**: every claim about what the base does cites `scratch/casmi-notebook-0-433.py:<line>`, `build/casmi_post.py:<line>` or `BASE.md §n`, and you have opened and checked the citation. A claim you cannot ground is cut or marked ASSUMED.
-2. **Shape one change** as a `casmi_post.CFG` knob whose default reproduces the base. If the change sits upstream of the dump (ranker, features, pool, simulator inputs), mark it `heavy-path: yes`, together with the val-mode run it needs.
+1. **Ground the premise**: every claim about what the base does cites the base export (`<base_export>:<line>`), the post module (`build/casmi_post.py:<line>`) or `BASE.md §n`, and you have opened and checked the citation. A claim about data (array shapes, columns, file contents, counts) cites a spike output you ran, not a card or a memory. A claim you cannot ground is cut or marked ASSUMED.
+2. **Shape one change** behind a switch whose default reproduces the base: a `casmi_post.CFG` knob (exploit), or a module plus a graft patch onto the E006 notebook (explore, the line's `code_form`). If the change sits upstream of the dump (ranker, features, pool, simulator inputs, a new model), mark it `heavy-path: yes` and name the script that will measure its **ceiling** on real data.
 3. **Write `spec.md`** from `research/_template/spec.md`. The CASMI section holds:
-   - the knob name and its default;
-   - the target slice (C2 / C1_npx) and the reach in its loss-map bucket;
-   - the exact `harness.py compare --dump <slice> --b "<KNOB>=<value>"` command;
-   - the LB-slot bar (gate_report.md);
-   - value-checked counters for the shipped notebook;
+   - the switch name and its default;
+   - the target cohort (from the brief's list) and the reach in its loss-map bucket;
+   - the exact scorecard command from the brief (`--a` = the line's `harness_base_cfg`, `--b` = that plus the knob, `--target <cohort>`), or for a heavy-path idea the ceiling measurement plus the G1 row and G4 counters that prove the change fired;
+   - value-checked counters for the shipped notebook, and `g4_min_changed`: how many draft molecules the change should alter (G4 diffs the probe's draft against the control's draft);
    - the ceiling, with every factor labelled MEASURED (with its source) or ASSUMED.
-4. Run `python research/bin/preflight.py <idea>` and fix until it is clean, or write in `questions.md` why a finding is wrong.
+   The gate is rank-only (`research/bin/gate.py`): don't invent an LB-slot bar, and don't write a prior.md to pass it.
+4. **Training**: if the idea needs a trained model, first record in `spec.md` whether an existing open-licence, competition-compliant model does the job (from the model-search notes, or write a `questions.md` request for one). A Kaggle training run is at most 4 h and comes out of the weekly GPU pool. A Colab or bigger run is a `training_request.md` for the human (what, why, evidence, cost); the idea waits on it.
+5. Run `python research/bin/preflight.py <idea>` and fix until it is clean, or write in `questions.md` why a finding is wrong.
 
 Done when preflight is clean (or disputed in writing) and STATUS is `specced`.

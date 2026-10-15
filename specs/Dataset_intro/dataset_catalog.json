@@ -311,6 +311,32 @@
           "v4n",
           "Track 3"
         ]
+      },
+      "isdb_predicted_index": {
+        "slug": "n10705013/casmi26-isdb-predicted-index",
+        "url": "https://www.kaggle.com/datasets/n10705013/casmi26-isdb-predicted-index",
+        "mount_pattern": "/kaggle/input/**/isdb_index.pkl",
+        "description": "Precomputed CFM-ID 4.0 in-silico spectral database (ISDB) candidate index mapping InChIKey14 to spectrum byte offsets in the LOTUS ISDB library.",
+        "key_files": [
+          "isdb_index.pkl"
+        ],
+        "used_in": [
+          "exploit_isdb_fallback",
+          "casmi26-isdb-cfm-fallback"
+        ]
+      },
+      "isdb_predicted_spectra": {
+        "slug": "n10705013/casmi26-isdb-predicted-spectra",
+        "url": "https://www.kaggle.com/datasets/n10705013/casmi26-isdb-predicted-spectra",
+        "mount_pattern": "/kaggle/input/**/isdb_lotus_neg_energySum.mgf",
+        "description": "Precomputed CFM-ID 4.0 in-silico MS/MS spectra for LOTUS natural products in negative mode ([M-H]-) with collision energies merged (energySum).",
+        "key_files": [
+          "isdb_lotus_neg_energySum.mgf"
+        ],
+        "used_in": [
+          "exploit_isdb_fallback",
+          "casmi26-isdb-cfm-fallback"
+        ]
       }
     },
     "ranker_training_assets": {
@@ -322,7 +348,9 @@
         "key_files": [
           "sim_rank_rows_nofp.npz",
           "sim_rank_rows_fp16k.npz",
-          "sim_rank_rows_fppair.npz"
+          "sim_rank_rows_fppair.npz",
+          "ours_fpnet_single_16k.pt",
+          "ours_fpnet_merged_26k.pt"
         ],
         "used_in": [
           "ranker_retraining",
@@ -356,6 +384,36 @@
         ],
         "used_in": [
           "casmi-0433-harness"
+        ]
+      },
+      "harness_ice_inputs": {
+        "slug": "syedtoubur/casmi-harness-ice-inputs",
+        "url": "https://www.kaggle.com/datasets/syedtoubur/casmi-harness-ice-inputs",
+        "mount_pattern": "/kaggle/input/**/ice_in_*.json",
+        "description": "ICEBERG runner inputs rebuilt offline from the 2026-10-13 C2_hard and C1_xlib harness dumps (their ICE stage failed on the cp312 image); identical to the in-run GLACIER input on every [M+H]+ item.",
+        "key_files": [
+          "ice_in_C2_hard.json",
+          "ice_in_C1_xlib.json"
+        ],
+        "used_in": [
+          "casmi-harness-iceonly"
+        ]
+      },
+      "c3cal_cohorts": {
+        "slug": "syedtoubur/casmi26-c3cal-cohorts",
+        "url": "https://www.kaggle.com/datasets/syedtoubur/casmi26-c3cal-cohorts",
+        "mount_pattern": "/kaggle/input/**/pseudo_c3.parquet",
+        "description": "specs_novel P1 cohorts: pseudo_c3 (600 leak-free NP Class-3 stand-ins; train_rows = their query spectra in train.parquet, lib/pool ban keys), c2_displace, ts_dec, dec_split. pseudo_c3 content-identical to p1_novel/pseudo_c3.parquet (ids, IK14, train_rows checked 2026-10-15).",
+        "key_files": [
+          "pseudo_c3.parquet",
+          "c2_displace.parquet",
+          "ts_dec.parquet",
+          "dec_split.parquet",
+          "p1_gate.json"
+        ],
+        "used_in": [
+          "casmi26-c3cal",
+          "casmi-0433-harness-pseudoc3"
         ]
       }
     }

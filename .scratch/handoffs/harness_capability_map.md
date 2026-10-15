@@ -1,5 +1,5 @@
 # Handoff: replay harness, back-test suite, leak-free C2_np shard
-**Written:** 2026-10-11 ~16:45 · **Branch:** `specs-scratch-r0` (repo) / `line/exploit` (worktree `C:/casmi/lines/exploit`)
+**Written:** 2026-10-11 ~16:45 · **Branch:** `specs-scratch-r0` (repo) / `line/exploit` (worktree `E:/casmi/lines/exploit`)
 **Everything below is UNCOMMITTED.** No commit was requested; do not commit without asking.
 
 Read first: `CLAUDE.md`, `research/README.md`, `research/harness/gate_report.md` (from "### 2026-10-11: H0" down),

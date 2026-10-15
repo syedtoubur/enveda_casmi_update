@@ -19,46 +19,132 @@ import preflight  # noqa: E402
 
 STEPS = {
     "replan": dict(
-        goal="Pick the next idea of this campaign (or stop) from the portfolio, the loss map and every finished cycle's result.",
+        goal="Pick the next idea of this campaign (or stop) from the portfolio and the idea pool, the loss map and every "
+             "finished cycle's result (state.json history carries each idea's current STATUS and LB).",
         tags=["spike", "measurement", "decision"],
         reads=["{campaign}/charter.md", "{campaign}/state.json", "{campaign}/log.md", "research/harness/loss_map.md",
-               "research/harness/capability_map.md (verdict table: rank ideas in BLIND / BASE-COUPLED families by prior, not harness)",
+               "research/ideas/ (newest candidates file, if any)",
                "research/harness/gate_report.md (Results section only)", "result files named in log.md"],
-        output="Either `research/bin/new_idea.py exploit <slug>` + hypothesis.md (claim, branch, slice, mechanism with "
-               "code cites, prior with source) and state.json `current` = that folder; or state.json `stop` = <reason>. "
-               "Append one line to log.md."),
+        output="Either `research/bin/new_idea.py {line} <slug>` + hypothesis.md (claim, branch, target cohort, mechanism "
+               "with code cites, prior with source: MEASURED or ASSUMED, `novelty: new|variant`, source) and "
+               "state.json `current` = that folder; or, when neither the portfolio nor the newest candidates file has a "
+               "live idea left, state.json `ideate` = <why> (the driver runs scout/diagnose/ideate and calls you again); "
+               "or state.json `stop` = <reason> only for a scope problem a human must settle. Append one line to log.md."),
     "spec": dict(
-        goal="Write spec.md: one change as a casmi_post.py knob (default = base), the harness experiment, numeric bars.",
+        goal="Write spec.md: one change behind a default-off switch ({code_form}), the scorecard experiment, counters.",
         tags=["spec", "premise", "measurement"],
-        reads=["{idea}/hypothesis.md", "{idea}/preflight.md (if present)", "C:/casmi/lines/exploit/build/casmi_post.py",
-               "research/exploit/BASE.md (only the section you cite)", "scratch/casmi-notebook-0-433.py (only cited lines)",
-               "research/harness/capability_map.md (family table) + research/harness/backtests.yaml (knob families)"],
-        output="spec.md from research/_template/spec.md with the CASMI section filled: knob name and default, target "
-               "slice (C2 / C1_npx), harness command, LB-slot bar, counters (value-checked), heavy-path flag, the knob's "
-               "family + its capability-map verdict (a new knob is added to backtests.yaml families; BLIND or BASE-COUPLED -> "
-               "write prior.md, LB decides). STATUS specced."),
+        reads=["{idea}/hypothesis.md", "{idea}/preflight.md (if present)", "{post}",
+               "research/{line}/BASE.md (only the section you cite)", "{base_export} (the base export; only cited lines)",
+               "research/harness/backtests.yaml (knob families)"],
+        output="spec.md from research/_template/spec.md with the CASMI section filled: switch name and default, target "
+               "cohort (one of {cohorts}), the scorecard command (`python research/harness/harness.py scorecard --a "
+               "\"{base_cfg}\" --b \"{base_cfg},KNOB=value\" --target <cohort> --json {idea}/harness_result.json`), "
+               "counters (value-checked), the expected number of changed draft molecules (`g4_min_changed`), heavy-path "
+               "flag (+ how its ceiling is measured), the knob's family. The gate is rank-only (research/bin/gate.py): "
+               "no LB-slot bar to invent. STATUS specced."),
     "attack": dict(
         goal="Try to break the idea before any code is written: 3-6 concrete attacks, each with a pre-registered death condition.",
         tags=["spec", "premise", "measurement", "spike", "g4", "decision"],
-        reads=["{idea}/spec.md", "{idea}/hypothesis.md", "C:/casmi/lines/exploit/build/casmi_post.py",
-               "research/harness/gate_report.md (Scope section)"],
+        reads=["{idea}/spec.md", "{idea}/hypothesis.md", "{post}", "research/harness/gate_report.md (Scope section)"],
         output="attack.md: one row per attack = what could make the claim false (empty lists, GLACIER down, adduct mix, "
                "formula-group collisions, leak proxy flip, downside cohort, runtime) | how stress_test.py checks it | "
-               "'idea dies if ...' (numeric). STATUS attacked."),
+               "'idea dies if ...' (numeric) | blocking yes/no (a blocking attack left UNTESTED kills the idea at the "
+               "gate). STATUS attacked."),
     "build-harness": dict(
-        goal="Implement the knob in casmi_post.py (default off), write and run stress_test.py from attack.md, run the harness compare.",
+        goal="Implement the change ({code_form}, default off), write and run stress_test.py from attack.md, run the scorecard.",
         tags=["spike", "measurement"],
-        reads=["{idea}/spec.md", "{idea}/attack.md", "C:/casmi/lines/exploit/build/casmi_post.py",
-               "C:/casmi/lines/exploit/build/test_patch_harness_dump.py"],
-        output="Committed knob + test in the worktree; {idea}/stress_test.py and stress_result.md (one verdict per attack); "
-               "{idea}/harness_result.json from `harness.py compare --json`. STATUS harness-done, or dead + reason."),
+        reads=["{idea}/spec.md", "{idea}/attack.md", "{post}", "{worktree}/build/test_patch_harness_dump.py"],
+        output="Committed change + test on a per-idea branch in the worktree; {idea}/stress_test.py, stress_result.md and "
+               "stress_result.json (one row per attack: id, died true|false|null, status, blocking, and `deviation` "
+               "{{original, proxy, accepted_by}} whenever a check other than the pre-registered one ran); "
+               "{idea}/harness_result.json from `harness.py scorecard --json` (`--a` = \"{base_cfg}\"). heavy-path: yes -> "
+               "stress_test.py checks the inputs offline and measures a ceiling; harness_result.json = "
+               "{{\"heavy_path\": true, \"ceiling\": <measured>, \"family\": <family>}}. STATUS harness-done, or dead + reason."),
     "build-ship": dict(
-        goal="Ship the measured change: probe notebook that writes casmi_post output, G1/G2, push (no --wait).",
+        goal="Ship the measured change: probe notebook, G1/G2, push (no --wait).",
         tags=["g4", "decision", "submit"],
-        reads=["{idea}/spec.md", "{idea}/harness_result.json", "C:/casmi/lines/exploit/build/patch_harness_dump.py"],
-        output="Probe notebook in the worktree, gates.md rows G1 and G2, submit_card.md naming the paired control "
-               "kernel, kaggle_push.py with value-checked counters. STATUS g4-pushed."),
+        reads=["{idea}/spec.md", "{idea}/harness_result.json", "{worktree}/build/patch_harness_dump.py"],
+        output="Probe notebook in the worktree, gates.md rows G1 and G2, card.md naming the paired control kernel, "
+               "STATUS `g4_min_changed:` from the spec, kaggle_push.py with value-checked counters (G4 also diffs the "
+               "draft against the control's draft). STATUS g4-pushed."),
+    # ---- ideation engine (grill 2026-10-13): scout (L, web) -> diagnose (M) -> ideate (H); fetch answers requests (L, web)
+    "scout": dict(
+        goal="Literature and code scout: find methods from MS/MS structure-identification work that could transfer to "
+             "this pipeline's weakest buckets.",
+        tags=[],
+        reads=["research/harness/loss_map.md", "research/scout/ (the previous scout file only, to avoid repeats)",
+               "the web (WebSearch / WebFetch): papers, preprints, repos, competition write-ups"],
+        output="research/scout/{date}.md: >= 10 sources not in the previous scout file, each with: title, link, year, "
+               "the method in 2 lines, 'plugs in at:' (which stage of our pipeline / which loss-map bucket), "
+               "licence + public-weights status if it ships a model, and a confidence tag (read / skimmed / abstract "
+               "only). Facts only; no ranking."),
+    "diagnose": dict(
+        goal="Loss diagnosis: turn where the truth is lost (loss map, scorecard misses, calibration) into testable "
+             "hypotheses.",
+        tags=["measurement"],
+        reads=["research/harness/loss_map.md", "research/harness/calibration.md", "research/harness/capability_map.md",
+               "{campaign}/state.json (history) and the harness_result.json files it names",
+               "research/harness/dumps/ through `python research/harness/harness.py lossmap` (re-run it if stale)"],
+        output="research/ideas/{date}-diagnosis.md: per loss bucket (pool miss / in a channel list but not top 25 / "
+               "rank 2-5 / rank 6-25): molecules, headroom, which channel holds the truth, and 1-3 hypotheses each with "
+               "a falsifying measurement you can name. Every number cites the command that produced it."),
+    "ideate": dict(
+        goal="Invent the next ideas: combine the scout's methods, the diagnosis, past near-misses and mutation "
+             "operators into ranked, falsifiable candidates; at least two must be genuinely new mechanisms.",
+        tags=["spec", "premise", "decision"],
+        reads=["research/ideas/ (newest diagnosis + candidates files)", "research/scout/ (newest file)",
+               "research/harness/calibration.md", "{campaign}/charter.md", "{campaign}/state.json",
+               "research/LESSONS.md (lesson IDs + one-liners only)", "research/requests/ (answered requests)",
+               "EXPERIMENTS.md (dead-ends section only)"],
+        output="research/ideas/{date}-candidates.md: >= 5 candidates, each: slug | line (exploit/explore) | target "
+               "cohort + reach | mechanism with a code cite | source (scout link, diagnosis row, or mutation of "
+               "<idea>: combine / transfer-to-slice / invert / unbundle) | novelty: new|variant | prior "
+               "MEASURED/ASSUMED with source | falsifier (the first measurement that would kill it) | cost (knob / "
+               "pipeline / GPU training <= 4 h Kaggle / Colab request) | EV. For a training idea, first file a "
+               "model-search request in research/requests/. Rank by EV; drop anything a LESSON or dead end already "
+               "kills (cite it). Then set {campaign}/state.json `ideate` to null."),
+    "report": dict(
+        goal="Learn from the cycle that just closed: draft lesson and rule changes (add, modify, retire) for the human.",
+        tags=["decision"],
+        reads=["{idea}/ (STATUS, gates.md, stress_result.md, harness_result.json, questions.md, card.md)",
+               "{campaign}/log.md (this cycle's lines)", "research/LESSONS.md (IDs + one-liners only)",
+               "research/rules/ (the rule files; `python research/bin/preflight.py --selftest`)"],
+        output="research/proposals/{date}-{idea_name}.md in the promote.py item format (`## Pn: title`, `- action: "
+               "add|modify|retire`, `- kind: lesson|rule`, `- target:`, `- decision: pending`, `### Text`, "
+               "`### Reasoning`, `### Evidence` with file:line, and for a rule a ```python module + ```file: fixture "
+               "blocks that reproduce the mistake). Only surprises: a gate that passed or blocked wrongly, a stall, a "
+               "wrong premise, a harness-vs-LB mismatch. Zero items is a valid result: then write no file. Never edit "
+               "LESSONS.md or research/rules/ yourself."),
+    "fetch": dict(
+        goal="Answer the open requests in research/requests/: one specific fact or one model search each, from the web.",
+        tags=[],
+        reads=["research/requests/*.md with `status: open`", "the web (WebSearch / WebFetch)"],
+        output="In each open request file: an `## Answer` section (the fact, or for a model search: candidate models "
+               "with link, licence, whether weights are public, training data and its overlap risk with MassSpecGym/"
+               "NIST/our val cohorts), every claim with its source link, then `status: answered` (or `status: "
+               "not-found` with what you searched). Never edit anything else."),
 }
+
+
+def line_of(campaign: Path, idea: Path | None, cfg: dict) -> str:
+    if idea and (idea / "STATUS").exists():
+        m = re.search(r"^line:\s*(\w+)", (idea / "STATUS").read_text(encoding="utf-8"), re.M)
+        if m and m.group(1) in cfg["lines"]:
+            return m.group(1)
+    charter = (campaign / "charter.md").read_text(encoding="utf-8") if (campaign / "charter.md").exists() else ""
+    m = re.search(r"^\s*-?\s*Line\s*:\s*(\w+)", charter, re.M | re.I)
+    return m.group(1).lower() if m and m.group(1).lower() in cfg["lines"] else "exploit"
+
+
+def line_fmt(cfg: dict, line: str) -> dict:
+    """The {placeholders} a brief fills from config `lines.<line>` (loop audit: 22 exploit hard-codes)."""
+    lc = cfg["lines"][line]
+    wt = lc.get("worktree", "")
+    rel = lambda p: p if not p or re.match(r"^[A-Za-z]:|^/", p) else f"{wt}/{p}"
+    return dict(line=line, worktree=wt, post=rel(lc.get("post_module", "build/casmi_post.py")),
+                base_export=rel(lc.get("base_export", "")), base_cfg=lc.get("harness_base_cfg", ""),
+                code_form=lc.get("code_form", "a casmi_post.py knob"),
+                cohorts=", ".join((cfg.get("harness") or {}).get("cohorts", {})))
 
 
 def section(md: str, title: str) -> str:
@@ -78,7 +164,13 @@ def brief(campaign: Path, step: str, idea: Path | None = None) -> tuple[Path, in
     for name in ("hypothesis.md", "spec.md"):
         if idea and (idea / name).exists():
             cited |= set(re.findall(r"\bL\d{2}\b", (idea / name).read_text(encoding="utf-8")))
-    fmt = dict(campaign=campaign.as_posix(), idea=idea.as_posix() if idea else "<idea>")
+    from _common import load_config
+    cfg = load_config()
+    import datetime as dt
+    fmt = dict(campaign=campaign.as_posix(), idea=idea.as_posix() if idea else "<idea>",
+               idea_name=idea.name if idea else "campaign",
+               date=dt.date.today().strftime("%Y%m%d"),
+               **line_fmt(cfg, line_of(campaign, idea, cfg)))
     rules = preflight.load_rules(set(s["tags"]))
     parts = [f"# Brief: {step}" + (f" for {idea.name}" if idea else ""), "", f"**Goal**: {s['goal']}", "",
              "## Campaign scope (from charter.md; decisions already made, do not reopen)",
@@ -90,7 +182,10 @@ def brief(campaign: Path, step: str, idea: Path | None = None) -> tuple[Path, in
              "## You may open only", *[f"- {r.format(**fmt)}" for r in s["reads"]], "",
              "## Output contract", s["output"].format(**fmt), "",
              "Never read README, LESSONS or EXPERIMENTS in full, never read a raw .ipynb, never ask a question "
-             "(write it to questions.md), never submit."]
+             "(write it to questions.md), never submit. Need one specific fact that is not in the repo (a paper "
+             "detail, a model's licence, whether pretrained weights exist)? Write `research/requests/<yyyymmdd>-<slug>.md` "
+             "(`status: open`, the question, why it matters) and continue; a web-enabled fetch step answers it before "
+             "your next step."]
     text = "\n".join(parts) + "\n"
     out = (idea or campaign) / f"brief_{step}.md"
     out.write_text(text, encoding="utf-8")

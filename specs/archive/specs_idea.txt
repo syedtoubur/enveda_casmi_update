@@ -6,7 +6,7 @@ so mission.md will contains the project main goal and will be the outlined appro
 roadmap.md will contain the detailed phases what is the plan on this phase and how the validation will happen 
 
 and tech_stack.md will contains the technical details now i am not sure if this files is needed in this context or not i think that will contain details like model architecture 
-C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb
+E:\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb
 
 this has been the best scoring notebook so far 0.337
 
@@ -14,7 +14,7 @@ i have created here various .ipynb notebook to create the fpnet models and rank 
 here the summary is in summary.md 
 
 and also created dream embedding specific folders
-C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\casmi_dreams_colab.ipynb
+E:\ENVEDA_casmi\casmi_dreams_colab.ipynb
 
 and the current casmi 2026 folder structure is 
 
@@ -118,7 +118,7 @@ and the current casmi 2026 folder structure is
 in drive  here i have all necessary files stored in drive 
 
 now from here i want to take new approaches outside of the domain of this 
-C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb
+E:\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb
 
 notebook and store best in kaggle 
 
@@ -137,7 +137,7 @@ that is here for the class 1 molecule we are using the direct library search app
 
 
 now what i want is with  a model that is free sources and appendable offline just like the constraints or kaggle the model will take the smiles string as input and return ms spectra as predicted output thus the class 2 problem can also be reduced to a class 1 problem 
-so first in the current notebook C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-phase1-enhanced-baseline.ipynb what we do is for each query spectrum take the mass of that and with 8.5 ppm window we get 40-60 candidates now for each candidate my plan now if that candidate has already  a spectra we could match that and that means that is a direct library search now if that candidate has not then our model will generate spectra for that smiles and  then we will do the matching 
+so first in the current notebook E:\ENVEDA_casmi\enveda-casmi-2026-phase1-enhanced-baseline.ipynb what we do is for each query spectrum take the mass of that and with 8.5 ppm window we get 40-60 candidates now for each candidate my plan now if that candidate has already  a spectra we could match that and that means that is a direct library search now if that candidate has not then our model will generate spectra for that smiles and  then we will do the matching 
 so this plans specs will be storedin specs_simple_ms_simulator 
 so this will be our baseline for more complex approaches we take later on 
 

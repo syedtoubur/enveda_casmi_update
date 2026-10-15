@@ -1,0 +1,47 @@
+{
+ "cycle": 2,
+ "lb_probes": 0,
+ "branch_streak": {
+  "decoy-prune": 1,
+  "candidate-recall": 1
+ },
+ "closed_branches": [],
+ "current": null,
+ "stop": "human 2026-10-15: superseded by campaign 20261015-c3-gen-slot2 (mutator chain EV 0.0002; pseudo-c3-dump carried over)",
+ "history": [
+  {
+   "idea": "research/exploit/20261014-e180-drop",
+   "status": "dead",
+   "branch": "decoy-prune",
+   "reason": "gate: attack A4 died (C2 other +0.0003 < 25% of +0.0038; gain on leak-hit +0.0042); A3 UNTESTED (pool_smiles.parquet not local)",
+   "override": "",
+   "t": "2026-10-14 15:39",
+   "now": "dead",
+   "lb": "",
+   "decision": ""
+  },
+  {
+   "idea": "research/exploit/20261014-engine2-npx",
+   "status": "dead",
+   "branch": "candidate-recall",
+   "reason": "human 2026-10-14: heavy-path ceiling UNMEASURED (val reach 0/1390 by construction; cohort-P count >0 by construction); arithmetic ceiling ~+0.002; prior LB row 32 VOID / P3e within noise",
+   "override": "",
+   "t": "2026-10-14 16:11",
+   "now": "dead",
+   "lb": "",
+   "decision": ""
+  }
+ ],
+ "calls": {
+  "opus": 8,
+  "sonnet": 3
+ },
+ "stalls": {
+  "20261014-e180-drop:build-harness": 1,
+  "20261014-pseudo-c3-dump:spec": 1
+ },
+ "ideation_rounds": 0,
+ "submitted": 0,
+ "ideate": null,
+ "report_pending": null
+}

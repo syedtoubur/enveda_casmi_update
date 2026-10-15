@@ -6,7 +6,7 @@ Written 2026-10-10 by a Claude Code session after a grill with the user. **The d
 
 ## 1. Background you need (read first)
 
-- **Repo:** `C:\Users\h\OneDrive\Desktop\ENVEDA_casmi` (Windows 11; PowerShell primary, Git Bash available). Branch `specs-scratch-r0`; last commit `a4da9f5` "research/: fix the loop after the first cycle (L30-L33)".
+- **Repo:** `E:\ENVEDA_casmi` (Windows 11; PowerShell primary, Git Bash available). Branch `specs-scratch-r0`; last commit `a4da9f5` "research/: fix the loop after the first cycle (L30-L33)".
 - **Competition:** Enveda CASMI 2026 on Kaggle, slug `enveda-CASMI26-molecule-id-mass-spectra`, Kaggle user `syedtoubur`.
 - **Multi-agent research loop** (see `research/README.md`, `CLAUDE.md` §4):
   - Gemini, in Antigravity, ideates: `/cycle`, `/critic`, `/daily-digest`.
@@ -40,7 +40,7 @@ After `/run-idea` pushes, nothing finishes G4:
 | On PASS | A **Windows toast**. If the idea is the line's **control** (`kind: control` in STATUS), also **auto-queue that line's waiting probes** through `call_claude.py <idea> --detach`, one at a time under the existing lock. |
 | On FAIL | A toast, then hand off to a **fresh, independent Claude agent** with a new context, not a resumed one. The watcher writes a compact **`g4_fix_brief.md`**. The new agent reasons step by step from the brief and the Kaggle log, fixes and re-pushes. |
 | Fix rounds | At most **2** automatic fix → re-push rounds. On the 3rd FAIL: `needs-human`, a `questions.md` entry and a toast. |
-| Fix scope | The fix agent may change the patch code in the line worktree (`C:/casmi/lines/<line>`), then rerun G1 and G2. It may also add push sources **that already exist in `dataset_catalog.json`**. A dataset missing from the catalog, or a fix that would change the idea itself, means: write to `questions.md`, set `needs-human`, stop. For a **control** idea only sources and metadata may change, never the notebook code. The catalog itself is never edited. |
+| Fix scope | The fix agent may change the patch code in the line worktree (`E:/casmi/lines/<line>`), then rerun G1 and G2. It may also add push sources **that already exist in `dataset_catalog.json`**. A dataset missing from the catalog, or a fix that would change the idea itself, means: write to `questions.md`, set `needs-human`, stop. For a **control** idea only sources and metadata may change, never the notebook code. The catalog itself is never edited. |
 | E2E test | After building, **re-push control v4 with all 16 sources** through the new watcher. The last PASS (v3) was pushed before the user fixed the catalog, so it lacked the DreaMS source. |
 
 ## 4. Implementation

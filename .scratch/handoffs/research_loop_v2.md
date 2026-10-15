@@ -1,7 +1,7 @@
 # Handoff: research loop v2 + replay harness + own val generator (as of 2026-10-11, end of session 2)
 
 Self-contained: a fresh session can start from this file alone. Everything is **uncommitted** (main checkout branch
-`specs-scratch-r0`, exploit worktree `C:/casmi/lines/exploit` branch `line/exploit`). Read CLAUDE.md first (repo
+`specs-scratch-r0`, exploit worktree `E:/casmi/lines/exploit` branch `line/exploit`). Read CLAUDE.md first (repo
 rules: never read raw .ipynb, use `/analyze-notebook`; no .parquet/.npz/.pt in git; agents push Kaggle kernels, only
 the human submits).
 
@@ -183,7 +183,7 @@ Push command pattern (two GPU sessions max; watchers give up after 60 min with `
 `python research/bin/kaggle_push.py --check`):
 
 ```
-python research/bin/kaggle_push.py research/exploit/20261010-harness-c2 "C:\casmi\lines\exploit\casmi-0433-harness-c2.ipynb" --preset harness_0433_preset --slug casmi-0433-harness-c2 --counter "POST EQUIV ok" --counter "VAL ban-row check ok" --counter "?VAL key-ban leftover truth rows"
+python research/bin/kaggle_push.py research/exploit/20261010-harness-c2 "E:\casmi\lines\exploit\casmi-0433-harness-c2.ipynb" --preset harness_0433_preset --slug casmi-0433-harness-c2 --counter "POST EQUIV ok" --counter "VAL ban-row check ok" --counter "?VAL key-ban leftover truth rows"
 ```
 
 ---
@@ -275,7 +275,7 @@ python research/bin/kaggle_push.py research/exploit/20261010-harness-c2 "C:\casm
 
 ## 7. File map
 
-**Main checkout** (`C:\Users\h\OneDrive\Desktop\ENVEDA_casmi`):
+**Main checkout** (`E:\ENVEDA_casmi`):
 - `research/bin/`:
   - poll_lb.py (`decide`, `--write`)
   - kaggle_push.py (push + detached watcher + `--check`)
@@ -295,7 +295,7 @@ python research/bin/kaggle_push.py research/exploit/20261010-harness-c2 "C:\casm
 - EXPERIMENTS.md: header, row 52 REVERT, row 53 control 0.433, Section 2 harness H0/H1/H1b rows, two graveyard rows (10-11).
 - Memory: `casmi-research-loop-v2`, `casmi-own-val-generator` (fold-audit corrected).
 
-**Exploit worktree** (`C:/casmi/lines/exploit`):
+**Exploit worktree** (`E:/casmi/lines/exploit`):
 - `build/`: casmi_post.py, patch_harness_dump.py, test_patch_harness_dump.py, gen_val_probe.py, fold_audit.py,
   test_fold_audit.py.
 - Generated notebooks: casmi-0433-harness.ipynb (draft), -c2.ipynb, -c1npx.ipynb.

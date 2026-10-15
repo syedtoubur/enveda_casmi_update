@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-WORKTREE = Path("C:/casmi/lines/exploit")
+WORKTREE = Path("E:/casmi/lines/exploit")
 TEMPLATE_HINTS = ("MEASURED (source) or ASSUMED", "<", "each factor MEASURED")
 
 

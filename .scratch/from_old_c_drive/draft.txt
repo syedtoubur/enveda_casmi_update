@@ -1,0 +1,14 @@
+1.Previously we were thinking about selecting matches 
+using scaffold 
+like if suppose the spectra has matched
+10 training spectra with less direct library match score 
+then it is not class 1 it could be class 2
+and 6 of those 10 has a scaffold so we could ensure that the 
+query spectra can also be that scaffold 
+
+same thing can be thought of with natural product family 
+like flavinoid group or taxonomy so 
+this will give us a seperate strong signal or class what our 
+molecule might look like which could help both in class 
+2 and class 3 
+

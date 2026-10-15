@@ -12,6 +12,13 @@
   MOUNT_WAIT_S for /content/drive/MyDrive, remounting once. A run whose output holds a Python
   error counts as FAIL even when the CLI exits 0. After `gates.colab_infra_retries` + 1 FAIL
   rows for a gate, colab_run refuses (rc 4): fall back to the Kaggle draft run.
+- Every script gets CASMI_RESUME_DIR=<drive_root>/runs/<idea>/<kind>: checkpoint there (with RNG state) and resume
+  from it, because a session can die mid-run (L27). `--fetch` files are pulled even when the run fails.
+- `--kind train` (grill 2026-10-13) runs only after the human approved the idea's training_request.md (STATUS
+  `colab_train: approved`) and confirmed Drive (`python research/bin/colab_run.py --check-mount`).
+
+    python research/bin/colab_run.py --check-login     # free: token holds the full Drive scope?
+    python research/bin/colab_run.py --check-mount     # live: start a session, mount Drive, probe, stop (~0.05 CU)
 """
 from __future__ import annotations
 
@@ -84,20 +91,65 @@ def wsl(colab: str, args: list[str], timeout: float | None = None) -> subprocess
 
 def budget_seconds(cfg, kind: str, cu_used_kind: float) -> float:
     c = cfg["colab"]
-    cap = c["cu_cap_smoke"] if kind == "smoke" else c["cu_cap_val"]
+    cap = {"smoke": c["cu_cap_smoke"], "val": c["cu_cap_val"], "train": c.get("cu_cap_train", 0.0)}[kind]
     left = max(0.0, cap - cu_used_kind)
     return min(float(c["exec_timeout_s"]), left / c["cu_per_hour"] * 3600)
 
 
+def mount(c: dict, session: str, probe: Path, runner) -> None:
+    """drivemount + probe, remounting once; raises RuntimeError with the likely cause."""
+    for attempt in (1, 2):
+        r = runner(c["cli"], ["drivemount", "-s", session], 600)
+        if r.returncode != 0 or has_error(r.stdout + "\n" + r.stderr):
+            raise RuntimeError(
+                f"drivemount failed: {ANSI.sub('', r.stderr)[-300:]} -- a Google 400 page plus "
+                "'mount failed' means the CLI token lacks the full Drive scope (only drive.file); "
+                "re-login granting full Drive access (see research/README.md, Colab login)")
+        p = runner(c["cli"], ["exec", "-s", session, "-f", win_to_wsl(probe),
+                              "--timeout", str(MOUNT_WAIT_S + 30)], MOUNT_WAIT_S + 120)
+        if "MOUNT_OK" in p.stdout:
+            return
+    raise RuntimeError(f"Drive not mounted after 2 drivemounts. drivemount said: "
+                       f"{r.stdout[-300:]}{r.stderr[-300:]} probe said: {p.stdout[-300:]}")
+
+
+def check_mount(cfg, runner=wsl, shell=subprocess.run) -> int:
+    """Live Drive check after a re-login: 0 = mounted, 7 = login needed, 8 = mount failed."""
+    import _common
+    why = login_problem(shell)
+    if why:
+        print(f"[colab_run] LOGIN NEEDED: {why}\n  run: {LOGIN_CMD}")
+        return 7
+    c, session = cfg["colab"], "casmi-mount-check"
+    probe = _common.RESEARCH / "queue" / "_mount_probe.py"
+    probe.parent.mkdir(parents=True, exist_ok=True)
+    probe.write_text(MOUNT_PROBE, encoding="utf-8")
+    try:
+        r = runner(c["cli"], ["new", "--gpu", c["gpu"], "-s", session], 600)
+        if r.returncode != 0:
+            raise RuntimeError(f"colab new failed: {r.stdout[-300:]}{r.stderr[-300:]}")
+        mount(c, session, probe, runner)
+        print("[colab_run] MOUNT OK: Colab sessions see /content/drive/MyDrive")
+        return 0
+    except (RuntimeError, subprocess.TimeoutExpired) as e:
+        print(f"[colab_run] MOUNT FAILED: {e}")
+        return 8
+    finally:
+        runner(c["cli"], ["stop", "-s", session], 300)
+
+
 def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
-    if (argv if argv is not None else sys.argv[1:]) == ["--check-login"]:
+    argv0 = argv if argv is not None else sys.argv[1:]
+    if argv0 == ["--check-login"]:
         why = login_problem(shell)
         print("[colab_run] login OK" if not why else f"[colab_run] LOGIN NEEDED: {why}\n  run: {LOGIN_CMD}")
         return 0 if not why else 7
+    if argv0 == ["--check-mount"]:
+        return check_mount(load_config(), runner, shell)
     ap = argparse.ArgumentParser()
     ap.add_argument("idea")
     ap.add_argument("script")
-    ap.add_argument("--kind", choices=["smoke", "val", "spike"], required=True)
+    ap.add_argument("--kind", choices=["smoke", "val", "spike", "train"], required=True)
     ap.add_argument("--gate", default=None, help="gate label for gates.md (default by kind)")
     ap.add_argument("--env", action="append", default=[])
     ap.add_argument("--fetch", action="append", default=[], help="remote:local (local relative to idea)")
@@ -107,10 +159,16 @@ def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
     c = cfg["colab"]
     idea = idea_dir(a.idea)
     _, meta = read_status(idea)
-    key = f"cu_{'smoke' if a.kind in ('smoke', 'spike') else 'val'}"
+    bucket = {"smoke": "smoke", "spike": "smoke", "val": "val", "train": "train"}[a.kind]
+    key = f"cu_{bucket}"
     used_kind = float(meta.get(key, 0) or 0)
-    secs = budget_seconds(cfg, "smoke" if a.kind in ("smoke", "spike") else "val", used_kind)
-    gate = a.gate or {"smoke": "G3a", "val": "G3b", "spike": "spike"}[a.kind]
+    secs = budget_seconds(cfg, bucket, used_kind)
+    gate = a.gate or {"smoke": "G3a", "val": "G3b", "spike": "spike", "train": "train"}[a.kind]
+    if a.kind == "train" and meta.get("colab_train") != "approved":
+        log_gate(idea, gate, "BLOCKED", "Colab training needs the human's approval of training_request.md "
+                                        "(STATUS colab_train: approved); no session started")
+        print("[colab_run] training not approved (write training_request.md; the human sets colab_train: approved)")
+        return 9
     if secs < 60:
         log_gate(idea, gate, "BLOCKED", f"CU cap reached ({key}={used_kind})")
         print(f"[colab_run] CU cap reached for {key}; not starting")
@@ -138,7 +196,7 @@ def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
     session = ("casmi-" + idea.name)[:40]
     logf = idea / f"colab_{a.kind}.log"
     t0 = time.time()
-    rc, result = 1, "FAIL"
+    rc, result, started = 1, "FAIL", False
     try:
         r = runner(c["cli"], ["new", "--gpu", c["gpu"], "-s", session], 600)
         if r.returncode != 0:
@@ -147,29 +205,16 @@ def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
         probe = idea / "colab" / "_mount_probe.py"
         probe.parent.mkdir(exist_ok=True)
         probe.write_text(MOUNT_PROBE, encoding="utf-8")
-        for attempt in (1, 2):
-            r = runner(c["cli"], ["drivemount", "-s", session], 600)
-            if r.returncode != 0 or has_error(r.stdout + "\n" + r.stderr):
-                raise RuntimeError(
-                    f"drivemount failed: {ANSI.sub('', r.stderr)[-300:]} -- a Google 400 page plus "
-                    "'mount failed' means the CLI token lacks the full Drive scope (only drive.file); "
-                    "re-login granting full Drive access (see research/README.md, Colab login)")
-            p = runner(c["cli"], ["exec", "-s", session, "-f", win_to_wsl(probe),
-                                  "--timeout", str(MOUNT_WAIT_S + 30)], MOUNT_WAIT_S + 120)
-            if "MOUNT_OK" in p.stdout:
-                break
-        else:
-            raise RuntimeError(f"Drive not mounted after 2 drivemounts. drivemount said: "
-                               f"{r.stdout[-300:]}{r.stderr[-300:]} probe said: {p.stdout[-300:]}")
-        args = ["exec", "-s", session, "-f", win_to_wsl(script), "--timeout", f"{secs:.0f}"]
+        mount(c, session, probe, runner)
+        started = True
+        resume = f"{c['drive_root']}/runs/{idea.name}/{a.kind}"
+        args = ["exec", "-s", session, "-f", win_to_wsl(script), "--timeout", f"{secs:.0f}",
+                "--env", f"CASMI_RESUME_DIR={resume}"]
         for e in a.env:
             args += ["--env", e]
         r = runner(c["cli"], args, secs + 300)
         logf.write_text(r.stdout + ("\n--- stderr ---\n" + r.stderr if r.stderr else ""),
                         encoding="utf-8")
-        for spec in a.fetch:
-            remote, local = spec.split(":", 1)
-            runner(c["cli"], ["download", "-s", session, remote, win_to_wsl(idea / local)], 600)
         rc = r.returncode
         if rc == 0 and has_error(r.stdout + "\n" + r.stderr):
             rc = 3  # the CLI exits 0 even when the cell raised
@@ -178,6 +223,13 @@ def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
         logf.write_text(f"{logf.read_text() if logf.exists() else ''}\n[colab_run] {e}\n",
                         encoding="utf-8")
     finally:
+        if started:                    # pull outputs even after a failed or timed-out run (they die with the session)
+            for spec in a.fetch:
+                remote, local = spec.split(":", 1)
+                try:
+                    runner(c["cli"], ["download", "-s", session, remote, win_to_wsl(idea / local)], 600)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[colab_run] fetch {remote} failed: {e}")
         runner(c["cli"], ["stop", "-s", session], 300)
         cu = (time.time() - t0) / 3600 * c["cu_per_hour"]
         _, meta = read_status(idea)

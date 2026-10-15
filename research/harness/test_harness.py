@@ -52,9 +52,35 @@ def main() -> int:
         again = harness.compare("T", {}, {"USE_ENG": False})
         assert again == r, (again, r)
         print("harness tests ok", {k: r[k] for k in ("mrr_a", "mrr_b", "delta", "leak_sensitive")})
+        scorecard_tests()
         return 0
     finally:
         shutil.rmtree(td, ignore_errors=True)
+
+
+def scorecard_tests() -> None:
+    # W12: the family is the change's, not the base config's
+    a = {"METRIC_FUSION": True, "ICE_FALLBACK": True, "FUSION_WINDOW": 40}
+    assert harness.knob_diff(a, {**a, "REL_PROMOTE": 500}) == {"REL_PROMOTE": 500}
+    # real replay on the synthetic dump: one cohort, the rank-only verdict and the leak split are filled in
+    one = harness.cohort_score("T", {}, {"USE_ENG": False})
+    assert one["n"] == 2 and one["n_leak_hit"] + 0 <= 2 and one["ci90"][0] <= one["delta"] <= one["ci90"][1]
+    # composite: equal class weights over non-advisory cohorts; advisory cohorts never count
+    coh = {"C2": dict(cls="C2", delta=0.02), "C2_hard": dict(cls="C2", delta=0.0), "C1_npx": dict(cls="C1", delta=0.01),
+           "C2_np": dict(cls="C2", delta=0.5, advisory=True)}
+    assert abs(harness.composite(coh, {}) - (0.01 + 0.01) / 2) < 1e-12
+    assert abs(harness.composite(coh, {"C1": 3.0}) - (3 * 0.01 + 0.01) / 4) < 1e-12
+    # scorecard with a fake per-cohort scorer: harm on a non-target cohort kills; advisory harm only flags
+    rows = {"C2": (0.02, 0.01, 0.03, 0), "C1_npx": (-0.01, -0.02, -0.006, 0), "C2_np": (-0.05, -0.08, -0.02, 0)}
+    fake = lambda c, a, b, post: dict(n=400, cls=harness.COHORT_CLASS[c], delta=rows[c][0], ci90=list(rows[c][1:3]),
+                                      up=1, down=0, displaced=rows[c][3], delta_leak_hit=None, delta_other=None)
+    r = harness.scorecard({}, {"K": 1}, "C2", cohorts=["C2", "C1_npx", "C2_np"], scorer=fake)
+    assert r["verdict"] == "DEAD" and any("harm on C1_npx" in d for d in r["dead"]), r["dead"]
+    assert not any("C2_np" in d for d in r["dead"]) and any("C2_np" in f for f in r["flags"])
+    rows["C1_npx"] = (0.001, -0.003, 0.004, 0)
+    r = harness.scorecard({}, {"K": 1}, "C2", cohorts=["C2", "C1_npx"], scorer=fake)
+    assert r["verdict"] == "QUEUE" and r["schema"] == "scorecard-1" and r["n_target"] == 400
+    print("scorecard tests ok")
 
 
 if __name__ == "__main__":

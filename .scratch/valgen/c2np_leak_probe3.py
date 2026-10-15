@@ -1,13 +1,13 @@
 """P3: provenance / popularity of the truth inside the BASE pool window (CPU, read-only).
-Pool files from ahmedberatozer/casmi26-v2-pool + dmitriigluzdov/casmi26-pubchem-popularity-prior in C:/casmi/dl_pool."""
+Pool files from ahmedberatozer/casmi26-v2-pool + dmitriigluzdov/casmi26-pubchem-popularity-prior in E:/casmi/dl_pool."""
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-R = Path('C:/Users/h/OneDrive/Desktop/ENVEDA_casmi')
-D = Path('C:/casmi/dl_pool')
+R = Path('E:/ENVEDA_casmi')
+D = Path('E:/casmi/dl_pool')
 sys.path.insert(0, str(R / 'research/harness'))
 import harness as HX  # noqa: E402
 

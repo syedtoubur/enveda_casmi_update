@@ -1,18 +1,22 @@
-# research/: the research loop (v2, 2026-10-10)
+# research/: the research loop (v3, 2026-10-13)
 
-One grill → one **campaign** of 3–5 autonomous cycles. Each idea is measured on the **replay harness** before it
-may cost code review or an LB slot. Decisions live in code (`poll_lb.decide()`, `preflight.py`, the G4 watcher),
-and every new mistake becomes a **rule** in `research/rules/`. Design: `~/.claude/plans/here-i-am-trying-wiggly-pine.md`.
+One grill → one **campaign** on the exploit or explore line. The loop then runs unattended up to `ready-to-submit`:
+it ideates (scout → diagnose → ideate when its pool runs dry), specs, attacks, builds, measures every idea on the
+multi-cohort **scorecard**, ships probes through G4, and hands the human one ranked `research/submit_queue.md`. The
+human's decisions: the Kaggle submit, Colab/high-compute training requests, and promoting lesson/rule proposals.
+Decisions live in code (`gate.py`, `poll_lb.decide()`, `preflight.py`, the G4 watcher, `gpu.py`). Design: grill
+2026-10-13 (`~/.claude/plans/read-scratch-handoffs-loop-audit-md-the-ancient-cerf.md`); audit:
+`research/audit/20261013-loop-audit.md`. Portable bootstrap for any agent or model: `.scratch/prompt.md`.
 
 ## Roles
 | Role | Who | Writes |
 |---|---|---|
-| Strategist | Claude Opus: `/campaign-grill` (interactive), `/replan` (headless) | campaigns/<id>/charter.md, state.json `current`, hypothesis.md |
-| Spec + adversary | Claude Opus: `/spec`, `/attack` (headless) | spec.md, attack.md |
-| Builder | Claude Sonnet: `/build <idea> harness\|ship` (headless) | casmi_post.py knob + test (worktree), stress_test.py, harness_result.json, probe notebook, submit_card.md |
-| Fetcher | Gemini via `agy -p`: `/scout`, `/daily-digest` | research/scout.md, daily/YYYY-MM-DD.md |
-| Code | campaign.py, preflight.py, harness.py, poll_lb.py, kaggle_push.py | STATUS transitions, gates, decisions |
-| Human | you | the campaign grill, the Kaggle Submit click, needs-human items |
+| Strategist | tier H (Opus): `/campaign-grill` (interactive), `/replan`, `/ideate` | charter.md, state.json `current`/`ideate`, hypothesis.md, research/ideas/*-candidates.md |
+| Spec + adversary | tier H: `/spec`, `/attack` | spec.md, attack.md (death conditions, blocking flags) |
+| Builder + diagnostician | tier M (Sonnet): `/build <idea> harness\|ship`, `/diagnose`, `/report` | worktree code on `idea/<name>` branches, stress_result.json, harness_result.json (scorecard), probe notebook, card.md, research/ideas/*-diagnosis.md, research/proposals/*.md |
+| Fetcher | tier L (Haiku, web settings): `/scout`, `/fetch` | research/scout/<date>.md, answers in research/requests/*.md |
+| Code | campaign.py, gate.py, preflight.py, harness.py, poll_lb.py, kaggle_push.py, dossier.py, gpu.py, promote.py | STATUS transitions, gates, decisions, the submit queue |
+| Human | you | the grill, the Kaggle Submit click (+ `poll_lb.py --claim`), Colab training approvals, `promote.py` on approved proposals, settings files |
 
 ## Idea STATUS (first line of `STATUS`)
 ```
@@ -26,13 +30,33 @@ any -> paused-quota; any -> dead (reason on a `reason:` line)
 Legacy ideas from v1 (ready-for-judge, judging, approved, implementing, g1–g3b) still resume through `/run-idea`, which
 also handles `g4-fix`.
 
+## Gate (rank-only, gate_report 2026-10-13)
+`harness-done` → `gate.py` reads `harness_result.json` (scorecard-1) + `stress_result.json`. **Dead** only on: target Δ ≤ 0
+or target CI entirely < 0; a non-advisory cohort with CI upper bound < −0.004; rank-1 displacements > 1%; an attack
+that died or a blocking attack left UNTESTED; a heavy-path idea without a measured ceiling > 0. Everything else is
+built, shipped and **ranked** in `submit_queue.md` by the composite (equal C1/C2/C3 weights until ≥ 5 LB pairs refit
+them; `research/harness/calibration.md`). `prior.md` never passes the gate. Override: `campaign.py <c> --override
+<idea> --reason "..."` (recorded). G4 additionally needs the probe's draft to differ from the control's draft
+(`gates.g4_draft_diff`), and pushes need the control's pinned image, a non-FAIL G2 and a clean preflight.
+
+## Budgets
+Model calls per campaign (`campaign.call_caps`), 2 retries per step, ≤ 2 ideation rounds; one Kaggle GPU pool of
+30 h/week (`gpu.py`; ≤ 4 h per training run; 8 h reserved for G4). Colab training needs `training_request.md` +
+STATUS `colab_train: approved` and a live `colab_run.py --check-mount`.
+
 ## Entry points
 - `/campaign-grill` (Claude Code, interactive) → charter → `python research/bin/campaign.py research/campaigns/<id> --detach`.
-- `python research/bin/campaign.py <campaign> --dry-run` prints the next transition, with no model call.
+- `python research/bin/campaign.py <campaign> --dry-run` prints the next transition; it writes nothing. `--resume` clears a stop.
 - `python research/harness/harness.py compare --dump C2 --b "KNOB=value"`: paired ΔMRR@25, 90% CI, leak proxy, LB-slot verdict.
 - `python research/harness/harness.py lossmap --dump C2 --dump C1_npx` → `research/harness/loss_map.md`.
 - `python research/bin/preflight.py <idea>`; `--selftest` proves every rule still flags exactly its FLAGS.
 - `python research/bin/poll_lb.py [--write]`: match submissions and decide KEEP/REVERT (paired control, counters > 0, replicate).
+- `python research/bin/poll_lb.py --claim research/<line>/<idea>`: right after a submit, bind it (Kaggle lists no kernel name).
+- `python research/bin/dossier.py [--digest <campaign>]`: submit queue + cards + cycle digest.
+- `python research/harness/harness.py scorecard --a "<base cfg>" --b "<base cfg>,K=v" --target C2`: every dumped cohort.
+- `python research/bin/promote.py research/proposals/<file>.md`: apply the lesson/rule items you marked `decision: approve`.
+- `python research/bin/gpu.py`: this week's Kaggle GPU spend.
+- `python research/bin/colab_run.py --check-mount`: live Drive mount check after a Colab re-login.
 - `python research/bin/kaggle_push.py <idea> <nb> --counter "<regex>"`: G4 (counter values must be > 0; `?regex` may be 0).
 - `python research/bin/new_idea.py <line> <slug>` (adds the date prefix itself).
 

@@ -1,0 +1,42 @@
+[
+ {
+  "week": "2026-W42",
+  "date": "2026-10-13 15:48",
+  "idea": "research/exploit/20261013-control-draft",
+  "kernel": "syedtoubur/casmi-control-e006-draft",
+  "kind": "control",
+  "hours": 0.336
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-14 00:27",
+  "idea": "research/exploit/20261013-harness-iceonly",
+  "kernel": "syedtoubur/casmi-harness-iceonly",
+  "kind": "instrument",
+  "hours": 0.885
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-14 09:06",
+  "idea": "research/exploit/20261014-lib-isomer-margin",
+  "kernel": "syedtoubur/casmi-lib-isomer-margin",
+  "kind": "probe",
+  "hours": 0.293
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-15 12:09",
+  "idea": "research/exploit/20261014-a1-test-network",
+  "kernel": "syedtoubur/casmi26-e006-a1-test-network",
+  "kind": "probe",
+  "hours": 0.3
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-15 12:11",
+  "idea": "research/exploit/20261014-b2-nl-sim",
+  "kernel": "syedtoubur/casmi26-e006-b2-nl-sim",
+  "kind": "probe",
+  "hours": 0.31
+ }
+]

@@ -12,12 +12,12 @@
   - **Class 3**: Completely novel (de novo generation via Track 2 or scaffold mutation via Track 1; pure database retrieval has a 0% ceiling).
 
 ## 2. How to Navigate This Repo
-- **Master Ledger**: Always check [EXPERIMENTS.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md) to see current SOTA, past scores, deltas, and proven dead ends.
-- **Never guess notebooks**: Consult [specs/README.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/README.md) to find the canonical files for each track:
+- **Master Ledger**: Always check [EXPERIMENTS.md](file:///e:/ENVEDA_casmi/EXPERIMENTS.md) to see current SOTA, past scores, deltas, and proven dead ends.
+- **Never guess notebooks**: Consult [specs/README.md](file:///e:/ENVEDA_casmi/specs/README.md) to find the canonical files for each track:
   - **Track 1** (SOTA Fusion & Mutator): `specs/track1_retrieval_fusion/`
   - **Track 2** (Novel De Novo SELFIES): `specs/track2_novel_generation/`
   - **Track 3** (MS Simulator): `specs/track3_ms_simulator/`
-- **Logging**: When completing a gate or submission, use the `/update-experiments` skill to record results in [EXPERIMENTS.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md).
+- **Logging**: When completing a gate or submission, use the `/update-experiments` skill to record results in [EXPERIMENTS.md](file:///e:/ENVEDA_casmi/EXPERIMENTS.md).
 - **Pre-Registration**: Write numerical gate thresholds in `gate_report.md` before running measurements on Colab or Kaggle.
 
 ## 3. Hard Guardrails & Constraints
@@ -28,7 +28,7 @@
 - **Token-Efficient Notebook Inspection**: NEVER read, view, or grep raw `.ipynb` JSON files directly (wastes up to 98% of context on JSON formatting and base64 plots). Always use the `/analyze-notebook` skill or run `python .agents/skills/analyze-notebook/scripts/compare.py [notebooks...]` which converts to `py:percent` and extracts semantic diffs.
 
 ## 4. Multi-agent research workflow (`research/`)
-- **Exploit** line only (patches on `casmi-notebook-0-433.ipynb`, worktree `C:/casmi/lines/exploit`, outside OneDrive; write code only there). Explore (`scratch_pkg`) is frozen.
+- **Exploit** line only (patches on `casmi-notebook-0-433.ipynb`, worktree `E:/casmi/lines/exploit`, outside OneDrive; write code only there). Explore (`scratch_pkg`) is frozen.
 - One grill → one campaign: `/campaign-grill` writes `research/campaigns/<id>/charter.md`, then `research/bin/campaign.py` runs 3–5 cycles headless: Opus `/replan`, `/spec`, `/attack`; Sonnet `/build`; Gemini `/scout`, `/daily-digest`. Roles, STATUS machine, entry points: `research/README.md`.
 - Every idea is measured on the replay harness (`research/harness/`, gates in `gate_report.md`) before it earns an LB slot. Post-scoring changes are `build/casmi_post.py` knobs.
 - Decisions are code: `poll_lb.decide()` (paired control, counter values > 0, replicate), `preflight.py` + `research/rules/` (each new mistake becomes a rule with a fixture). Agents push Kaggle kernels (`research/bin/kaggle_push.py`); only the human submits.

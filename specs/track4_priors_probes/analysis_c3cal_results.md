@@ -2,10 +2,10 @@
 
 **Generated:** 2026-10-03  
 **Data Sources:**
-- [`c3_cal_rows.csv`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv) (600 rows: 100 C1, 200 C2, 300 C3)
-- [`mut_lists.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/mut_lists.json) (111 queries, 1,109 candidates)
-- [`pc_lists.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/pc_lists.json) (600 queries, `best_pool_fz` reference)
-- [`eng_lists.json.c3.json`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/eng_lists.json.c3.json) (600 queries, analog anchors)
+- [`c3_cal_rows.csv`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/c3_cal_rows.csv) (600 rows: 100 C1, 200 C2, 300 C3)
+- [`mut_lists.json`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/mut_lists.json) (111 queries, 1,109 candidates)
+- [`pc_lists.json`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/pc_lists.json) (600 queries, `best_pool_fz` reference)
+- [`eng_lists.json.c3.json`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/c3_cal_v2_results/eng_lists.json.c3.json) (600 queries, analog anchors)
 
 > **Corrections (10-03, re-derived from `c3_cal_rows.csv` + `mut_lists.json`): read before §4–§6.**
 > - **CC.6 is a narrow PASS, not a FAIL.** The 65.6% (21/32) below counts the truths that *passed the gate*, which is circular.
@@ -92,7 +92,7 @@ Across the 32 ground-truth molecules synthesized by the mutator, the winning tra
 
 ## 4. Gate Verification Report: Pre-Registered Metrics (CC.1 – CC.6)
 
-The table below fills in the pre-registered calibration gates from [`specs/track4_priors_probes/gate_report.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/gate_report.md):
+The table below fills in the pre-registered calibration gates from [`specs/track4_priors_probes/gate_report.md`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/gate_report.md):
 
 | Gate | Metric & Target | Pre-Registered Threshold | Measured on Calibration Run | Verdict |
 | :---: | :--- | :---: | :---: | :---: |
@@ -139,7 +139,7 @@ Of the 300 pseudo-C3 novel queries, **32 exact ground-truth chemical structures 
 
 ## 6. Pre-Registered Decision Rule & Recommended Action
 
-According to [`gate_report.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/track4_priors_probes/gate_report.md) Line 84:
+According to [`gate_report.md`](file:///e:/ENVEDA_casmi/specs/track4_priors_probes/gate_report.md) Line 84:
 > *"CC.6: I0 with real FPNet z: fz(truth) > fz(top analog) on pseudo_c3 $\ge 70\%$, **else I0 becomes a ranking signal instead of a veto**."*
 
 Because CC.6 measured **65.6%**, the pre-registered protocol triggers:

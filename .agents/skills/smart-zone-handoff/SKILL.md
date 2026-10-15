@@ -65,7 +65,7 @@ Write the synthesized dossier to two locations:
 ### 4. Direct the User
 Once the handoff files are saved:
 1. Present the high-level summary to the user.
-2. Provide the clickable link to [`.scratch/handoffs/latest.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/.scratch/handoffs/latest.md).
+2. Provide the clickable link to [`.scratch/handoffs/latest.md`](file:///e:/ENVEDA_casmi/.scratch/handoffs/latest.md).
 3. Instruct the user:
    *"Open a fresh conversation session and run:*
    `@.scratch/handoffs/latest.md continue`"

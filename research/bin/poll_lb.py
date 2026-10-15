@@ -1,6 +1,7 @@
 """Match Kaggle submissions to idea folders and record scores.
 
     python research/bin/poll_lb.py [--write]
+    python research/bin/poll_lb.py --claim research/exploit/<idea> [--ref <submission ref>]   # right after submitting
 
 Reads `kaggle competitions submissions -c <competition> --csv`. A submission belongs to an idea
 when its description contains the idea's kernel slug (STATUS `kernel:`): the human pastes the
@@ -22,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import re
 import subprocess
 
 from _common import RESEARCH, load_config, read_status, write_status
@@ -38,14 +40,37 @@ def fetch(cfg) -> list[dict]:
     return list(csv.DictReader(io.StringIO(r.stdout)))
 
 
-def match(subs: list[dict], ideas: dict[str, str]) -> list[tuple[str, dict]]:
+def match(subs: list[dict], ideas: dict[str, str], refs: dict[str, set[str]] | None = None) -> list[tuple[str, dict]]:
+    """Each submission belongs to at most one idea (loop audit W13):
+    1. a submission `ref` claimed by an idea (STATUS `lb_refs:`, written by `--claim`) is exact;
+    2. otherwise the kernel slug as a whole token of the description (`casmi-foo` never matches `casmi-foo-v2`);
+       a description naming two ideas is ambiguous and matches none."""
+    refs = refs or {}
+    by_ref = {r: idea for idea, rs in refs.items() for r in rs}
     out = []
     for s in subs:
-        text = " ".join(str(v) for v in s.values()).lower()
-        for idea, slug in ideas.items():
-            if slug and slug.split("/")[-1].lower() in text:
-                out.append((idea, s))
+        ref = str(s.get("ref", ""))
+        if ref and ref in by_ref:
+            out.append((by_ref[ref], s))
+            continue
+        text = str(s.get("description", "")).lower()
+        hits = [idea for idea, slug in ideas.items() if slug and re.search(
+            rf"(?<![\w-]){re.escape(slug.split('/')[-1].lower())}(?![\w-])", text)]
+        if len(hits) == 1:
+            out.append((hits[0], s))
+        elif len(hits) > 1:
+            print(f"AMBIGUOUS\t{s.get('date', '')}\t{s.get('description', '')}\tmatches {', '.join(hits)}")
     return out
+
+
+def claim(idea_rel: str, subs: list[dict], taken: set[str], ref: str | None = None) -> str | None:
+    """Bind one submission ref to an idea: the given ref, or the newest submission no idea has claimed or matched."""
+    if ref:
+        return ref
+    for s in sorted(subs, key=lambda x: str(x.get("date", "")), reverse=True):
+        if str(s.get("ref", "")) and str(s["ref"]) not in taken:
+            return str(s["ref"])
+    return None
 
 
 def decide(lbs: list[float], control_lb: float | None, fired: bool,
@@ -81,15 +106,34 @@ def _score(s: dict) -> str:
 def main(argv=None, fetcher=fetch) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--claim", metavar="IDEA", help="bind the newest unclaimed submission (or --ref) to this idea")
+    ap.add_argument("--ref", default=None)
     a = ap.parse_args(argv)
     cfg = load_config()
-    ideas = {}
+    ideas, refs = {}, {}
     for st in RESEARCH.glob("*/*/STATUS"):
         _, meta = read_status(st.parent)
+        rel = st.parent.relative_to(RESEARCH).as_posix()
         if meta.get("kernel"):
-            ideas[st.parent.relative_to(RESEARCH).as_posix()] = meta["kernel"]
+            ideas[rel] = meta["kernel"]
+        if meta.get("lb_refs"):
+            refs[rel] = set(meta["lb_refs"].split(","))
     subs = fetcher(cfg)
-    matched = match(subs, ideas)
+    if a.claim:
+        d = (RESEARCH.parent / a.claim).resolve()
+        rel = d.relative_to(RESEARCH).as_posix()
+        taken = {r for rs in refs.values() for r in rs} | {str(s.get("ref", "")) for _, s in match(subs, ideas, refs)}
+        ref = claim(rel, subs, taken, a.ref)
+        if not ref:
+            print("[poll_lb] no unclaimed submission to bind")
+            return 1
+        _, meta = read_status(d)
+        have = [r for r in meta.get("lb_refs", "").split(",") if r]
+        write_status(d, "submitted" if read_status(d)[0] == "ready-to-submit" else None,
+                     lb_refs=",".join(have + [ref] if ref not in have else have))
+        print(f"[poll_lb] {rel} <- submission {ref}")
+        return 0
+    matched = match(subs, ideas, refs)
     seen = {id(s) for _, s in matched}
     for s in subs[:15]:
         if id(s) not in seen:
@@ -124,8 +168,11 @@ def main(argv=None, fetcher=fetch) -> int:
         if not got or state not in OPEN:
             continue
         upd = {"lb": f"{got[0]:.3f}"} | ({"lb_rep": f"{got[1]:.3f}"} if len(got) > 1 else {})
-        if d.resolve() in controls:
-            new, why = "scored", "line control"
+        if not meta.get("lb_pipeline"):        # W2: an LB number is evidence only for the pipeline it was scored on
+            base = cfg["lines"].get(meta.get("line", d.parent.name), {}).get("base_notebook", "?")
+            upd["lb_pipeline"] = f"{str(base).replace(chr(92), '/').rsplit('/', 1)[-1]}+{d.name}"
+        if d.resolve() in controls or meta.get("kind") == "control":
+            new, why = "scored", "control (never decided)"
         else:
             line = meta.get("line", d.parent.name)
             new, why = decide(got, control_lb.get(line), counters_fired(d))

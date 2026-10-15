@@ -1,0 +1,50 @@
+{
+  "A1": {
+    "total_c1_npx": 245,
+    "fallback_fired_mols": 64,
+    "margin_skip_count": 49,
+    "lib_skip_count": 5,
+    "overlap": 5,
+    "margin_only": 44,
+    "lib_only": 0,
+    "neither": 15,
+    "diff_routed": 44,
+    "fraction_diff": 0.6875
+  },
+  "A2": {
+    "n_c2np": 245,
+    "n_skipped": 32,
+    "mrr_base_skipped": 0.4539930555555555,
+    "mrr_margin_skipped": 0.45200892857142855,
+    "delta_skipped": -0.001984126984126977,
+    "delta_all_c2np": -0.00025915127955933315,
+    "displaced_r1": 0
+  },
+  "A3": {
+    "C1_npx": {
+      "total_mols": 245,
+      "with_ice": 245,
+      "pct_with_ice": 1.0
+    },
+    "C1_xlib": {
+      "total_mols": 300,
+      "with_ice": 298,
+      "pct_with_ice": 0.9933333333333333
+    },
+    "C2": {
+      "total_mols": 400,
+      "with_ice": 400,
+      "pct_with_ice": 1.0
+    },
+    "C2_hard": {
+      "total_mols": 200,
+      "with_ice": 200,
+      "pct_with_ice": 1.0
+    },
+    "C2_np": {
+      "total_mols": 245,
+      "with_ice": 245,
+      "pct_with_ice": 1.0
+    }
+  }
+}

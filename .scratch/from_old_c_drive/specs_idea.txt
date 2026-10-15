@@ -1,0 +1,143 @@
+here i am working with the enveda CASMI 2026 project and now i want to go with spec driven developement 
+
+so first my goal here is to create a specs folder and create 3 files in it mission.md ,roadmap.md and tech_stack.md 
+so mission.md will contains the project main goal and will be the outlined approach 
+
+roadmap.md will contain the detailed phases what is the plan on this phase and how the validation will happen 
+
+and tech_stack.md will contains the technical details now i am not sure if this files is needed in this context or not i think that will contain details like model architecture 
+C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb
+
+this has been the best scoring notebook so far 0.337
+
+i have created here various .ipynb notebook to create the fpnet models and rank matrix myself
+here the summary is in summary.md 
+
+and also created dream embedding specific folders
+C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\casmi_dreams_colab.ipynb
+
+and the current casmi 2026 folder structure is 
+
+📂 casmi_2026/ (/content/drive/MyDrive/casmi_2026)
+├── 📁 _dreams_out/ (4 files, 2 subfolders)
+│   ├── 📁 emb/ (7 files, 0 subfolders)
+│   │   ├── 📄 emb_0000.npy (819.2 MB)
+│   │   ├── 📄 emb_0001.npy (819.2 MB)
+│   │   ├── 📄 emb_0002.npy (819.2 MB)
+│   │   ├── 📄 emb_0003.npy (819.2 MB)
+│   │   ├── 📄 emb_0004.npy (819.2 MB)
+│   │   ├── 📄 emb_0005.npy (819.2 MB)
+│   │   └── 📄 emb_0006.npy (507.4 MB)
+│   ├── 📁 kaggle_upload/ (1 files, 0 subfolders)
+│   │   └── 📄 dreams_head.pt (82.2 MB)
+│   ├── 📄 corpus_meta.parquet (34.4 MB)
+│   ├── 📄 embedding_model.ckpt (1241.3 MB)
+│   ├── 📄 head_best.pt (82.0 MB)
+│   └── 📄 ssl_model.ckpt (1392.7 MB)
+├── 📁 _fpnet/ (0 files, 3 subfolders)
+│   ├── 📁 casmi26-fpnet-v3/ (7 files, 0 subfolders)
+│   │   ├── 📄 dataset-metadata.json (0.0 MB)
+│   │   ├── 📄 fp_bits_sha1.txt (0.0 MB)
+│   │   ├── 📄 fp_merged_m0.pt (144.1 MB)
+│   │   ├── 📄 fp_merged_m1.pt (144.1 MB)
+│   │   ├── 📄 fp_single_s0.pt (144.1 MB)
+│   │   ├── 📄 fp_single_s1.pt (144.1 MB)
+│   │   └── 📄 fpnet_split_keys.npz (3.1 MB)
+│   ├── 📁 ckpt/ (8 files, 0 subfolders)
+│   │   ├── 📄 fp_merged_m0.pt (144.1 MB)
+│   │   ├── 📄 fp_merged_m0_rank.pt (144.1 MB)
+│   │   ├── 📄 fp_merged_m1.pt (144.1 MB)
+│   │   ├── 📄 fp_merged_m1_rank.pt (144.1 MB)
+│   │   ├── 📄 fp_single_s0.pt (144.1 MB)
+│   │   ├── 📄 fp_single_s0_rank.pt (144.1 MB)
+│   │   ├── 📄 fp_single_s1.pt (144.1 MB)
+│   │   └── 📄 fp_single_s1_rank.pt (144.1 MB)
+│   └── 📁 pack/ (25 files, 0 subfolders)
+│       ├── 📄 ad.npy (1.5 MB)
+│       ├── 📄 ce.npy (5.8 MB)
+│       ├── 📄 ins.npy (1.5 MB)
+│       ├── 📄 it.npy (746.3 MB)
+│       ├── 📄 mg_ad.npy (0.8 MB)
+│       ├── 📄 mg_ce.npy (3.2 MB)
+│       ├── 📄 mg_ins.npy (0.8 MB)
+│       ├── 📄 mg_it.npy (409.9 MB)
+│       ├── 📄 mg_mode.npy (3.2 MB)
+│       ├── 📄 mg_mz.npy (409.9 MB)
+│       ├── 📄 mg_npk.npy (1.6 MB)
+│       ├── 📄 mg_prec.npy (3.2 MB)
+│       ├── 📄 mg_yrow.npy (3.2 MB)
+│       ├── 📄 mode.npy (1.5 MB)
+│       ├── 📄 mz.npy (746.3 MB)
+│       ├── 📄 npk.npy (2.9 MB)
+│       ├── 📄 pool.npz (635.3 MB)
+│       ├── 📄 prec.npy (5.8 MB)
+│       ├── 📄 rit.npy (1492.5 MB)
+│       ├── 📄 rmz.npy (1492.5 MB)
+│       ├── 📄 rnpk.npy (2.9 MB)
+│       ├── 📄 splits.npz (4.9 MB)
+│       ├── 📄 uni.npz (1939.4 MB)
+│       ├── 📄 windows.npz (127.1 MB)
+│       └── 📄 yrow.npy (5.8 MB)
+├── 📁 _stagec/ (3 files, 0 subfolders)
+│   ├── 📄 rank_partial.npz (9.5 MB)
+│   ├── 📄 rank_raw.npz (9.5 MB)
+│   └── 📄 rank_train.npz (9.5 MB)
+├── 📁 _staged/ (1 files, 0 subfolders)
+│   └── 📄 stage_d_pass1.pkl (3.4 MB)
+├── 📁 casmi26-fp-models-v2/ (2 files, 0 subfolders)
+│   ├── 📄 fp_merged_m1.pt (144.1 MB)
+│   └── 📄 fp_single_s2.pt (144.1 MB)
+├── 📁 casmi26-offline-rdkit-2026033/ (2 files, 0 subfolders)
+│   ├── 📄 rdkit-2026.3.3-cp312-cp312-manylinux_2_28_x86_64.whl (37.2 MB)
+│   └── 📄 README.md (0.0 MB)
+├── 📁 casmi26-ranker-features/ (1 files, 0 subfolders)
+│   └── 📄 rank_train.npz (9.6 MB)
+├── 📁 chebi-lipidmaps-casmi26/ (3 files, 0 subfolders)
+│   ├── 📄 bio_fp.npy (54.4 MB)
+│   ├── 📄 bio_mass.npy (0.5 MB)
+│   └── 📄 bio_meta.pkl (5.5 MB)
+├── 📁 coconut_dataset/ (4 files, 0 subfolders)
+│   ├── 📄 coco_fp.npy (378.3 MB)
+│   ├── 📄 coco_mass.npy (3.5 MB)
+│   ├── 📄 coco_meta.pkl (41.5 MB)
+│   └── 📄 fp_bits.npy (0.1 MB)
+├── 📁 DreamS_Embedding_Model/ (2 files, 0 subfolders)
+│   ├── 📄 DreaMS_embedding_model_torchscript.pt (468.5 MB)
+│   └── 📄 DreaMS_embedding_model_torchscript_settings.json (0.0 MB)
+├── 📁 enveda-CASMI26-molecule-id-mass-spectra/ (3 files, 0 subfolders)
+│   ├── 📄 sample_submission.csv (0.0 MB)
+│   ├── 📄 test.parquet (4.8 MB)
+│   └── 📄 train.parquet (3033.3 MB)
+├── 📁 open-source-natural-product-annotations/ (1 files, 0 subfolders)
+│   └── 📄 COCONUT4MetFrag_april.csv (123.7 MB)
+└── 📁 val_scripts/ (3 files, 0 subfolders)
+    ├── 📄 scaffolds.pkl (13.1 MB)
+    ├── 📄 val.parquet (4.7 MB)
+    └── 📄 val_key.pkl (9.3 MB)
+
+in drive  here i have all necessary files stored in drive 
+
+now from here i want to take new approaches outside of the domain of this 
+C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb
+
+notebook and store best in kaggle 
+
+now you will analyse the whole context and all the resources regarding this competition 
+
+here i have provided the overview.txt which contains the competition overview and also data_and_resources.txt which contains the data how it looks and also necessary resources 
+
+
+another files is knowledge_base.txt here the file will contains what resources are available on github or hugging face or web search or other free sources we could use what free models and everything relevant to this competition 
+
+
+now currently i have already a specs_ms_simulator folder which contains a broader version but i want to start with a simple plan 
+
+
+that is here for the class 1 molecule we are using the direct library search approach 
+
+
+now what i want is with  a model that is free sources and appendable offline just like the constraints or kaggle the model will take the smiles string as input and return ms spectra as predicted output thus the class 2 problem can also be reduced to a class 1 problem 
+so first in the current notebook C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-phase1-enhanced-baseline.ipynb what we do is for each query spectrum take the mass of that and with 8.5 ppm window we get 40-60 candidates now for each candidate my plan now if that candidate has already  a spectra we could match that and that means that is a direct library search now if that candidate has not then our model will generate spectra for that smiles and  then we will do the matching 
+so this plans specs will be storedin specs_simple_ms_simulator 
+so this will be our baseline for more complex approaches we take later on 
+

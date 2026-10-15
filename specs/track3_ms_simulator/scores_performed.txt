@@ -40,11 +40,11 @@ Succeeded · 6d ago
 
 
 
-Here are the score i have performed so far 0.337 is from the C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb 
+Here are the score i have performed so far 0.337 is from the E:\ENVEDA_casmi\enveda-casmi-2026-tier1-patched.ipynb 
 which is the copy of another notebook 
 
 when i tried to add polarity based channel then the score 
-become 0.319 C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\enveda-casmi-2026-phase1-enhanced-baseline.ipynb
+become 0.319 E:\ENVEDA_casmi\enveda-casmi-2026-phase1-enhanced-baseline.ipynb
 
 0.323 is the score when i trained the fpnet and ranker myself
 summary.md contains  a summary of that 

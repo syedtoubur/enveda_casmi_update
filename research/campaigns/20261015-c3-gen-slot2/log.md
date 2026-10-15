@@ -1,0 +1,2 @@
+- 2026-10-15 | human+opus (interactive) | research/exploit/20261014-pseudo-c3-dump | charter written; gates K0-K4 pre-registered (+ leak-free re-scorer amendment); dump patcher pseudo_c3 shard built (31 tests), kernel syedtoubur/casmi-0433-harness-pseudoc3 v1 pushed
+- 2026-10-15 | opus (interactive) | research/exploit/20261015-c3-gen-union | built: novel_p4 (+tests), inputs builder, Colab P4 notebook (+CPU dry run), K1 scorer; dump v2 re-pushed with Engine 2 analog export (mutator anchors); handoff .scratch/handoffs/handoff-20261015-c3-gen-slot2.md

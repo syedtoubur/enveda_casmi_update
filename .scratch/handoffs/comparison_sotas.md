@@ -1,8 +1,8 @@
 # Comprehensive Comparative Analysis: CASMI SOTA Notebooks
 
-> **Target File**: `C:\Users\h\OneDrive\Desktop\ENVEDA_casmi\.scratch\handoffs\comparison_sotas.md`  
-> **Notebook A (Baseline)**: [`casmi-notebook-0-433.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi-notebook-0-433.ipynb) — **Public LB: 0.433**  
-> **Notebook B (Candidate)**: [`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-e006-window-40-ice-fallback-true.ipynb) — **Claimed LB: 0.440** (Experiment E006)  
+> **Target File**: `E:\ENVEDA_casmi\.scratch\handoffs\comparison_sotas.md`  
+> **Notebook A (Baseline)**: [`casmi-notebook-0-433.ipynb`](file:///e:/ENVEDA_casmi/casmi-notebook-0-433.ipynb) — **Public LB: 0.433**  
+> **Notebook B (Candidate)**: [`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///e:/ENVEDA_casmi/casmi26-e006-window-40-ice-fallback-true.ipynb) — **Claimed LB: 0.440** (Experiment E006)  
 > **Official Metric**: Mean Reciprocal Rank at 25 (`MRR@25`) evaluated on tautomer-canonical `InChIKey14` (RDKit 2026.03.3).  
 > **Date**: October 11, 2026  
 
@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary
 
-This forensic report analyzes the architectural, algorithmic, and operational differences between our current reproducible baseline ([`casmi-notebook-0-433.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi-notebook-0-433.ipynb), scoring **0.433**) and the candidate notebook ([`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-e006-window-40-ice-fallback-true.ipynb), claiming **0.440**).
+This forensic report analyzes the architectural, algorithmic, and operational differences between our current reproducible baseline ([`casmi-notebook-0-433.ipynb`](file:///e:/ENVEDA_casmi/casmi-notebook-0-433.ipynb), scoring **0.433**) and the candidate notebook ([`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///e:/ENVEDA_casmi/casmi26-e006-window-40-ice-fallback-true.ipynb), claiming **0.440**).
 
 The candidate notebook is **not** an entirely new architecture; it is a **rigorous factorial overlay (Experiment E006)** executed directly on top of the exact frozen 0.433 baseline pipeline. It introduces two core algorithmic modifications and three infrastructure enhancements:
 

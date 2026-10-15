@@ -1,0 +1,49 @@
+{
+  "admitted_distinct_raw_keys": 616,
+  "admitted_spectra_occurrences": 6951,
+  "candidate_cap": null,
+  "casmi_membership_fields_read": false,
+  "chemical_training_overlap_measured": false,
+  "closed_bounds": true,
+  "competition_2026_files_read": false,
+  "derivative_compilation_scope": "CC-BY-NC-SA-4.0; retain original record attribution and terms",
+  "kind": "public_reference_evidence_supplied_mass_windows",
+  "licence_rule": "exact raw spectrum license == \"CC0\"",
+  "malformed_admitted_keys": 0,
+  "mass_basis": "supplied reference exact_mass; neutral basis unqualified",
+  "missing_supplied_id_occurrences": 0,
+  "model_execution": false,
+  "molecule_output_rows": 616,
+  "official_or_model_score": null,
+  "ppm_values": [
+    3.0,
+    10.0,
+    20.0
+  ],
+  "real_direct_scan_controls": 30,
+  "repeated_supplied_id_occurrences": 0,
+  "repeated_supplied_id_with_different_raw_key": 0,
+  "runtime_versions": {
+    "numpy": "2.2.6",
+    "pyarrow": "25.0.0",
+    "python": "3.12.14"
+  },
+  "source_dataset_numeric_id": 12067949,
+  "source_dataset_ref": "samartalwar/casmi-2026-spectral-library-massbankharmonized",
+  "sources": {
+    "mass": {
+      "bytes": 3491240,
+      "sha256": "2b2af92c3185fa8cd52a4a3e3e7fd7eda4d94e8b9402662a3a4c55ffb13c6e5c"
+    },
+    "spectra": {
+      "bytes": 43941912,
+      "sha256": "6ebb46b32ddd344d988c3bdb90e7160d4ce46e6d0b900a1217607aa2234c9477"
+    },
+    "structures": {
+      "bytes": 3043054,
+      "sha256": "8b7a0014184e436e19b13cb526b8fafebd5c967c8f36fb2c0eed716e462c7279"
+    }
+  },
+  "structural_overlap_verified": false,
+  "unmatched_raw_keys": 0
+}

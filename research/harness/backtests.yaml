@@ -8,13 +8,14 @@
 # sweeps:   evidence = true -> the harness argmax must sit within one grid step of `lb_opt` on every dump.
 
 families:
-  e006_overlay: [METRIC_FUSION, FUSION_WINDOW]
+  e006_overlay: [METRIC_FUSION, FUSION_WINDOW, E180_DROP, E180_KEYS]   # E180_*: 2026-10-14 e180-drop P1 (human-approved)
   ice_fallback: [ICE_FALLBACK]
   tail: [FINAL_PASS]
   reranker: [CELL19_ICE, BASE_ICE, FUSED_GL, PC_SIM_RERANK, ICE_LAM, GL_LAM]
   fusion: [USE_ENG, ALPHA, KRR, FUSE_N]
   promotion: [PROMOTE, S_TAU, POP_TAU, REL_PROMOTE]
   merge_gate: [LIB_TAU, REL_TH, SLOTS_AGG, SLOTS_GENTLE, ICE_PC, TOPN]
+  engine2_model: [ENGINE2_ROWS, ENGINE2_W_PV]   # heavy path (upstream of the dump): BLIND, no replay
 
 flips:
   - id: e006

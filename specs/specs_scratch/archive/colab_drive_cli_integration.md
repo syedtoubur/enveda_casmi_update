@@ -1,9 +1,9 @@
 # Autonomous Research & Code Execution: Colab CLI + Google Drive Integration Plan
 
-> **File Location**: [`specs/specs_scratch/colab_drive_cli_integration.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/specs_scratch/colab_drive_cli_integration.md)  
+> **File Location**: [`specs/specs_scratch/colab_drive_cli_integration.md`](file:///e:/ENVEDA_casmi/specs/specs_scratch/colab_drive_cli_integration.md)  
 > **Target Track**: Cross-Track Autonomous Execution (Track 1 Retrieval, Track 2 Novel, Track 3 MS Simulators, specs_scratch)  
 > **Competition**: Enveda CASMI 2026 — Molecule ID From LC-MS/MS Mass Spectra (MRR@25 on InChIKey14)  
-> **Status**: Verified & Operational (Ticket 0 PASS on 2026-10-10) — See [`specs/specs_scratch/colab_spike_result.md`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/specs_scratch/colab_spike_result.md)  
+> **Status**: Verified & Operational (Ticket 0 PASS on 2026-10-10) — See [`specs/specs_scratch/colab_spike_result.md`](file:///e:/ENVEDA_casmi/specs/specs_scratch/colab_spike_result.md)  
 
 ---
 
@@ -55,7 +55,7 @@ flowchart TD
 
 ### The Local Constraint:
 * The host laptop has limited local SSD storage. Large files (models, checkpoints, raw datasets) cannot be stored locally.
-* **Storage Solution**: All models, datasets, and wheelhouses are stored permanently in Google Drive at `/content/drive/casmi_2026/` (as mapped in [`specs/Dataset_intro/drive_folder_structure.txt`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/Dataset_intro/drive_folder_structure.txt)).
+* **Storage Solution**: All models, datasets, and wheelhouses are stored permanently in Google Drive at `/content/drive/casmi_2026/` (as mapped in [`specs/Dataset_intro/drive_folder_structure.txt`](file:///e:/ENVEDA_casmi/specs/Dataset_intro/drive_folder_structure.txt)).
 
 ### The Cloud Compute Solution (Google Colab CLI):
 * Google Colab CLI (`google-colab-cli`) bridges the local terminal directly to remote cloud T4/A100 instances.
@@ -67,7 +67,7 @@ flowchart TD
 
 ## 3. Data Mapping: Google Drive to Pipeline Mounts
 
-Reference from [`specs/Dataset_intro/drive_folder_structure.txt`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/specs/Dataset_intro/drive_folder_structure.txt):
+Reference from [`specs/Dataset_intro/drive_folder_structure.txt`](file:///e:/ENVEDA_casmi/specs/Dataset_intro/drive_folder_structure.txt):
 
 | Google Drive Path (`/content/drive/casmi_2026/`) | Contents & Purpose | Pipeline Equivalent / Kaggle Slug |
 | :--- | :--- | :--- |

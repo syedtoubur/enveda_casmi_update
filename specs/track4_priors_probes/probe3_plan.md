@@ -1,6 +1,6 @@
 # Probes P3e and P3/0.415: natural-product pool expansion and NP prior bonus
 
-> **Base:** [`casmi26-v29-fusion-pop-glmh-0-415.ipynb`](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/casmi26-v29-fusion-pop-glmh-0-415.ipynb) (0.415 public LB; same code as 0.411)
+> **Base:** [`casmi26-v29-fusion-pop-glmh-0-415.ipynb`](file:///e:/ENVEDA_casmi/casmi26-v29-fusion-pop-glmh-0-415.ipynb) (0.415 public LB; same code as 0.411)
 > **Generator:** `build/patch_v29.py` (extended). Tests: `build/test_patch_v29.py`
 > **Outputs:** `casmi26-t4v3-npx.ipynb` (P3e), `casmi26-t4v3-np1.ipynb` (P3 rebased)
 > **Revised 2026-10-03.** The first version of this plan bundled both changes into one notebook, `casmi26-t4v2-np1-expand`. It was split, and the expansion was moved, for the reasons in §2.

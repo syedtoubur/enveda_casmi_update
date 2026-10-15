@@ -6,7 +6,9 @@ SRC = ("H2 back-test FAIL 2026-10-11: on C2 the leaked BASE FPNet made USE_ENG=F
        "C2_np 2026-10-12: BASE leaks on every train-derived val shard (FPNet or np-fold ranker) -> BASE-COUPLED; "
        "research/harness/capability_map.md, gate_report.md 'back-test suite', 'Option 2 BASE-coupling rule'")
 FLAGS = ["rules/fixtures/R08_blind_family_no_prior", "rules/fixtures/R08_unmapped_knob",
-         "rules/fixtures/R08_base_coupled_no_prior"]
+         "rules/fixtures/R08_base_coupled_no_prior",
+         "exploit/20261014-ice-margin-route",  # dead; ICE_ROUTE_MARGIN never got a family
+         "exploit/20261014-e180-drop"]  # dead; scorecard read the stale capability_map.json (L47)
 NOT_CITABLE = ("BLIND", "BASE-COUPLED")
 
 import json  # noqa: E402

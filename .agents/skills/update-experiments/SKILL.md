@@ -6,7 +6,7 @@ description: Use when recording a new submission, leaderboard score, Colab gate 
 # Update Experiments Skill
 
 ## Overview
-Maintains [EXPERIMENTS.md](file:///c:/Users/h/OneDrive/Desktop/ENVEDA_casmi/EXPERIMENTS.md) as the single source of truth for all Kaggle leaderboard submissions, offline component gate evaluations, and negative ablation results across the CASMI 2026 competition.
+Maintains [EXPERIMENTS.md](file:///e:/ENVEDA_casmi/EXPERIMENTS.md) as the single source of truth for all Kaggle leaderboard submissions, offline component gate evaluations, and negative ablation results across the CASMI 2026 competition.
 
 ---
 

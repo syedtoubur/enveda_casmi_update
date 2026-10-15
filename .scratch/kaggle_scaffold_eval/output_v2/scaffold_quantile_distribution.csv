@@ -1,0 +1,21 @@
+Arm,Metric,p05,p10,p25,p50 (Median),p75,p90,p95,p99,Mean,Max
+Arm 1: Same Scaffold General,raw_cos,0.0,0.0,0.03,0.1836,0.5132,0.7853,0.8871,0.9781,0.2948,1.0
+Arm 1: Same Scaffold General,masked_cos,0.0,0.0,0.03,0.1836,0.5132,0.7853,0.8871,0.9781,0.2948,1.0
+Arm 1: Same Scaffold General,entropy_sim,0.0,0.0,0.0,0.147,0.3827,0.6009,0.7258,0.8751,0.2255,1.0
+Arm 1: Same Scaffold General,nl_cos,0.0,0.0,0.0,0.061,0.3086,0.6676,0.8092,0.9521,0.1969,1.0
+Arm 1: Same Scaffold General,mod_cos,0.0,0.0,0.1003,0.4002,0.7138,0.8738,0.9345,0.9842,0.4196,1.0
+Arm 2: Same Scaffold Bio-Delta,raw_cos,0.0,0.0121,0.1228,0.3852,0.6856,0.8564,0.9211,0.9898,0.4188,1.0
+Arm 2: Same Scaffold Bio-Delta,masked_cos,0.0,0.0121,0.1228,0.3852,0.6856,0.8564,0.9211,0.9898,0.4188,1.0
+Arm 2: Same Scaffold Bio-Delta,entropy_sim,0.0,0.0,0.0624,0.317,0.5453,0.6876,0.7683,0.9158,0.3267,0.9999
+Arm 2: Same Scaffold Bio-Delta,nl_cos,0.0,0.0,0.044,0.1997,0.4994,0.7253,0.8516,0.9605,0.2912,0.9948
+Arm 2: Same Scaffold Bio-Delta,mod_cos,0.0341,0.1531,0.4542,0.7114,0.8617,0.9451,0.972,0.9934,0.6325,1.0
+Arm 3: Diff Scaffold Isobaric,raw_cos,0.0,0.0,0.0,0.0107,0.0602,0.1531,0.2309,0.5078,0.0524,1.0
+Arm 3: Diff Scaffold Isobaric,masked_cos,0.0,0.0,0.0,0.0107,0.0602,0.1531,0.2309,0.5078,0.0524,1.0
+Arm 3: Diff Scaffold Isobaric,entropy_sim,0.0,0.0,0.0,0.0,0.0293,0.1355,0.2126,0.421,0.0383,1.0
+Arm 3: Diff Scaffold Isobaric,nl_cos,0.0,0.0,0.0,0.0108,0.0615,0.1541,0.2272,0.4991,0.0526,1.0
+Arm 3: Diff Scaffold Isobaric,mod_cos,0.0,0.0,0.0,0.0118,0.0633,0.1546,0.2309,0.5078,0.0535,1.0
+Arm 4: Diff Scaffold Random,raw_cos,0.0,0.0,0.0,0.0,0.0399,0.1037,0.1651,0.3148,0.0332,0.5822
+Arm 4: Diff Scaffold Random,masked_cos,0.0,0.0,0.0,0.0,0.0399,0.1037,0.1651,0.3148,0.0332,0.5822
+Arm 4: Diff Scaffold Random,entropy_sim,0.0,0.0,0.0,0.0,0.0099,0.0964,0.1566,0.2985,0.0255,0.6891
+Arm 4: Diff Scaffold Random,nl_cos,0.0,0.0,0.0,0.0,0.0074,0.0487,0.0969,0.2265,0.0163,0.9078
+Arm 4: Diff Scaffold Random,mod_cos,0.0,0.0,0.0,0.0109,0.0648,0.144,0.2145,0.3718,0.0477,0.9078

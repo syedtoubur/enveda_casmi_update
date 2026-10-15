@@ -40,11 +40,12 @@ import time
 from pathlib import Path
 
 import call_claude
+import gpu
 from _common import REPO, RESEARCH, idea_dir, load_config, log_gate, read_status, write_status
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # children of a detached process get no console
 FIX_SCOPE = """\
-- The fix agent may change the patch code in the line worktree (`C:/casmi/lines/<line>`), then rerun G1 and G2.
+- The fix agent may change the patch code in the line worktree (`E:/casmi/lines/<line>`), then rerun G1 and G2.
 - It may add push sources **that already exist in `dataset_catalog.json`** (`kaggle_push.py --source <owner/slug>`).
 - A dataset missing from the catalog, or a fix that would change the idea itself: write to `questions.md`, set STATUS `needs-human`, stop.
 - For a **control** idea only sources and metadata may change, never the notebook code.
@@ -79,6 +80,35 @@ def build_metadata(cfg, preset: str, slug: str, code_file: str, extra: list[str]
     if gpu:
         md["machine_shape"] = "NvidiaTeslaT4"  # L16: T4 on
     return md
+
+
+def control_image(cfg, line: str) -> str | None:
+    """The line control's pinned Kaggle image (control STATUS `docker_image:`). A probe runs on its control's image;
+    otherwise Kaggle uses its latest image and the comparison is no longer paired (E006 asserts Python 3.12)."""
+    ctrl = cfg["lines"].get(line, {}).get("control")
+    if not ctrl or not (REPO / ctrl / "STATUS").exists():
+        return None
+    return read_status(REPO / ctrl)[1].get("docker_image") or None
+
+
+def push_preconditions(cfg, idea: Path, line: str) -> str:
+    """'' when a probe may be pushed (loop audit W7, N5, N6), else why not:
+    - the line's control pins a Kaggle image (control STATUS `docker_image:`), so the pair runs on the same image;
+    - the newest G2 row is not a FAIL;
+    - a campaign idea (it has spec.md) is preflight-clean now, not only when it was specced."""
+    if cfg["lines"].get(line, {}).get("control") and not control_image(cfg, line):
+        return (f"control {cfg['lines'][line]['control']} has no `docker_image:` in STATUS; a probe on Kaggle's "
+                "latest image is not paired (E006 asserts Python 3.12)")
+    gates = idea / "gates.md"
+    g2 = [ln for ln in gates.read_text(encoding="utf-8").splitlines() if ln.startswith("| G2")] if gates.exists() else []
+    if g2 and "| FAIL" in g2[-1]:
+        return f"newest G2 row is a FAIL: {g2[-1][:200]}"
+    if (idea / "spec.md").exists():
+        import preflight
+        found = preflight.run(idea, preflight.load_rules())
+        if found:
+            return f"preflight not clean: {found[0][:200]}" + (f" (+{len(found) - 1} more)" if len(found) > 1 else "")
+    return ""
 
 
 FIND_RX = [r"""(?:\bfind|_find)\(\s*f?['"]([^'"]+)['"]""",
@@ -156,16 +186,73 @@ def grep_counters(log_text: str, patterns: list[str]) -> list[str]:
     return hits
 
 
+NUM = r"-?\d+(?:\.\d+)?"
+
+
 def counter_value(log_text: str, pat: str) -> float | None:
-    """The first number within 30 characters after the LAST match of `pat`, or None.
-    `[X] eligible molecules 1` -> 1; `... | molecules reranked 0 | ...` -> 0."""
+    """The counter's value at the LAST match of `pat`, or None.
+    - a capture group: its number (`lists (\\d+)`);
+    - a pattern that itself matches digits (`\\d`, `[0-9`) and ends on one: the number it ended on, so
+      `engine lists \\d+` reads 12 from `engine lists 12 619s`, not the runtime 619;
+    - otherwise the first number within 30 characters after the match:
+      `[X] eligible molecules 1` -> 1; `... | molecules reranked 0 | ...` -> 0."""
     rx, val = re.compile(pat), None
+    digits = bool(re.search(r"\\d|\[0-9", pat))
     for ln in log_text.splitlines():
         m = rx.search(ln)
-        if m:
-            n = re.match(r"\D{0,30}?(-?\d+(?:\.\d+)?)", ln[m.end():])
+        if not m:
+            continue
+        if m.groups() and m.group(1) is not None and re.fullmatch(NUM, m.group(1)):
+            val = float(m.group(1))
+        elif digits and (n := re.search(rf"({NUM})$", m.group(0))):
+            val = float(n.group(1))
+        else:
+            n = re.match(rf"\D{{0,30}}?({NUM})", ln[m.end():])
             val = float(n.group(1)) if n else None
     return val
+
+
+def read_submission(path: Path) -> dict[str, str]:
+    """molecule_id -> the ranked candidate string of a submission.csv ({} when absent)."""
+    import csv
+    if not path.is_file():
+        return {}
+    with path.open(encoding="utf-8", newline="") as f:
+        return {r["molecule_id"]: r.get("smiles", "") for r in csv.DictReader(f)}
+
+
+def draft_diff(probe_csv: Path, control_csv: Path) -> tuple[int, int]:
+    """(molecules whose ranked list differs, molecules in both drafts). A probe whose draft equals the
+    control's draft changed nothing on the draft slice: its G4 counters prove it ran, not that it fired."""
+    p, c = read_submission(probe_csv), read_submission(control_csv)
+    common = set(p) & set(c)
+    return sum(p[k] != c[k] for k in common), len(common)
+
+
+def control_draft(cfg, line: str) -> Path | None:
+    """The line control's own draft submission.csv (its G4 commit run), or None."""
+    lc = cfg["lines"].get(line, {})
+    path = lc.get("control_draft") or (f"{lc['control']}/kaggle_output/submission.csv" if lc.get("control") else None)
+    return REPO / path if path else None
+
+
+def firing_check(cfg, idea: Path, meta: dict) -> list[str]:
+    """Reasons the probe's own change did not demonstrably fire (L36): its draft must differ from the
+    control's draft on at least `g4_min_changed` molecules (STATUS overrides `gates.g4_min_changed`),
+    beyond the control's own run-to-run noise `gates.g4_draft_noise`."""
+    g = cfg.get("gates", {})
+    if meta.get("kind") in ("control", "instrument") or not g.get("g4_draft_diff", False):
+        return []
+    line = meta.get("line", idea.parent.name)
+    ctrl = control_draft(cfg, line)
+    if ctrl is None or not ctrl.is_file():
+        return [f"no control draft for line {line} ({ctrl}); push the control once to capture it"]
+    changed, common = draft_diff(idea / "kaggle_output" / "submission.csv", ctrl)
+    if not common:
+        return ["draft submission.csv missing or shares no molecule with the control draft"]
+    need = max(int(meta.get("g4_min_changed", g.get("g4_min_changed", 1))), int(g.get("g4_draft_noise", 0)) + 1)
+    return [] if changed >= need else [f"draft identical to control on {common - changed}/{common} molecules "
+                                       f"(changed {changed} < {need}): the change never fired"]
 
 
 def check_log(log_text: str, counters: list[str], markers: list[str],
@@ -201,11 +288,17 @@ def finalize(cfg, idea: Path, kernel: str, status: str, run=kaggle) -> int:
     shutil.rmtree(out, ignore_errors=True)
     run(["kernels", "output", kernel, "-p", str(out),
          "--file-pattern", OUTPUT_FILES], timeout=1800)
-    log_text = "".join(log_text_of(p) for p in out.glob("*.log")) if out.exists() else ""
+    logs = sorted(out.glob("*.log")) if out.exists() else []
+    log_text = "".join(log_text_of(p) for p in logs)
+    hours = max([h for p in logs if (h := gpu.log_hours(p.read_text(encoding="utf-8", errors="replace")))], default=None)
     hits = grep_counters(log_text, [c.lstrip("?") for c in counters])
     _, meta = read_status(idea)
+    if hours is not None:
+        gpu.record(idea.relative_to(REPO).as_posix(), kernel, hours, meta.get("kind", "probe"))
     required = cfg["lines"].get(meta.get("line", idea.parent.name), {}).get("g4_required") or []
     bad = check_log(log_text, counters, cfg.get("gates", {}).get("g4_fail_markers", []), required)
+    unfired = firing_check(cfg, idea, meta) if status == "complete" and not bad else []
+    bad += unfired
     ok = status == "complete" and not bad
     result = "PASS" if ok else f"FAIL ({status}{'; ' + ' / '.join(bad) if bad else ''})"
     log_gate(idea, "G4", result, f"{kernel}; counters: {' / '.join(hits) or 'none matched'}")
@@ -220,7 +313,8 @@ def finalize(cfg, idea: Path, kernel: str, status: str, run=kaggle) -> int:
     for h in hits:
         print("  ", h)
     reasons = bad if status == "complete" else [f"kernel status {status}"] + bad
-    after_g4(cfg, idea, ok, kernel, log_text, reasons, fatal=instrument)
+    no_ctrl = any(r.startswith("no control draft") for r in unfired)  # only a control push fixes it
+    after_g4(cfg, idea, ok, kernel, log_text, reasons, fatal=instrument or no_ctrl)
     return 0 if ok else 2
 
 
@@ -377,6 +471,13 @@ def after_g4(cfg, idea: Path, ok: bool, kernel: str, log_text: str = "", reasons
                 queue_ideas(probes)
             log_gate(idea, "G4 queue", f"{len(probes)} probes", ", ".join(probes) or "none")
             body += f"; queued: {', '.join(p.rsplit('/', 1)[-1] for p in probes) or 'none'}"
+        if meta.get("kind") not in ("control", "instrument"):
+            try:
+                import dossier
+                dossier.write_queue()
+                body += "; added to research/submit_queue.md"
+            except Exception as e:  # noqa: BLE001 - the queue must never break G4
+                print(f"[kaggle_push] dossier failed: {e}", flush=True)
         toast(f"{kernel} G4 PASS", body)
         return
     n = int(meta.get("g4_fixes", 0) or 0)
@@ -521,6 +622,20 @@ def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
             log_gate(idea, "G4", "BLOCKED", f"control {ctrl} has no G4 PASS yet (L31)")
             print(f"[kaggle_push] refused: control {ctrl} has no G4 PASS yet")
             return 6
+    if meta.get("kind") not in ("control", "instrument"):
+        why = push_preconditions(cfg, idea, line)
+        if why:
+            log_gate(idea, "G4", "BLOCKED", why)
+            print(f"[kaggle_push] refused: {why}")
+            return 10
+    kind = meta.get("kind", "probe")
+    why = gpu.refuse_reason(cfg, kind, gpu.estimate(cfg, kind, meta))
+    if why:
+        log_gate(idea, "G4", "BLOCKED", why)
+        with open(idea / "questions.md", "a", encoding="utf-8") as f:
+            f.write(f"\n- **GPU pool** ({time.strftime('%Y-%m-%d %H:%M')}): {why}\n")
+        print(f"[kaggle_push] refused: {why}")
+        return 8
     cat = json.loads((REPO / cfg["catalog"]).read_text(encoding="utf-8"))
     unknown = [s for s in a.source if s not in catalog_slugs(cat)]
     if unknown:
@@ -544,6 +659,8 @@ def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
     stage.mkdir()
     shutil.copy2(nb, stage / nb.name)
     md = build_metadata(cfg, preset, slug, nb.name, extra)
+    if img := control_image(cfg, line):
+        md["docker_image"] = img
     (stage / "kernel-metadata.json").write_text(json.dumps(md, indent=2), encoding="utf-8")
     (stage / "counters.txt").write_text("\n".join(a.counter) + "\n", encoding="utf-8")
     (stage / "push_args.json").write_text(json.dumps(
@@ -570,7 +687,10 @@ def main(argv=None, run=kaggle, sleep=time.sleep) -> int:
         write_status(idea, "g4-failed", kernel=md["id"])
         after_g4(cfg, idea, False, md["id"], reasons=[msg], fatal=True)  # only a catalog edit fixes it
         return 1
+    ver = re.search(r"Kernel version (\d+) successfully pushed", r.stdout + r.stderr, re.I)
     write_status(idea, "g4-pushed", kernel=md["id"], push_id=f"{time.time():.6f}",
+                 **({"kernel_version": ver.group(1)} if ver else {}),
+                 **({"docker_image": md["docker_image"]} if md.get("docker_image") else {}),
                  **({"extra_sources": ",".join(extra)} if extra else {}))
     log_gate(idea, "G4", "PUSHED", md["id"] + (f"; unresolved refs: {', '.join(unresolved)}"
                                                if unresolved else ""))

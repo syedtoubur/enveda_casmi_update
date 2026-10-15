@@ -1,0 +1,24 @@
+- 2026-10-14 14:25 | charter | - | grill 2026-10-14 (Opus, interactive): pool seeds reframed to e180-drop + engine2-npx spike; mutator chain pseudo-c3-dump -> c3-detector -> mutator-c3v2 ([2,3,4] if detector passes, else 21-25); supervised --once; supersedes 20261014-qoder-structural; L44 + R09 promoted; pre-reg gate_report 2026-10-14 e180-npool-mutator
+- 2026-10-14 14:20 replan (opus) brief 9435 chars  OVER 6000
+- 2026-10-14 | replan | research/exploit/20261014-e180-drop | pick e180-drop (portfolio priority 1, cycle 0, no closed cycles) | EV = reach 0.315 x +0.0038 (MEASURED demote ceiling .scratch/e180/ceiling.json) x P 0.6 / cost 1 = 0.0023; engine2-npx ASSUMED heavy (row 32 VOID), mutator chain gated on pseudo-c3-dump
+- 2026-10-14 14:39 spec (opus) brief 9829 chars  OVER 6000
+- 2026-10-14 15:13 preflight 20261014-e180-drop: 0 finding(s)
+- 2026-10-14 15:13 attack (opus) brief 9708 chars  OVER 6000
+- 2026-10-14 15:40 | human | research/exploit/20261014-e180-drop | attack A1(b) amended to structural A1(b') (np-examples carrying the enveda-180 bit >= 1% dies); instrument share was 1.0 for both Enveda libraries
+- 2026-10-14 15:28 build-harness (sonnet) brief 9590 chars  OVER 6000
+- 2026-10-14 15:32 20261014-e180-drop:build-harness: no progress (STATUS still attacked), attempt 1/2
+- 2026-10-14 16:05 | build-harness (run by the interactive session: headless Bash denied) | research/exploit/20261014-e180-drop | DEAD by gate.py: A4 died, C2 +0.0038 [+0.0006,+0.0076] but other +0.0003 vs leak-hit +0.0042 (C2_hard other +0.0012); A2/A5 survived (0 down, 0 rank-1 lost on 5 cohorts); A1(b') survived (0/250 np-examples carry the enveda-180 bit); A3 UNTESTED (scratch pool_smiles.parquet not local). Knob committed fbd206f (worktree branch idea/20261014-e180-drop, also carries lib-isomer-margin edits, default off)
+- 2026-10-14 15:39 cycle 1 closed: 20261014-e180-drop -> dead
+- 2026-10-14 15:39 report (sonnet) brief 9243 chars  OVER 6000
+- 2026-10-14 15:40 replan (opus) brief 9435 chars  OVER 6000
+- 2026-10-14 | replan | research/exploit/20261014-engine2-npx | cycle 1 taught: e180-drop gain lived on leak-hit (C2 other +0.0003, L40) -> dead; pick engine2-npx reach spike (portfolio priority 2, branch candidate-recall, build iff NP-table-only reach > 0 with exact-mass +1.45 ppm window = L44 split) | EV = reach <=0.03 (loss_map no-channel, unsplit) x 0.213 (B4) x +0.5 RR x P 0.3 / cost 1 (spike) = 0.0009; build cost 5; pseudo-c3-dump next (infra, EV 0 until detector pays); 20261014-candidates.md out of this charter's scope
+- 2026-10-14 16:05 spec (opus) brief 10099 chars  OVER 6000
+- 2026-10-14 16:40 | human | research/exploit/20261014-engine2-npx | closed dead after spec: rule 'reach > 0' met only by construction (4,748 NP structures absent from Engine 2; 2,629 from both engines), measured ceiling UNMEASURED (val 0/1,390), arithmetic <= +0.002; next = pseudo-c3-dump
+- 2026-10-14 16:11 cycle 2 closed: 20261014-engine2-npx -> dead
+- 2026-10-14 16:11 report (sonnet) brief 9729 chars  OVER 6000
+- 2026-10-14 16:12 replan (opus) brief 9435 chars  OVER 6000
+- 2026-10-14 | replan | research/exploit/20261014-pseudo-c3-dump | cycles 1-2 taught: e180-drop gain lived on leak-hit only (C2 other +0.0003, L40) -> dead; engine2-npx reach >0 only by construction, ceiling unmeasured -> dead; pick pseudo-c3-dump (portfolio priority 3, branch instrument, only live item; gates c3-detector -> mutator-c3v2; Kaggle dump run needs human approval) | EV = chain reach 0.25 (ASSUMED C3 share) x +0.010 (EXPERIMENTS.md:156) x P 0.15 / cost 2 = 0.0002; 20261014-candidates.md out of charter scope
+- 2026-10-14 16:13 spec (opus) brief 9631 chars  OVER 6000
+- 2026-10-14 16:27 20261014-pseudo-c3-dump:spec: no progress (exit error), attempt 1/2
+- 2026-10-14 17:21 spec (opus) brief 9631 chars  OVER 6000
+- 2026-10-15 | human | - | campaign STOPPED: superseded by 20261015-c3-gen-slot2 (generator union + slot-2 routing; pseudo-c3-dump, c3-detector carried over, mutator-c3v2 folded into c3-gen-union); stale campaign.lock (pid 20596 not running) removed
