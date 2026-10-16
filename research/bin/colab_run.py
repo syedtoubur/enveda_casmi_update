@@ -196,10 +196,17 @@ def main(argv=None, runner=wsl, shell=subprocess.run, consent=wait_consent) -> i
     ap.add_argument("--fetch", action="append", default=[], help="remote:local (local relative to idea)")
     ap.add_argument("--until", default=None,
                     help="re-exec the resumable script in the same session until its output holds this marker")
+    ap.add_argument("--gpu", default=None, help="override colab.gpu for this run (human-authorized, e.g. A100)")
+    ap.add_argument("--cu-cap", type=float, default=None, help="override this kind's CU cap for this run (human)")
+    ap.add_argument("--cu-per-hour", type=float, default=None, help="billing rate for --gpu (CU per hour)")
     a = ap.parse_args(argv)
 
     cfg = load_config()
     c = cfg["colab"]
+    bucket0 = {"smoke": "smoke", "spike": "smoke", "val": "val", "train": "train"}[a.kind]
+    for val, k in ((a.gpu, "gpu"), (a.cu_cap, f"cu_cap_{bucket0}"), (a.cu_per_hour, "cu_per_hour")):
+        if val is not None:
+            c[k] = val
     idea = idea_dir(a.idea)
     _, meta = read_status(idea)
     bucket = {"smoke": "smoke", "spike": "smoke", "val": "val", "train": "train"}[a.kind]

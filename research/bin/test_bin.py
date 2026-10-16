@@ -302,6 +302,22 @@ def test_colab_until_reexecs_in_one_session(repo):
     assert "=== exec 3" in log and "chunk 1" in log and "P4_DONE" in log
 
 
+def test_colab_gpu_and_cap_overrides(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    _common.write_status(idea, None, cu_val=4.0)                     # the config cap is spent ...
+    calls, news = [], []
+    base = _fake_runner(calls)
+
+    def run(cli, args, timeout=None):
+        if args[0] == "new":
+            news.append(args)
+        return base(cli, args, timeout)
+    rc = colab_run.main([str(idea), "s.py", "--kind", "val", "--gpu", "A100", "--cu-cap", "60",
+                         "--cu-per-hour", "12"], runner=run)                  # ... but the human raised it
+    assert rc == 0 and news and "A100" in news[0]
+
+
 def test_login_problem_reads_scopes():
     def shell(out):
         return lambda *a, **k: types.SimpleNamespace(stdout=out, returncode=0)
