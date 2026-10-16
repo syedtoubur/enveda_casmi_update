@@ -17,7 +17,14 @@
 - `--kind train` (grill 2026-10-13) runs only after the human approved the idea's training_request.md (STATUS
   `colab_train: approved`) and confirmed Drive (`python research/bin/colab_run.py --check-mount`).
 
-    python research/bin/colab_run.py --check-login     # free: token holds the full Drive scope?
+- Drive consent (verified 2026-10-16): every new VM asks for Colab's own Drive consent. drivemount prints a
+  Google link; colab_run writes it to research/queue/drive_consent.md, waits up to CONSENT_WAIT_S for the human
+  to approve it (tick every box) and create research/queue/drive_consent.ok, then drivemounts again (an approved
+  VM mounts without asking). The CLI token's scope is irrelevant (patching auth.py to full `drive` is blocked by
+  Google). So one session per run: `--until MARKER` re-execs the (resumable) script in the same session until its
+  output holds MARKER or the CU cap is spent; each exec gets CASMI_TIME_BUDGET_S to stop cleanly before its timeout.
+
+    python research/bin/colab_run.py --check-login     # free: token holds the colaboratory scope?
     python research/bin/colab_run.py --check-mount     # live: start a session, mount Drive, probe, stop (~0.05 CU)
 """
 from __future__ import annotations
@@ -56,21 +63,44 @@ def gate_fails(idea: Path, gate: str) -> int:
                if ln.startswith(f"| {gate} |") and "| FAIL" in ln) if g.exists() else 0
 
 
-DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
+COLAB_SCOPE = "https://www.googleapis.com/auth/colaboratory"
 LOGIN_CMD = ('wsl -- bash -lc "mv ~/.config/colab-cli/token.json ~/.config/colab-cli/token.json.bak; '
-             'OAUTHLIB_RELAX_TOKEN_SCOPE=1 ~/.local/bin/colab sessions"  (tick every Drive permission)')
+             'OAUTHLIB_RELAX_TOKEN_SCOPE=1 ~/.local/bin/colab sessions"  (in a real WSL terminal)')
+CONSENT_RX = re.compile(r"https://accounts\.google\.com/\S+")
+CONSENT_WAIT_S = 1800
 
 
 def login_problem(shell=subprocess.run) -> str:
-    """'' if the CLI token holds the full Drive scope, else why not. Free: reads a local file, no session."""
+    """'' if the CLI token holds the colaboratory scope, else why not. Free: reads a local file, no session."""
     r = shell(["wsl.exe", "--", "bash", "-lc", "cat ~/.config/colab-cli/token.json"],
               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     try:
         scopes = json.loads(r.stdout).get("scopes") or []
     except ValueError:
         return "not logged in (no readable ~/.config/colab-cli/token.json)"
-    return "" if DRIVE_SCOPE in scopes else "token lacks the full Drive scope (has: " + ", ".join(
+    return "" if COLAB_SCOPE in scopes else "token lacks the colaboratory scope (has: " + ", ".join(
         x.rsplit("/", 1)[-1] for x in scopes) + ")"
+
+
+def wait_consent(url: str, wait_s: float = CONSENT_WAIT_S, poll_s: float = 5.0) -> None:
+    """Hand the human this VM's Drive consent link and block until research/queue/drive_consent.ok appears."""
+    import _common
+    q = _common.RESEARCH / "queue"
+    q.mkdir(parents=True, exist_ok=True)
+    ok = q / "drive_consent.ok"
+    ok.unlink(missing_ok=True)
+    (q / "drive_consent.md").write_text(
+        f"# Colab Drive consent needed ({time.strftime('%Y-%m-%d %H:%M')})\n\nOpen, tick EVERY box, Continue:\n\n"
+        f"{url}\n\nThen create `research/queue/drive_consent.ok` (any content).\n", encoding="utf-8")
+    print(f"[colab_run] DRIVE CONSENT NEEDED: open the link in research/queue/drive_consent.md, tick every box, "
+          f"then create {ok}\n{url}", flush=True)
+    t_end = time.time() + wait_s
+    while time.time() < t_end:
+        if ok.exists():
+            ok.unlink(missing_ok=True)
+            return
+        time.sleep(poll_s)
+    raise RuntimeError(f"Drive consent not given within {wait_s:.0f} s")
 
 
 def ask_login(idea: Path, gate: str, why: str) -> None:
@@ -85,7 +115,8 @@ PRELUDE = 'export OAUTHLIB_RELAX_TOKEN_SCOPE=1; export PATH="$HOME/.local/bin:$P
 
 def wsl(colab: str, args: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
     sh = PRELUDE + " ".join([colab] + [shlex.quote(a) for a in args])
-    return subprocess.run(["wsl.exe", "--", "bash", "-lc", sh], capture_output=True,
+    # input: drivemount's consent prompt waits for Enter; answer it at once (consent is handled by re-mounting)
+    return subprocess.run(["wsl.exe", "--", "bash", "-lc", sh], capture_output=True, input="\n",
                           text=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
@@ -96,15 +127,22 @@ def budget_seconds(cfg, kind: str, cu_used_kind: float) -> float:
     return min(float(c["exec_timeout_s"]), left / c["cu_per_hour"] * 3600)
 
 
-def mount(c: dict, session: str, probe: Path, runner) -> None:
-    """drivemount + probe, remounting once; raises RuntimeError with the likely cause."""
-    for attempt in (1, 2):
+def mount(c: dict, session: str, probe: Path, runner, consent=wait_consent) -> None:
+    """drivemount + probe, remounting once; a consent link is handed to `consent` once, then drivemount again.
+    Raises RuntimeError with the likely cause."""
+    asked, attempts = False, 0
+    while attempts < 2:
         r = runner(c["cli"], ["drivemount", "-s", session], 600)
+        url = CONSENT_RX.search(ANSI.sub("", r.stdout + "\n" + r.stderr))
+        if url and not asked:
+            consent(url.group(0))
+            asked = True
+            continue
         if r.returncode != 0 or has_error(r.stdout + "\n" + r.stderr):
             raise RuntimeError(
-                f"drivemount failed: {ANSI.sub('', r.stderr)[-300:]} -- a Google 400 page plus "
-                "'mount failed' means the CLI token lacks the full Drive scope (only drive.file); "
-                "re-login granting full Drive access (see research/README.md, Colab login)")
+                f"drivemount failed: {ANSI.sub('', r.stderr)[-300:]} -- 'mount failed' after a consent link "
+                "means this VM's Colab Drive consent was not given (open the link, tick every box)")
+        attempts += 1
         p = runner(c["cli"], ["exec", "-s", session, "-f", win_to_wsl(probe),
                               "--timeout", str(MOUNT_WAIT_S + 30)], MOUNT_WAIT_S + 120)
         if "MOUNT_OK" in p.stdout:
@@ -113,7 +151,7 @@ def mount(c: dict, session: str, probe: Path, runner) -> None:
                        f"{r.stdout[-300:]}{r.stderr[-300:]} probe said: {p.stdout[-300:]}")
 
 
-def check_mount(cfg, runner=wsl, shell=subprocess.run) -> int:
+def check_mount(cfg, runner=wsl, shell=subprocess.run, consent=wait_consent) -> int:
     """Live Drive check after a re-login: 0 = mounted, 7 = login needed, 8 = mount failed."""
     import _common
     why = login_problem(shell)
@@ -128,7 +166,7 @@ def check_mount(cfg, runner=wsl, shell=subprocess.run) -> int:
         r = runner(c["cli"], ["new", "--gpu", c["gpu"], "-s", session], 600)
         if r.returncode != 0:
             raise RuntimeError(f"colab new failed: {r.stdout[-300:]}{r.stderr[-300:]}")
-        mount(c, session, probe, runner)
+        mount(c, session, probe, runner, consent)
         print("[colab_run] MOUNT OK: Colab sessions see /content/drive/MyDrive")
         return 0
     except (RuntimeError, subprocess.TimeoutExpired) as e:
@@ -138,14 +176,17 @@ def check_mount(cfg, runner=wsl, shell=subprocess.run) -> int:
         runner(c["cli"], ["stop", "-s", session], 300)
 
 
-def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
+EXEC_MARGIN_S = 240  # CASMI_TIME_BUDGET_S = exec timeout minus this, so a script flushes before it is cut off
+
+
+def main(argv=None, runner=wsl, shell=subprocess.run, consent=wait_consent) -> int:
     argv0 = argv if argv is not None else sys.argv[1:]
     if argv0 == ["--check-login"]:
         why = login_problem(shell)
         print("[colab_run] login OK" if not why else f"[colab_run] LOGIN NEEDED: {why}\n  run: {LOGIN_CMD}")
         return 0 if not why else 7
     if argv0 == ["--check-mount"]:
-        return check_mount(load_config(), runner, shell)
+        return check_mount(load_config(), runner, shell, consent)
     ap = argparse.ArgumentParser()
     ap.add_argument("idea")
     ap.add_argument("script")
@@ -153,6 +194,8 @@ def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
     ap.add_argument("--gate", default=None, help="gate label for gates.md (default by kind)")
     ap.add_argument("--env", action="append", default=[])
     ap.add_argument("--fetch", action="append", default=[], help="remote:local (local relative to idea)")
+    ap.add_argument("--until", default=None,
+                    help="re-exec the resumable script in the same session until its output holds this marker")
     a = ap.parse_args(argv)
 
     cfg = load_config()
@@ -205,20 +248,36 @@ def main(argv=None, runner=wsl, shell=subprocess.run) -> int:
         probe = idea / "colab" / "_mount_probe.py"
         probe.parent.mkdir(exist_ok=True)
         probe.write_text(MOUNT_PROBE, encoding="utf-8")
-        mount(c, session, probe, runner)
+        mount(c, session, probe, runner, consent)
         started = True
         resume = f"{c['drive_root']}/runs/{idea.name}/{a.kind}"
-        args = ["exec", "-s", session, "-f", win_to_wsl(script), "--timeout", f"{secs:.0f}",
-                "--env", f"CASMI_RESUME_DIR={resume}"]
-        for e in a.env:
-            args += ["--env", e]
-        r = runner(c["cli"], args, secs + 300)
-        logf.write_text(r.stdout + ("\n--- stderr ---\n" + r.stderr if r.stderr else ""),
-                        encoding="utf-8")
-        rc = r.returncode
-        if rc == 0 and has_error(r.stdout + "\n" + r.stderr):
-            rc = 3  # the CLI exits 0 even when the cell raised
-        result = "RAN" if rc == 0 else "FAIL"
+        logf.write_text("", encoding="utf-8")
+        n = 0
+        while True:
+            n += 1
+            spent = (time.time() - t0) / 3600 * c["cu_per_hour"]
+            left = budget_seconds(cfg, bucket, used_kind + spent)
+            args = ["exec", "-s", session, "-f", win_to_wsl(script), "--timeout", f"{left:.0f}",
+                    "--env", f"CASMI_RESUME_DIR={resume}",
+                    "--env", f"CASMI_TIME_BUDGET_S={max(60.0, left - EXEC_MARGIN_S):.0f}"]
+            for e in a.env:
+                args += ["--env", e]
+            r = runner(c["cli"], args, left + 300)
+            with logf.open("a", encoding="utf-8") as f:
+                f.write(f"\n=== exec {n} (timeout {left:.0f} s) ===\n" + r.stdout
+                        + ("\n--- stderr ---\n" + r.stderr if r.stderr else ""))
+            rc = r.returncode
+            if rc == 0 and has_error(r.stdout + "\n" + r.stderr):
+                rc = 3  # the CLI exits 0 even when the cell raised
+            if rc != 0 or not a.until or a.until in r.stdout:
+                break
+            spent = (time.time() - t0) / 3600 * c["cu_per_hour"]
+            if budget_seconds(cfg, bucket, used_kind + spent) < EXEC_MARGIN_S + 60:
+                rc = 5  # unfinished: CU cap spent before the marker; Drive holds the resume state
+                with logf.open("a", encoding="utf-8") as f:
+                    f.write(f"\n[colab_run] CU cap reached before {a.until!r}; resume with another run\n")
+                break
+        result = "RAN" if rc == 0 else ("PARTIAL" if rc == 5 else "FAIL")
     except (RuntimeError, subprocess.TimeoutExpired) as e:
         logf.write_text(f"{logf.read_text() if logf.exists() else ''}\n[colab_run] {e}\n",
                         encoding="utf-8")

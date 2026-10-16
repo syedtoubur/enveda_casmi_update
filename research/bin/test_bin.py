@@ -225,22 +225,97 @@ def test_colab_drivemount_error_fails_fast(repo):
         return base(cli, args, timeout)
     assert colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=run) == 1
     assert calls == ["new", "drivemount", "stop"]
-    assert "Drive scope" in (idea / "colab_smoke.log").read_text(encoding="utf-8")
+    assert "Drive consent" in (idea / "colab_smoke.log").read_text(encoding="utf-8")
+
+
+CONSENT_OUT = ("[colab] REQUIRED: Google Drive Authorization needed.\nPlease visit:\n\n"
+               "https://accounts.google.com/o/oauth2/v2/auth?client_id=x&state=y\n")
+
+
+def test_colab_consent_link_handed_over_then_remounts(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    calls, seen = [], []
+    base = _fake_runner(calls)
+    n_mount = [0]
+
+    def run(cli, args, timeout=None):
+        if args[0] == "drivemount":
+            calls.append("drivemount")
+            n_mount[0] += 1
+            if n_mount[0] == 1:  # first mount of a new VM: consent link, then 'mount failed'
+                return types.SimpleNamespace(returncode=0, stdout=CONSENT_OUT,
+                                             stderr="ValueError: mount failed\n")
+            return types.SimpleNamespace(returncode=0, stdout="Mounted at /content/drive\n", stderr="")
+        return base(cli, args, timeout)
+    rc = colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=run, consent=seen.append)
+    assert rc == 0 and seen == ["https://accounts.google.com/o/oauth2/v2/auth?client_id=x&state=y"]
+    assert calls.count("drivemount") == 2 and calls[-1] == "stop"
+
+
+def test_colab_consent_asked_twice_fails(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    calls, seen = [], []
+    base = _fake_runner(calls)
+
+    def run(cli, args, timeout=None):
+        if args[0] == "drivemount":
+            calls.append("drivemount")
+            return types.SimpleNamespace(returncode=0, stdout=CONSENT_OUT, stderr="ValueError: mount failed\n")
+        return base(cli, args, timeout)
+    assert colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=run, consent=seen.append) == 1
+    assert len(seen) == 1 and calls == ["new", "drivemount", "drivemount", "stop"]
+
+
+def test_wait_consent_returns_on_ok_file_and_times_out(repo):
+    root, _ = repo
+    ok = root / "research" / "queue" / "drive_consent.ok"
+    import threading
+    threading.Timer(0.2, lambda: ok.write_text("y")).start()
+    colab_run.wait_consent("https://accounts.google.com/x", wait_s=5, poll_s=0.05)
+    assert not ok.exists() and "accounts.google.com/x" in (ok.parent / "drive_consent.md").read_text()
+    try:
+        colab_run.wait_consent("https://accounts.google.com/x", wait_s=0.1, poll_s=0.05)
+        raise AssertionError("no timeout")
+    except RuntimeError as e:
+        assert "not given" in str(e)
+
+
+def test_colab_until_reexecs_in_one_session(repo):
+    _, idea = repo
+    (idea / "s.py").write_text("print(1)")
+    calls, outs = [], iter(["chunk 1", "chunk 2", "all done P4_DONE"])
+    base = _fake_runner(calls)
+    envs = []
+
+    def run(cli, args, timeout=None):
+        if args[0] == "exec" and "s.py" in " ".join(args):
+            calls.append("exec")
+            envs.append([x for x in args if x.startswith("CASMI_TIME_BUDGET_S=")])
+            return types.SimpleNamespace(returncode=0, stdout=next(outs), stderr="")
+        return base(cli, args, timeout)
+    rc = colab_run.main([str(idea), "s.py", "--kind", "val", "--until", "P4_DONE"], runner=run)
+    assert rc == 0 and calls.count("new") == 1 and calls.count("stop") == 1
+    assert len(envs) == 3 and all(e for e in envs)
+    log = (idea / "colab_val.log").read_text(encoding="utf-8")
+    assert "=== exec 3" in log and "chunk 1" in log and "P4_DONE" in log
 
 
 def test_login_problem_reads_scopes():
     def shell(out):
         return lambda *a, **k: types.SimpleNamespace(stdout=out, returncode=0)
-    full, narrow = colab_run.DRIVE_SCOPE, colab_run.DRIVE_SCOPE + ".file"
-    assert colab_run.login_problem(shell(json.dumps({"scopes": [full, "openid"]}))) == ""
-    assert "drive.file" in colab_run.login_problem(shell(json.dumps({"scopes": [narrow]})))
+    colab = colab_run.COLAB_SCOPE
+    narrow = "https://www.googleapis.com/auth/drive.file"
+    assert colab_run.login_problem(shell(json.dumps({"scopes": [colab, narrow, "openid"]}))) == ""
+    assert "colaboratory" in colab_run.login_problem(shell(json.dumps({"scopes": [narrow]})))
     assert "not logged in" in colab_run.login_problem(shell("cat: no such file"))
 
 
 def test_colab_login_needed_asks_and_starts_no_session(repo, monkeypatch):
     _, idea = repo
     (idea / "s.py").write_text("print(1)")
-    monkeypatch.setattr(colab_run, "login_problem", lambda shell=None: "token lacks the full Drive scope")
+    monkeypatch.setattr(colab_run, "login_problem", lambda shell=None: "token lacks the colaboratory scope")
     calls = []
     assert colab_run.main([str(idea), "s.py", "--kind", "smoke"], runner=_fake_runner(calls)) == 7
     assert calls == []
