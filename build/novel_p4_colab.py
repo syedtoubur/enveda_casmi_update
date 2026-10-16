@@ -21,9 +21,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from google.colab import drive
-drive.mount("/content/drive")
+if not os.path.isdir("/content/drive/MyDrive"):     # colab_run.py mounts before exec; a notebook mounts here
+    from google.colab import drive
+    drive.mount("/content/drive")
 
+T_START = time.time()
+TIME_BUDGET_S = float(os.environ.get("CASMI_TIME_BUDGET_S", "inf"))  # stop generating, flush, exit before the cutoff
 ROOT = Path("/content/drive/MyDrive/casmi_2026")
 P0 = ROOT / "_novel" / "p0"
 P1 = ROOT / "_novel" / "p1"
@@ -188,6 +191,9 @@ for i, m in enumerate(todo, 1):
         buf = {}
         el = time.time() - t_all
         print(f"{i}/{len(todo)}  {el / i:.1f}s/mol  eta {(len(todo) - i) * el / i / 60:.0f} min", flush=True)
+        if i < len(todo) and time.time() - T_START > TIME_BUDGET_S - 2.5 * el / i * CHUNK:
+            print(f"time budget: stopping after {i}; rerun to resume", flush=True)
+            break
 
 # %% [markdown]
 # ## Merge for download
@@ -199,5 +205,9 @@ for f in sorted(RAW.glob("chunk_*.pkl")):
 pickle.dump(dict(raw=ALL, beam=BEAM, sub256=sorted(sub256), decoder_epoch=CK["epoch"]),
             open(OUT / "p4_raw.pkl", "wb"), protocol=4)
 sec = pd.DataFrame([r["secs"] for r in ALL.values() if r.get("secs")])
-print(f"p4_raw.pkl: {len(ALL)} molecules -> download it to E:/casmi/c3_gen/ and run build/novel_p4_score.py")
-print("seconds per molecule (A100):", sec.describe().loc[["mean", "50%", "max"]].round(2).to_dict())
+print(f"p4_raw.pkl: {len(ALL)}/{len(MIDS)} molecules -> download it to E:/casmi/c3_gen/ and run build/novel_p4_score.py")
+if len(sec):
+    print(f"seconds per molecule ({torch.cuda.get_device_name(0) if DEV.type == 'cuda' else 'cpu'}):",
+          sec.describe().loc[["mean", "50%", "max"]].round(2).to_dict())
+if set(MIDS) <= set(ALL):
+    print("P4_DONE")

@@ -6,6 +6,7 @@ Reuses novel_p3_dryrun: fake Drive -> 2-epoch tiny training (writes p3/decoder.p
 
     python build/novel_p4_dryrun.py
 """
+import os
 import pickle
 import shutil
 import sys
@@ -24,7 +25,7 @@ import pandas as pd  # noqa: E402
 
 def p4_subs(drive_dir, chunk):
     return [
-        ('from google.colab import drive\ndrive.mount("/content/drive")', 'drive = None  # dry run'),
+        ('if not os.path.isdir("/content/drive/MyDrive"):', 'if False:  # dry run'),
         ('ROOT = Path("/content/drive/MyDrive/casmi_2026")', f'ROOT = Path({str(drive_dir)!r})'),
         ('SRC = Path("/content/novel_p4/src")', f'SRC = Path({str(Path(drive_dir).parent / "p4src")!r})'),
         ('assert v_match(rdkit.__version__, RDKIT_PIN), rdkit.__version__\n'
@@ -63,7 +64,16 @@ def main():
         pickle.dump(dict(rows=rows, cfg={}), open(out / "p4_inputs.pkl", "wb"))
         code = d3.nb_code(ROOT / "casmi_novel_p4_colab.ipynb")
         ptext = d3.patch(code, p4_subs(drive_dir, facts["chunk"]))
+        os.environ["CASMI_TIME_BUDGET_S"] = "0"            # colab_run's per-exec budget: stop after the first chunk
+        assert ptext.count("CHUNK = 2 ") == 1
+        try:                                                # CHUNK 1 so the 2-molecule fake cohort spans 2 chunks
+            ns0 = d3.run(ptext.replace("CHUNK = 2 ", "CHUNK = 1 "), "p4-budget")
+        finally:
+            del os.environ["CASMI_TIME_BUDGET_S"]
+        assert len(ns0["ALL"]) == 1 < len(ns0["MIDS"]), (len(ns0["ALL"]), len(ns0["MIDS"]))
+        print(f"time budget OK: stopped after {len(ns0['ALL'])}/{len(ns0['MIDS'])}, no P4_DONE")
         ns = d3.run(ptext, "p4")
+        assert set(ns["MIDS"]) <= set(ns["ALL"])
         raw = pickle.load(open(out / "p4_raw.pkl", "rb"))["raw"]
         assert set(raw) == set(rows), (len(raw), len(rows))
         n_dec = sum(len(r["dec"]) for r in raw.values())
