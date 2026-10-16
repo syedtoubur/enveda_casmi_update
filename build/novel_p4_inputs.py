@@ -85,7 +85,7 @@ def main(argv=None):
     ap.add_argument("--out", default=OUT)
     a = ap.parse_args(argv)
     import harness
-    state, deps, cp = harness.load_dump(a.dump, None)
+    state, deps, cp = harness.load_dump(a.dump, __import__("pathlib").Path(HERE) / "casmi_post.py")
     T = harness.truths()
     mids = [m for m in state["te_mids"] if m in T and T[m].get("cohort") == a.cohort]
     if a.limit:
