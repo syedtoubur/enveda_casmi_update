@@ -180,6 +180,7 @@ todo = [m for m in MIDS if m not in done_ids()]
 sub256 = set(MIDS[:SUB256])
 print(f"{len(MIDS) - len(todo)} done, {len(todo)} to go")
 buf, t_all = {}, time.time()
+t_chunk = t_all
 for i, m in enumerate(todo, 1):
     try:
         buf[m] = run_one(m, m in sub256)
@@ -191,7 +192,8 @@ for i, m in enumerate(todo, 1):
         buf = {}
         el = time.time() - t_all
         print(f"{i}/{len(todo)}  {el / i:.1f}s/mol  eta {(len(todo) - i) * el / i / 60:.0f} min", flush=True)
-        if i < len(todo) and time.time() - T_START > TIME_BUDGET_S - 2.5 * el / i * CHUNK:
+        last, t_chunk = time.time() - t_chunk, time.time()     # the next chunk must fit, with 50% slack
+        if i < len(todo) and time.time() - T_START + 1.5 * last > TIME_BUDGET_S:
             print(f"time budget: stopping after {i}; rerun to resume", flush=True)
             break
 
