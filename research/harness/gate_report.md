@@ -503,3 +503,20 @@ Idea chain: pseudo-c3-dump → c3-gen-union → c3-detector → c3-slot2-route. 
 - Not pre-registered (observation, for replan): BASE rank 1 is a generated candidate on 138/600 pseudo_c3 (55 correct)
   vs 2/245 C1_npx, 1/300 C1_xlib, 6/400 C2 (2 correct), 4/200 C2_hard. Post-scoring moves 44 of the 55 correct ones
   from rank 1 to ranks 2–7.
+
+### 2026-10-17: K1 MEASURED (c3-gen-union, Colab A100, 600 pseudo_c3, predicted formulas, beam 64, no FPNet)
+- **K1: PASS.** union top-1 exact h = **0.0767** (46/600; bar 0.03). `research/exploit/20261015-c3-gen-union/k1_result.{json,md}`,
+  code `build/novel_p4_colab.py` + `build/novel_p4_score.py` (idea/20261015-c3-gen-slot2), Colab 45.2 CU (6 execs, one session).
+- Arms (all 600): dec h 0.073 / hit@25 0.190 / MRR 0.102; **mut h 0.120** / hit@25 0.202 / MRR 0.146; union h 0.077 / hit@25 0.200 / MRR 0.105.
+  The union's top-1 is the decoder's: decoder leaves outscore true mutants on the one log-p scale, so the union is
+  *below* mut alone at rank 1 (0.077 vs 0.120). Not pre-registered; matters for K3 (interleave or route by source, not a single scale).
+- G4.0 (proxy; the oracle-formula run was not done separately): dec on the 559 molecules whose truth formula is among the
+  predicted, hit@25 0.204, h 0.079, far above the Track-2 kill of 1%. Formula recall 0.932.
+- Splits (union): acyclic h 0.271 / hit@25 0.674 (n 129); ring-bearing h 0.023 / hit@25 0.070 (n 471);
+  timsTOF h 0.0 (n 15; mut alone 0.267 there, 4/15). hit@1-4 union: 0.077 / 0.098 / 0.118 / 0.142.
+- Beam 256 (first 150 by molecule_id): identical h 0.100 to beam 64 on the same subset; hit@25 +0.007. Beam 256 adds nothing → K4 keeps beam 64.
+- **Marginal over Engine 1** (`k1_marginal.json`): on the 512 molecules whose truth is NOT in the BASE list, union top-1 **37** (7.2%),
+  top-25 94 (18.4%); on the 88 with truth in BASE: top-1 9, top-25 26 (BASE has 56 of those at rank 1).
+- Deviation from the pre-registered wording: the union was ranked by decoder log-p only; the ICEBERG-cosine re-score of the
+  amendment was not applied in K1. h is therefore a no-ICE figure.
+- Checkpoint: the human reads K1 before K2 (c3-detector).
