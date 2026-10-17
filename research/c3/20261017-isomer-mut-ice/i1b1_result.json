@@ -1,0 +1,270 @@
+{
+ "state": "measured",
+ "verdict": "not DEAD: reach_20 by ICE all-600 0.1017 >= 0.10, CI90 [0.083,0.124] straddles the bar",
+ "bar": "DEAD iff reach_20 by ICE < 0.10 (all-600, frag fallback for uncovered molecules)",
+ "kernels": {
+  "ice": "syedtoubur/c3iso-i1b1-ice-run v2",
+  "measure": "syedtoubur/c3iso-i1b1-measure-run v1",
+  "datasets": [
+   "syedtoubur/casmi26-c3iso-i1b1-ice-in",
+   "syedtoubur/casmi26-c3iso-i1b1-ice-out",
+   "syedtoubur/casmi26-c3iso-i1b-measure"
+  ]
+ },
+ "ice_run": {
+  "counters": {
+   "limit": 0,
+   "n_mols_in": 600,
+   "n_mols_covered": 482,
+   "n_cands_in": 92074,
+   "n_scored": 73620,
+   "n_failed_or_null": 18454,
+   "mols_scored": 482,
+   "gpu_seconds": 12284.317263841629,
+   "gpu_minutes": 204.73862106402714,
+   "cands_per_s": 5.993007052715691,
+   "total_s": 12297.671981334686
+  },
+  "ice_meta": {
+   "status": "ok",
+   "n_cands": 92074,
+   "n_scored": 73620,
+   "n_pred": 238092,
+   "n_pred_fail": 0,
+   "n_bad_smiles": 2,
+   "pred_per_s": 21.99,
+   "seconds": 12277.22,
+   "rdkit": "2025.03.6",
+   "device": "cuda"
+  }
+ },
+ "summary": {
+  "n": 600,
+  "n_ice_covered": 482,
+  "all_600_frag_fallback": {
+   "reach_20": {
+    "k": 61,
+    "n": 600,
+    "rate": 0.10166666666666667,
+    "ci90": [
+     0.083127480622631,
+     0.12378228783578904
+    ]
+   },
+   "reach_50": {
+    "k": 79,
+    "n": 600,
+    "rate": 0.13166666666666665,
+    "ci90": [
+     0.11060473758368139,
+     0.15603567592807938
+    ]
+   },
+   "reach_150": {
+    "k": 84,
+    "n": 600,
+    "rate": 0.14,
+    "ci90": [
+     0.1183112489013433,
+     0.16492101045856772
+    ]
+   },
+   "frag_reach_20": {
+    "k": 36,
+    "n": 600,
+    "rate": 0.06,
+    "ci90": [
+     0.04594107677329456,
+     0.07800946244437446
+    ]
+   }
+  },
+  "ice_covered": {
+   "reach_20": {
+    "k": 54,
+    "n": 482,
+    "rate": 0.11203319502074689,
+    "ci90": [
+     0.0905343188403989,
+     0.13786344277310614
+    ]
+   },
+   "reach_50": {
+    "k": 69,
+    "n": 482,
+    "rate": 0.14315352697095435,
+    "ci90": [
+     0.11890284254679848,
+     0.17138814674476757
+    ]
+   },
+   "reach_150": {
+    "k": 72,
+    "n": 482,
+    "rate": 0.14937759336099585,
+    "ci90": [
+     0.12463051791966304,
+     0.17803911690751525
+    ]
+   },
+   "frag_reach_20": {
+    "k": 29,
+    "n": 482,
+    "rate": 0.06016597510373444,
+    "ci90": [
+     0.04468586124979033,
+     0.08055652090027951
+    ]
+   }
+  },
+  "reach_20_by_ice_all600": {
+   "k": 61,
+   "n": 600,
+   "rate": 0.10166666666666667,
+   "ci90": [
+    0.083127480622631,
+    0.12378228783578904
+   ]
+  },
+  "not_in_fused10": {
+   "reach_20": {
+    "k": 60,
+    "n": 519,
+    "rate": 0.11560693641618497,
+    "ci90": [
+     0.0944871507306076,
+     0.14071383892400413
+    ]
+   },
+   "reach_50": {
+    "k": 78,
+    "n": 519,
+    "rate": 0.15028901734104047,
+    "ci90": [
+     0.12630376958551912,
+     0.17790164205514272
+    ]
+   },
+   "reach_150": {
+    "k": 83,
+    "n": 519,
+    "rate": 0.1599229287090559,
+    "ci90": [
+     0.13523158102463137,
+     0.1881417256121555
+    ]
+   },
+   "frag_reach_20": {
+    "k": 35,
+    "n": 519,
+    "rate": 0.0674373795761079,
+    "ci90": [
+     0.05148202644149878,
+     0.08787948823248783
+    ]
+   }
+  },
+  "hit_ops_ice20": {
+   "subst_shift": 31,
+   "db_shift": 4,
+   "chain_iso": 13,
+   "db_shift+db_shift": 1,
+   "subst_shift+subst_shift": 4,
+   "methyl_swap": 2,
+   "group_move": 5,
+   "chain_iso+chain_iso": 1
+  },
+  "truth_ice_rank_median": 11,
+  "truth_ice_rank_hist": {
+   "le5": 28,
+   "le20": 61,
+   "le50": 79,
+   "le150": 84
+  },
+  "kid_beats_fused": {
+   "all": 356,
+   "on_truth_hit20": 44,
+   "of_covered": 482
+  },
+  "ice_run": {
+   "meta": {
+    "status": "ok",
+    "n_mols": 600,
+    "n_mols_scored": 482,
+    "n_mols_covered": 482,
+    "n_cands": 92074,
+    "n_scored": 73620,
+    "errors": [
+     "smiles rejected (inchi round trip): COc1c(Cc2cc3ccccc3[nH]2)n([O-])c(=O)c[n+]1CC(C)C",
+     "smiles rejected (inchi round trip): COc1cn([O-])c(=O)c(CC(C)C)[n+]1Cc1cc2ccccc2[nH]1"
+    ],
+    "rdkit": "2025.03.6",
+    "torch": "2.10.0+cu128",
+    "device": "cuda",
+    "t_load": 30.54,
+    "n_pred": 238092,
+    "n_pred_fail": 0,
+    "t_pred": 10826.18,
+    "n_bad_smiles": 2,
+    "pred_per_s": 21.99,
+    "max_mem_gb": 6.38,
+    "seconds": 12277.22,
+    "log_tail": [
+     "[ice  5282.1s] chunk: 7 mols 3063 jobs 82.2s (220/482 covered mols scored)",
+     "[ice  6639.8s] chunk: 7 mols 3231 jobs 1054.5s (227/482 covered mols scored)",
+     "[ice  6738.0s] chunk: 8 mols 3225 jobs 94.9s (235/482 covered mols scored)",
+     "[ice  6879.4s] chunk: 8 mols 3489 jobs 135.1s (243/482 covered mols scored)",
+     "[ice  7024.2s] chunk: 7 mols 3200 jobs 133.4s (250/482 covered mols scored)",
+     "[ice  7134.4s] chunk: 8 mols 3200 jobs 106.0s (258/482 covered mols scored)",
+     "[ice  7219.1s] chunk: 8 mols 3116 jobs 81.4s (266/482 covered mols scored)",
+     "[ice  7320.2s] chunk: 5 mols 3078 jobs 98.3s (271/482 covered mols scored)",
+     "[ice  7408.5s] chunk: 8 mols 3266 jobs 85.5s (279/482 covered mols scored)",
+     "[ice  7535.1s] chunk: 7 mols 3200 jobs 120.0s (286/482 covered mols scored)",
+     "[ice  7929.1s] chunk: 6 mols 3840 jobs 339.1s (292/482 covered mols scored)",
+     "[ice  8651.5s] chunk: 6 mols 3360 jobs 571.1s (298/482 covered mols scored)",
+     "[ice  8753.2s] chunk: 6 mols 3360 jobs 98.9s (304/482 covered mols scored)",
+     "[ice  8879.1s] chunk: 6 mols 3360 jobs 122.5s (310/482 covered mols scored)",
+     "[ice  9000.2s] chunk: 6 mols 3040 jobs 117.8s (316/482 covered mols scored)",
+     "[ice  9113.8s] chunk: 6 mols 3150 jobs 110.4s (322/482 covered mols scored)",
+     "[ice  9229.8s] chunk: 7 mols 3158 jobs 110.4s (329/482 covered mols scored)",
+     "[ice  9329.3s] chunk: 8 mols 3454 jobs 96.3s (337/482 covered mols scored)",
+     "[ice  9428.1s] chunk: 9 mols 3356 jobs 95.2s (346/482 covered mols scored)",
+     "[ice  9520.3s] chunk: 8 mols 3034 jobs 86.8s (354/482 covered mols scored)",
+     "[ice  9631.6s] chunk: 8 mols 3253 jobs 107.4s (362/482 covered mols scored)",
+     "[ice  9716.6s] chunk: 7 mols 3360 jobs 82.3s (369/482 covered mols scored)",
+     "[ice  9832.7s] chunk: 7 mols 3357 jobs 112.5s (376/482 covered mols scored)",
+     "[ice  9918.9s] chunk: 7 mols 3054 jobs 83.0s (383/482 covered mols scored)",
+     "[ice 10000.6s] chunk: 7 mols 3087 jobs 79.0s (390/482 covered mols scored)",
+     "[ice 10096.5s] chunk: 7 mols 3304 jobs 93.0s (397/482 covered mols scored)",
+     "[ice 10188.2s] chunk: 7 mols 3360 jobs 88.7s (404/482 covered mols scored)",
+     "[ice 10324.1s] chunk: 6 mols 3360 jobs 131.5s (410/482 covered mols scored)",
+     "[ice 10435.6s] chunk: 7 mols 3360 jobs 106.1s (417/482 covered mols scored)",
+     "[ice 10525.8s] chunk: 5 mols 3360 jobs 88.0s (422/482 covered mols scored)",
+     "[ice 10591.3s] chunk: 4 mols 3177 jobs 64.3s (426/482 covered mols scored)",
+     "[ice 10719.7s] chunk: 6 mols 3360 jobs 124.9s (432/482 covered mols scored)",
+     "[ice 10955.9s] chunk: 6 mols 3081 jobs 208.3s (438/482 covered mols scored)",
+     "[ice 11153.5s] chunk: 6 mols 3040 jobs 184.2s (444/482 covered mols scored)",
+     "[ice 11289.8s] chunk: 7 mols 3360 jobs 129.1s (451/482 covered mols scored)",
+     "[ice 11380.0s] chunk: 6 mols 3360 jobs 87.6s (457/482 covered mols scored)",
+     "[ice 11475.0s] chunk: 6 mols 3520 jobs 92.7s (463/482 covered mols scored)",
+     "[ice 11564.0s] chunk: 7 mols 3102 jobs 86.4s (470/482 covered mols scored)",
+     "[ice 11668.2s] chunk: 6 mols 3360 jobs 100.7s (476/482 covered mols scored)",
+     "[ice 12277.2s] chunk: 6 mols 3360 jobs 493.2s (482/482 covered mols scored)"
+    ]
+   },
+   "limit": 0,
+   "n_mols_in": 600,
+   "n_mols_covered": 482,
+   "n_cands_in": 92074,
+   "n_scored": 73620,
+   "n_failed_or_null": 18454,
+   "mols_scored": 482,
+   "gpu_seconds": 12284.317263841629,
+   "gpu_minutes": 204.73862106402714,
+   "cands_per_s": 5.993007052715691,
+   "total_s": 12297.671981334686
+  },
+  "rdkit": "2026.03.3"
+ },
+ "c1_c2_i3_signal": "UNTESTED (C2 / C1_npx 100-molecule samples not run this round)"
+}

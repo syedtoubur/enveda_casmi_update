@@ -1,0 +1,9 @@
+instrument-ready
+mode: supervised
+line: c3
+branch: c3-route
+kind: instrument
+campaign: 20261017-c3-iso
+cu_used: 0
+result: s*=7 at pi 0.25 (other-variant) expected Delta -0.0009 CI [-0.0027,+0.0007] (pre-registered rule, no positive slot); keep-higher variant s=7 +0.0018
+reason: S1 instrument: no fixed slot pays (s*=7, E[delta] -0.0009 at pi 0.25); human checkpoint 2026-10-17

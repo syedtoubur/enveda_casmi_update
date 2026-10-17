@@ -1,0 +1,9 @@
+dead
+reason: reach_20 7.3% (90% CI 5.8-9.3) < 0.10 pre-registered bar on pseudo_c3 (reach_all 16.7%, pre-screen loses it; see A5)
+mode: supervised
+line: c3
+branch: c3-iso
+kind: offline
+campaign: 20261017-c3-iso
+cu_used: 0
+result: I1 DEAD: reach_20 44/600=7.3% [5.8,9.3], reach_all 100/600=16.7%

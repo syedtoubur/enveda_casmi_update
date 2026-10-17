@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-12 11:06",
+ "generated": "2026-10-17 18:19",
  "shards": [
   "C2",
   "C1_npx"
@@ -8,6 +8,9 @@
  "knobs": {
   "METRIC_FUSION": "e006_overlay",
   "FUSION_WINDOW": "e006_overlay",
+  "E180_DROP": "e006_overlay",
+  "E180_KEYS": "e006_overlay",
+  "DREAMS_FILL": "e006_overlay",
   "ICE_FALLBACK": "ice_fallback",
   "FINAL_PASS": "tail",
   "CELL19_ICE": "reranker",
@@ -29,7 +32,12 @@
   "SLOTS_AGG": "merge_gate",
   "SLOTS_GENTLE": "merge_gate",
   "ICE_PC": "merge_gate",
-  "TOPN": "merge_gate"
+  "TOPN": "merge_gate",
+  "ENGINE2_ROWS": "engine2_model",
+  "ENGINE2_W_PV": "engine2_model",
+  "FRAG_GAP": "v22_overlay",
+  "E2R2": "v22_overlay",
+  "GEN1_KEEP": "gen1_keep"
  },
  "verdicts": {
   "e006_overlay": "ADVISORY",
@@ -38,7 +46,10 @@
   "reranker": "BASE-COUPLED",
   "fusion": "BASE-COUPLED",
   "promotion": "BASE-COUPLED",
-  "merge_gate": "BASE-COUPLED"
+  "merge_gate": "BASE-COUPLED",
+  "engine2_model": "ADVISORY",
+  "v22_overlay": "ADVISORY",
+  "gen1_keep": "ADVISORY"
  },
  "flips_spec": [
   {
@@ -997,6 +1008,24 @@
     "verdict": "BASE-COUPLED",
     "coupling": 0.26740947075208915,
     "measured": true,
+    "flips": []
+   },
+   "engine2_model": {
+    "verdict": "ADVISORY",
+    "coupling": 0.0,
+    "measured": false,
+    "flips": []
+   },
+   "v22_overlay": {
+    "verdict": "ADVISORY",
+    "coupling": 0.0,
+    "measured": false,
+    "flips": []
+   },
+   "gen1_keep": {
+    "verdict": "ADVISORY",
+    "coupling": 0.0,
+    "measured": false,
     "flips": []
    }
   },

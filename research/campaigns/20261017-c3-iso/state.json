@@ -1,0 +1,64 @@
+{
+ "cycle": 2,
+ "lb_probes": 0,
+ "branch_streak": {
+  "c3-route": 0,
+  "c3-iso": 1
+ },
+ "closed_branches": [],
+ "current": "research/c3/20261017-isomer-mut-ice",
+ "stop": null,
+ "history": [
+  {
+   "idea": "research/c3/20261017-c3-slot-curve",
+   "status": "instrument-ready",
+   "branch": "c3-route",
+   "reason": "no fixed slot pays (s*=7, -0.0009)",
+   "override": "",
+   "t": "2026-10-17T19:54:06+06:00",
+   "now": "instrument-ready",
+   "lb": "",
+   "decision": ""
+  },
+  {
+   "idea": "research/c3/20261017-isomer-mut-sim",
+   "status": "dead",
+   "branch": "c3-iso",
+   "reason": "I1 reach_20 0.073 < 0.10 (reach_all 0.167; A5 pre-screen loses it)",
+   "override": "",
+   "t": "2026-10-17T19:54:06+06:00",
+   "now": "attacked",
+   "lb": "",
+   "decision": ""
+  },
+  {
+   "idea": "research/c3/20261017-gen-rank1-keep",
+   "status": "submitted",
+   "branch": "c3-route",
+   "reason": "G4 waived changed=0 (gen1_checked 12, kept 0); submitted ref 57325719 PENDING; KEEP iff LB>=0.451 and hidden gen1_kept>0",
+   "override": "g4_min_changed waived by orchestrator",
+   "t": "2026-10-18T03:02:00+06:00",
+   "now": "submitted",
+   "lb": "",
+   "decision": ""
+  },
+  {
+   "idea": "research/c3/20261017-isomer-mut-ice",
+   "status": "needs-human",
+   "branch": "c3-iso",
+   "reason": "I1b.0 PASS reach_150 0.140; I1b.1 NOT DEAD marginal reach_20 0.1017 CI 0.083-0.124 vs bar 0.10; I3 pending (trigger non-discriminating, C1/C2 untested)",
+   "override": "",
+   "t": "2026-10-18T03:45:00+06:00",
+   "now": "needs-human",
+   "lb": "",
+   "decision": ""
+  }
+ ],
+ "calls": {
+  "sonnet": 1
+ },
+ "stalls": {},
+ "ideation_rounds": 0,
+ "submitted": 1,
+ "i3": "pending: needs pre-registered margin/rank rule on scaffold half split + C2/C1_npx fire check"
+}

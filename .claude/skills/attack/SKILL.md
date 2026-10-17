@@ -15,7 +15,7 @@ You are the idea's adversary. Your win is a dead idea that would otherwise have 
    - a gain that sits only on leak-hit molecules (BASE rank 1 = truth), which the LB will not reproduce (calibration.md);
    - the draft run not changing any molecule against the control's draft;
    - runtime.
-2. **Write `attack.md`**: 3–6 rows of `attack | how stress_test.py checks it (data, fixture or harness subset) | idea dies if <numeric condition> | blocking yes/no`. Every check must be runnable on the harness dumps or synthetic fixtures, with no GPU. Mark an attack **blocking** when the idea must not ship unless the check actually ran: at the gate, a blocking attack left UNTESTED kills the idea.
+2. **Write `attack.md`**: 3–6 rows of `attack | how stress_test.py checks it (data, fixture or harness subset) | idea dies if <numeric condition> | blocking yes/no`. Every check must be runnable on the harness dumps or synthetic fixtures, with no GPU (heavy checks run as a Kaggle CPU kernel, never on this device: CLAUDE.md §3). Mark an attack **blocking** when the idea must not ship unless the check actually ran: at the gate, a blocking attack left UNTESTED kills the idea.
 3. Cite LB history only from scores on the same base pipeline (STATUS `lb_pipeline:` starts with the line's base notebook). An older pipeline's LB delta is an ASSUMED prior, not a death condition: the 10-12 promo-soften attack died on a pre-fusion LB delta.
 4. Correct `spec.md` only where an attack exposes a factual error, and cite it. Bars stay as they are.
 

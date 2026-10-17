@@ -12,6 +12,7 @@ Read the brief first; it names the line, its worktree, the base export, the post
 3. **Write `spec.md`** from `research/_template/spec.md`. The CASMI section holds:
    - the switch name and its default;
    - the target cohort (from the brief's list) and the reach in its loss-map bucket;
+   - where each measurement runs: anything that loads dumps, scores candidates or trains is a Kaggle kernel (**Heavy compute runs on Kaggle** (CLAUDE.md §3, human rule 2026-10-17)); name the kernel and its inputs;
    - the exact scorecard command from the brief (`--a` = the line's `harness_base_cfg`, `--b` = that plus the knob, `--target <cohort>`), or for a heavy-path idea the ceiling measurement plus the G1 row and G4 counters that prove the change fired;
    - value-checked counters for the shipped notebook, and `g4_min_changed`: how many draft molecules the change should alter (G4 diffs the probe's draft against the control's draft);
    - the ceiling, with every factor labelled MEASURED (with its source) or ASSUMED.

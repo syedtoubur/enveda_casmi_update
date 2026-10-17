@@ -1,0 +1,7 @@
+needs-human
+mode: supervised
+line: c3
+branch: c3-iso
+kind: offline
+campaign: 20261017-c3-iso
+cu_used: 0

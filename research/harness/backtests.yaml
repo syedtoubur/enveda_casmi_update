@@ -16,6 +16,8 @@ families:
   promotion: [PROMOTE, S_TAU, POP_TAU, REL_PROMOTE]
   merge_gate: [LIB_TAU, REL_TH, SLOTS_AGG, SLOTS_GENTLE, ICE_PC, TOPN]
   engine2_model: [ENGINE2_ROWS, ENGINE2_W_PV]   # heavy path (upstream of the dump): BLIND, no replay
+  v22_overlay: [FRAG_GAP, E2R2]   # 2026-10-17 c3-iso: V22 (antigravity-exploit 38a42a4) rank overlays, base cfg of line c3; no flip yet
+  gen1_keep: [GEN1_KEEP]   # 2026-10-17 c3-iso R1: pin an ICE-agreeing generated BASE #1 (line c3, 374f4c3); no flip yet
 
 flips:
   - id: e006

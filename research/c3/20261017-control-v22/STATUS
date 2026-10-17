@@ -1,0 +1,10 @@
+ready-to-submit
+mode: supervised
+line: c3
+kind: control
+campaign: 20261017-c3-iso
+kernel: syedtoubur/casmi26-control-v22-replicate
+push_id: 1792245730.763299
+kernel_version: 1
+docker_image: gcr.io/kaggle-private-byod/python@sha256:37c64f7dd9c54116ecd1bcc88817c5469b88387388fade02bfa8bf3fc647d461
+g4_fixes: 0

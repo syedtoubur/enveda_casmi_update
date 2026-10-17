@@ -1,0 +1,43 @@
+[
+ {
+  "id": "A1",
+  "died": false,
+  "status": "PASS",
+  "blocking": true,
+  "note": "GEN1_KEEP path (_gen1_fire/_gen1_keep) reads only formula tag, smiles/keys and state['ice']; unit test greps for fz/rel/S/pc_fz reads"
+ },
+ {
+  "id": "A2",
+  "died": false,
+  "status": "PASS-proxy",
+  "blocking": true,
+  "deviation": {
+   "original": "C1/C2 fires split by truth in MassSpecGym (msg_ik14.npy)",
+   "proxy": "raw C1/C2 fires and rank effects: C2 3 fires (2 gained rank 1), C2_hard 1 (0), C1_npx 0, C1_xlib 0; no C1/C2 displacement",
+   "accepted_by": "human, checkpoint 2026-10-17 (campaign 20261017-c3-iso)",
+   "detail": "No MassSpecGym ik14 list found in repo or E:/casmi/data (msg_ik14.npy lives on Colab Drive only). Proxy: raw C1/C2 fires and rank effects. C2 3 fires (2 gained rank 1), C2_hard 1 fire (0 gain), C1_npx 0, C1_xlib 0; no C1/C2 displacement."
+  },
+  "note": "truth in MSG split not computed"
+ },
+ {
+  "id": "A3",
+  "died": false,
+  "status": "PASS",
+  "blocking": true,
+  "note": "rank-1 displacements 0 of 600 pseudo_c3 (0.00%, bar 1%); no C1/C2 cohort CI upper bound < -0.004 (all CIs >= 0)"
+ },
+ {
+  "id": "A4",
+  "died": false,
+  "status": "PASS",
+  "blocking": true,
+  "note": "a-side equals V22 baselines: pseudo_c3 0.05619, C2 0.59072, C1_npx 0.92847, C2_hard 0.57073, C1_xlib 0.91533; GEN1_KEEP off is the default and unit test checks identical output"
+ },
+ {
+  "id": "A5",
+  "died": false,
+  "status": "FLAG",
+  "blocking": false,
+  "note": "not measurable offline; on hidden test FPNet has not seen spectra so generated #1 precision is lower; only the ICE guard protects. LB decides"
+ }
+]

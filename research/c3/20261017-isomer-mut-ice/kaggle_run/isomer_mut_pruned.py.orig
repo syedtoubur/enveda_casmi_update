@@ -1,0 +1,206 @@
+"""Pruned isomer operators (c3-iso I1b / V2): only the high-precision winning operators.
+Operators:
+  subst_shift: regio-isomer substituent shift (61 hits in I1)
+  chain_iso:   alkyl chain branching isomer (16 hits in I1)
+Capped at 50 children per molecule.
+"""
+from __future__ import annotations
+import time
+from rdkit import Chem, RDLogger
+from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+
+RDLogger.DisableLog("rdApp.*")
+MAX_FRAG = 25
+
+def _parse(smi):
+    m = Chem.MolFromSmiles(smi) if isinstance(smi, str) else None
+    if m is None:
+        return None
+    Chem.RemoveStereochemistry(m)
+    return m
+
+def formula(m):
+    return CalcMolFormula(m)
+
+def ik14_plain(smi):
+    m = _parse(smi)
+    if m is None:
+        return None
+    try:
+        return Chem.MolToInchiKey(m)[:14]
+    except Exception:
+        return None
+
+def _side(m, a, b):
+    seen, stack = {b}, [b]
+    while stack:
+        x = stack.pop()
+        for n in m.GetAtomWithIdx(x).GetNeighbors():
+            j = n.GetIdx()
+            if j in seen or (x == b and j == a):
+                continue
+            seen.add(j)
+            stack.append(j)
+    return seen
+
+def _ring_system(m, a):
+    seen, stack = {a}, [a]
+    while stack:
+        x = stack.pop()
+        for bd in m.GetAtomWithIdx(x).GetBonds():
+            if bd.IsInRing():
+                j = bd.GetOtherAtomIdx(x)
+                if j not in seen:
+                    seen.add(j)
+                    stack.append(j)
+    return seen
+
+def _hetero(at):
+    return at.GetAtomicNum() in (7, 8)
+
+def _prior(m, t):
+    at = m.GetAtomWithIdx(t)
+    if _hetero(at):
+        return 2
+    return 1 if any(_hetero(n) for n in at.GetNeighbors()) else 0
+
+def _finish(rw):
+    try:
+        mol = rw.GetMol()
+        Chem.SanitizeMol(mol)
+        return Chem.MolToSmiles(mol)
+    except Exception:
+        return None
+
+def _reattach(m, a, b, t):
+    rw = Chem.RWMol(m)
+    rw.RemoveBond(a, b)
+    rw.AddBond(b, t, Chem.BondType.SINGLE)
+    ta, tt = rw.GetAtomWithIdx(a), rw.GetAtomWithIdx(t)
+    if ta.GetNoImplicit() or ta.GetNumExplicitHs():
+        ta.SetNumExplicitHs(ta.GetNumExplicitHs() + 1)
+    if tt.GetNoImplicit() or tt.GetNumExplicitHs():
+        tt.SetNumExplicitHs(max(0, tt.GetNumExplicitHs() - 1))
+    return _finish(rw)
+
+def _totalH(at):
+    return at.GetTotalNumHs()
+
+def _one_moves_pruned(m):
+    out = []
+    # 1. subst_shift
+    seen_rs = {}
+    for bd in m.GetBonds():
+        if bd.IsInRing() or bd.GetBondType() != Chem.BondType.SINGLE:
+            continue
+        for a, b in ((bd.GetBeginAtomIdx(), bd.GetEndAtomIdx()), (bd.GetEndAtomIdx(), bd.GetBeginAtomIdx())):
+            aa = m.GetAtomWithIdx(a)
+            if not aa.IsInRing():
+                continue
+            S = _side(m, a, b)
+            if len(S) > MAX_FRAG or a in S:
+                continue
+            rs = seen_rs.setdefault(a, _ring_system(m, a))
+            for t in rs:
+                if t == a:
+                    continue
+                at = m.GetAtomWithIdx(t)
+                if _totalH(at) < 1 or at.GetAtomicNum() not in (6, 7):
+                    continue
+                s = _reattach(m, a, b, t)
+                if s:
+                    out.append(("subst_shift", s, _prior(m, t)))
+    # 2. chain_iso
+    for at in m.GetAtoms():
+        if at.GetAtomicNum() != 6 or at.GetDegree() != 1 or at.GetIsAromatic() or at.GetTotalNumHs() != 3:
+            continue
+        b = at.GetIdx()
+        a = at.GetNeighbors()[0]
+        if a.GetAtomicNum() != 6 or a.GetIsAromatic() or a.GetHybridization() != Chem.HybridizationType.SP3:
+            continue
+        a = a.GetIdx()
+        near = set()
+        for n1 in m.GetAtomWithIdx(a).GetNeighbors():
+            if n1.GetIdx() != b:
+                near.add(n1.GetIdx())
+                for n2 in n1.GetNeighbors():
+                    near.add(n2.GetIdx())
+        near -= {a, b}
+        for t in near:
+            ta = m.GetAtomWithIdx(t)
+            if (ta.GetAtomicNum() == 6 and not ta.GetIsAromatic() and ta.GetHybridization() == Chem.HybridizationType.SP3
+                    and ta.GetTotalNumHs() >= 1):
+                s = _reattach(m, a, b, t)
+                if s:
+                    out.append(("chain_iso", s, 0))
+    return out
+
+def _moves_checked(smi, f0, stats):
+    m = Chem.MolFromSmiles(smi)
+    if m is None:
+        return []
+    res = []
+    for op, s, pr in _one_moves_pruned(m):
+        c = Chem.MolFromSmiles(s)
+        if c is None:
+            stats["bad_smiles"] = stats.get("bad_smiles", 0) + 1
+            continue
+        if formula(c) != f0:
+            stats["formula_drop"] = stats.get("formula_drop", 0) + 1
+            continue
+        res.append((op, Chem.MolToSmiles(c), pr))
+    return res
+
+def mutate(parent_smi, max_moves=2, cap=50, deadline=None, stats=None, l2_from=25):
+    st = stats if stats is not None else {}
+    pm = _parse(parent_smi)
+    if pm is None:
+        return []
+    f0 = formula(pm)
+    p0 = Chem.MolToSmiles(pm)
+    seen = {p0}
+    out = []
+    l1 = _moves_checked(p0, f0, st)
+    l1.sort(key=lambda x: -x[2])
+    l1u = []
+    for op, s, pr in l1:
+        if s not in seen:
+            seen.add(s)
+            l1u.append((op, s, pr))
+            out.append((s, op, 1))
+    if max_moves >= 2:
+        for op1, s1, _ in l1u[:l2_from]:
+            if (cap and len(out) >= cap) or (deadline and time.monotonic() > deadline):
+                break
+            l2 = _moves_checked(s1, f0, st)
+            l2.sort(key=lambda x: -x[2])
+            for op2, s2, pr in l2:
+                if s2 not in seen:
+                    seen.add(s2)
+                    out.append((s2, f"{op1}+{op2}", 2))
+    return out[:cap] if cap else out
+
+def mutate_many(parents, cap=50, deadline=None, exclude_keys=(), stats=None, max_moves=2):
+    st = stats if stats is not None else {}
+    per = []
+    for p in parents:
+        if deadline and time.monotonic() > deadline:
+            break
+        per.append((p, mutate(p, max_moves=max_moves, cap=0, deadline=deadline, stats=st)))
+    keys, out = set(exclude_keys), []
+    keys.update(k for k in (ik14_plain(p) for p in parents) if k)
+    for nm in (1, 2):
+        lists = [(p, [c for c in ch if c[2] == nm]) for p, ch in per]
+        i = 0
+        while any(len(l) > i for _, l in lists):
+            for p, l in lists:
+                if i < len(l):
+                    s, op, n = l[i]
+                    k = ik14_plain(s)
+                    if k and k not in keys:
+                        keys.add(k)
+                        out.append((s, k, op, p, n))
+                        if len(out) >= cap:
+                            return out
+            i += 1
+    return out

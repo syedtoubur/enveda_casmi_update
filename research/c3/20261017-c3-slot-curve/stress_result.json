@@ -1,0 +1,37 @@
+[
+ {
+  "id": "A1",
+  "died": false,
+  "status": "accepted by design",
+  "blocking": true,
+  "note": "C1/C2 insert is a sure-wrong placeholder: conservative cost bound, reported as such"
+ },
+ {
+  "id": "A2",
+  "died": false,
+  "status": "passed",
+  "blocking": true,
+  "note": "unit tests + every real V22 row and every inserted row checked for duplicate IK14 and len<=25 (slots 2,7,25 on all 600 pseudo_c3 rows)"
+ },
+ {
+  "id": "A3",
+  "died": false,
+  "status": "passed",
+  "blocking": true,
+  "note": "x from p4_raw.pkl via c3_detector.gen_top1 mut-first (log-p beam); test asserts no fz/gen_rank in the chooser"
+ },
+ {
+  "id": "A4",
+  "died": false,
+  "status": "flag",
+  "blocking": false,
+  "note": "15-timsTOF sub-curve reported (n=15, CI spans zero for all s); positive only at s=2"
+ },
+ {
+  "id": "A5",
+  "died": false,
+  "status": "done",
+  "blocking": false,
+  "note": "curves reported at pi 0.15/0.25/0.35; s* chosen once at 0.25 other-variant: s=7, -0.0009"
+ }
+]

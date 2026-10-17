@@ -1,0 +1,141 @@
+{
+ "schema": "scorecard-1",
+ "a": {
+  "METRIC_FUSION": true,
+  "ICE_FALLBACK": true,
+  "FUSION_WINDOW": 40,
+  "REL_PROMOTE": 150.0,
+  "FRAG_GAP": true,
+  "E2R2": true
+ },
+ "b": {
+  "METRIC_FUSION": true,
+  "ICE_FALLBACK": true,
+  "FUSION_WINDOW": 40,
+  "REL_PROMOTE": 150.0,
+  "FRAG_GAP": true,
+  "E2R2": true,
+  "GEN1_KEEP": true
+ },
+ "knobs": {
+  "GEN1_KEEP": true
+ },
+ "target": "pseudo_c3",
+ "cohorts": {
+  "C2": {
+   "n": 400,
+   "cls": "C2",
+   "mrr_a": 0.5907218163780663,
+   "mrr_b": 0.593638483044733,
+   "delta": 0.002916666666666667,
+   "ci90": [
+    0.0,
+    0.008817234053380148
+   ],
+   "up": 2,
+   "down": 0,
+   "delta_leak_hit": 0.0032497678737233057,
+   "n_leak_hit": 359,
+   "delta_other": 0.0,
+   "displaced": 0,
+   "advisory": false
+  },
+  "C1_npx": {
+   "n": 245,
+   "cls": "C1",
+   "mrr_a": 0.9284710074505993,
+   "mrr_b": 0.9284710074505993,
+   "delta": 0.0,
+   "ci90": [
+    0.0,
+    0.0
+   ],
+   "up": 0,
+   "down": 0,
+   "delta_leak_hit": 0.0,
+   "n_leak_hit": 219,
+   "delta_other": 0.0,
+   "displaced": 0,
+   "advisory": false
+  },
+  "C2_hard": {
+   "n": 200,
+   "cls": "C2",
+   "mrr_a": 0.5707318376068375,
+   "mrr_b": 0.5707318376068375,
+   "delta": 0.0,
+   "ci90": [
+    0.0,
+    0.0
+   ],
+   "up": 0,
+   "down": 0,
+   "delta_leak_hit": 0.0,
+   "n_leak_hit": 165,
+   "delta_other": 0.0,
+   "displaced": 0,
+   "advisory": false
+  },
+  "C1_xlib": {
+   "n": 300,
+   "cls": "C1",
+   "mrr_a": 0.9153347763347763,
+   "mrr_b": 0.9153347763347763,
+   "delta": 0.0,
+   "ci90": [
+    0.0,
+    0.0
+   ],
+   "up": 0,
+   "down": 0,
+   "delta_leak_hit": 0.0,
+   "n_leak_hit": 269,
+   "delta_other": 0.0,
+   "displaced": 0,
+   "advisory": false
+  },
+  "pseudo_c3": {
+   "n": 600,
+   "cls": "C3",
+   "mrr_a": 0.05618795093795094,
+   "mrr_b": 0.06618795093795095,
+   "delta": 0.01,
+   "ci90": [
+    0.00447427293064877,
+    0.016275221769881693
+   ],
+   "up": 10,
+   "down": 0,
+   "delta_leak_hit": 0.10714285714285714,
+   "n_leak_hit": 56,
+   "delta_other": 0.0,
+   "displaced": 0,
+   "advisory": false
+  },
+  "C2_np": {
+   "n": 245,
+   "cls": "C2",
+   "mrr_a": 0.5431634125511675,
+   "mrr_b": 0.5431634125511675,
+   "delta": 0.0,
+   "ci90": [
+    0.0,
+    0.0
+   ],
+   "up": 0,
+   "down": 0,
+   "delta_leak_hit": 0.0,
+   "n_leak_hit": 232,
+   "delta_other": 0.0,
+   "displaced": 0,
+   "advisory": true
+  }
+ },
+ "n_target": 600,
+ "displaced": 0,
+ "composite": 0.0038194444444444448,
+ "family": "unknown:GEN1_KEEP",
+ "verdict": "QUEUE",
+ "dead": [],
+ "flags": []
+}

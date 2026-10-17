@@ -1,0 +1,67 @@
+{
+ "pseudo_c3": {
+  "n": 600,
+  "changed_rows": 24,
+  "gen_base1": 138,
+  "gen_base1_correct": 55,
+  "gen_correct_rank1_v22": 11,
+  "gen_correct_rank1_b": 21,
+  "fires": 37,
+  "gen1_moved": 24,
+  "displaced_rank1": 0,
+  "gained_rank1": 10,
+  "displaced_pct": 0.0
+ },
+ "C2": {
+  "n": 400,
+  "changed_rows": 3,
+  "gen_base1": 6,
+  "gen_base1_correct": 2,
+  "gen_correct_rank1_v22": 0,
+  "gen_correct_rank1_b": 2,
+  "fires": 3,
+  "gen1_moved": 3,
+  "displaced_rank1": 0,
+  "gained_rank1": 2,
+  "displaced_pct": 0.0
+ },
+ "C1_npx": {
+  "n": 245,
+  "changed_rows": 0,
+  "gen_base1": 2,
+  "gen_base1_correct": 0,
+  "gen_correct_rank1_v22": 0,
+  "gen_correct_rank1_b": 0,
+  "fires": 0,
+  "gen1_moved": 0,
+  "displaced_rank1": 0,
+  "gained_rank1": 0,
+  "displaced_pct": 0.0
+ },
+ "C2_hard": {
+  "n": 200,
+  "changed_rows": 1,
+  "gen_base1": 4,
+  "gen_base1_correct": 0,
+  "gen_correct_rank1_v22": 0,
+  "gen_correct_rank1_b": 0,
+  "fires": 1,
+  "gen1_moved": 1,
+  "displaced_rank1": 0,
+  "gained_rank1": 0,
+  "displaced_pct": 0.0
+ },
+ "C1_xlib": {
+  "n": 300,
+  "changed_rows": 0,
+  "gen_base1": 1,
+  "gen_base1_correct": 0,
+  "gen_correct_rank1_v22": 0,
+  "gen_correct_rank1_b": 0,
+  "fires": 0,
+  "gen1_moved": 0,
+  "displaced_rank1": 0,
+  "gained_rank1": 0,
+  "displaced_pct": 0.0
+ }
+}

@@ -1,0 +1,37 @@
+[
+ {
+  "id": "A1",
+  "died": false,
+  "status": "pass",
+  "blocking": true,
+  "note": "Top-150 file and chunk pickles written (21:40) before measure_i1b loaded truths; measure asserts the frozen file exists and is unmodified; tests test_freeze_before_truth and the static no-truth check on generate_i1b/_compact/_work pass. The first full process died silently after FROZEN (measure phase, empty .err); measurement was re-run in a separate process on the already frozen file."
+ },
+ {
+  "id": "A2",
+  "died": false,
+  "status": "pass",
+  "blocking": true,
+  "note": "Formula drift 0 (formula_drops 0; every child formula-checked against its parent)."
+ },
+ {
+  "id": "A3",
+  "died": false,
+  "status": "flag",
+  "blocking": false,
+  "note": "Cap 600 still binding: 344/600 molecules hit 600 (474/600 at cap 300); 24 hit the 120 s deadline. reach_all 0.185 (cap 600) vs 0.167 (cap 300) remains a lower bound."
+ },
+ {
+  "id": "A4",
+  "died": false,
+  "status": "flag",
+  "blocking": false,
+  "note": "Truth frag rank among children (111 reachable truths): <=20: 36, 21-50: 28, 51-150: 20, 151-300: 17, >300: 10; median 39. 27/111 (24%) are lost by the 150 cut, 47/111 (42%) by a top-20 cut."
+ },
+ {
+  "id": "A5",
+  "died": false,
+  "status": "flag",
+  "blocking": false,
+  "note": "CPU 21.9 s/molecule (gen 19.9 + frag 2.0), max 135 s; 600-molecule wall 4915 s on 3 procs (1.37 h). 400 hidden molecules: about 2.4 h single core, about 0.8 h on 3 cores. Deadline now enforced inside generation: 1/600 over 125 s (126 s max gen)."
+ }
+]

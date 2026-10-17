@@ -1,0 +1,17 @@
+{
+  "id": "syedtoubur/casmi26-c3-isomer-ice-eval",
+  "title": "casmi26-c3-isomer-ice-eval",
+  "code_file": "kaggle_eval_pseudo_c3.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "false",
+  "dataset_sources": [
+    "syedtoubur/casmi-0433-harness-pseudoc3",
+    "ahmedberatozer/casmi26-iceberg"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}

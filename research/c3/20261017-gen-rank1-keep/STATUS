@@ -1,0 +1,16 @@
+needs-human
+mode: supervised
+line: c3
+branch: c3-gen1
+kind: replay
+campaign: 20261017-c3-iso
+cu_used: 0
+g4_min_changed: 1
+result: GEN1_KEEP pseudo_c3 +0.0100 [+0.0045,+0.0163], C1/C2 ~0, 0 rank-1 displaced; recovers 10 of 44 moved-away correct gen #1
+gate: queued (rank-only); flags: attack A2 ran a proxy (raw C1/C2 fires and rank effects: C2 3 fires (2 gained rank 1), C2_hard 1 (0), C1_npx 0, C1_xlib 0; no C1/C2 displacement) instead of C1/C2 fires split by truth in MassSpecGym (msg_ik14.npy); accepted by human, checkpoint 2026-10-17 (campaign 2026101
+kernel: syedtoubur/casmi26-gen-rank1-keep
+push_id: 1792261749.897092
+kernel_version: 1
+docker_image: gcr.io/kaggle-private-byod/python@sha256:37c64f7dd9c54116ecd1bcc88817c5469b88387388fade02bfa8bf3fc647d461
+extra_sources: syedtoubur/casmi26-e180-keys
+g4_fixes: 1

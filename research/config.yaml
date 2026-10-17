@@ -20,6 +20,22 @@ lines:
       - 'engine lists \d+'
       - 'ICE meta \{"status": "ok".*"device": "cuda"'
       - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
+  c3:                       # grill 2026-10-17 (campaign 20261017-c3-iso): Class-3 targeting on the V22 base
+    worktree: E:/casmi/lines/c3           # branch line/c3 = idea/20261015-c3-gen-slot2 (faeedf0) + V22 parity (merge 38a42a4)
+    branch: line/c3
+    base_notebook: scratch/baseline/casmi26-v22-rel150-e2r2-clean.ipynb
+    base_export: scratch/baseline/casmi26_baseline.py
+    post_module: build/casmi_post.py
+    harness_base_cfg: 'METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40,REL_PROMOTE=150.0,FRAG_GAP=true,E2R2=true'
+    kaggle_preset: sota_0433_inference_preset
+    code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (V22 base .ipynb -> probe .ipynb); novel generators as build/<module>.py"
+    keep_bar: 0.451         # paired own-account V22 replicate LB + 0.004 (replicate pending; 0.447 + 0.004)
+    control: research/c3/20261017-control-v22   # own-account V22 replicate syedtoubur/casmi26-control-v22-replicate (G4 PASS 2026-10-17)
+    control_draft: research/c3/20261017-control-v22/kaggle_output/submission.csv
+    g4_required:
+      - 'engine lists \d+'
+      - 'ICE meta \{"status": "ok".*"device": "cuda"'
+      - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
   explore:                  # grill 2026-10-13: Class-3 de novo, new Class-2 models, literature ideas, built as modules
     worktree: E:/casmi/lines/explore      # grafted onto the exploit base (E006 v1), paired with the same control
     branch: line/explore

@@ -561,3 +561,93 @@ C1/C2 dumps lack the Engine 2 analog export, so generator features on the negati
 - Leak check: fz_top median pos 505 / leak-hit 465 / other 126, so the FPNet-seen leak-hit negatives look like pseudo_c3
   on f·z (KS 0.07) while the "other" don't (KS 0.27): f·z separates FPNet-seen from unseen, not C3 from C1/C2. rel KS 0.43–0.51.
 - Next (checkpoint 2): v1 with generator features needs a human go on a costed plan; test fire rate still unmeasured.
+
+### 2026-10-17: c3-iso campaign, PRE-REGISTERED (grill 2026-10-17, plan `~/.claude/plans/scratch-handoffs-handoff-20261017-c3-ta-sleepy-kernighan.md`; written before any measurement under it; line `c3`, base V22 cfg `METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40,REL_PROMOTE=150.0,FRAG_GAP=true,E2R2=true`; the rank-only gate 2026-10-13 still applies)
+Target cohort pseudo_c3 (V22 MRR@25 0.0562, `research/campaigns/baseline_calibration.json`); C1/C2 are judged on the
+leak-free "other" Δ (L40). No separate C3 detector (K2 v0 dead): every trigger below is relative, within one molecule.
+- **P0 (line parity):** `harness.py scorecard --line c3 --a <V22> --b <V22>` gives Δ 0 on every cohort and the MRRs of
+  `baseline_calibration.json`. Any measurement below is void until P0 passes.
+- **S1 c3-slot-curve (instrument, no kill):** replay inserting the K1 mut-first top-1 (`E:/casmi/c3_gen/p4_raw.pkl`;
+  mutator top-1 if any mutant, else decoder top-1) at a fixed slot s ∈ {2..25} for every molecule; on C1/C2 the insert
+  is a sure-wrong placeholder (cost only). Report per cohort Δ(s) with the scaffold-bootstrap CI and the expected
+  Δ(s) = π·Δ_pseudo_c3(s) + (1−π)·mean C1/C2-other Δ(s) at π 0.15/0.25/0.35. Output: s* = argmax at π 0.25 (chosen once).
+- **R1 gen-rank1-keep (knob `GEN1_KEEP`, default off):** fires iff the pre-post-scoring BASE #1 is generated (pid −1,
+  HX_PID) AND it has the highest ICEBERG cosine among the BASE top 5 with ICE scores (dump ICE; no FPNet in the
+  trigger). Effect: that candidate is rank 1 of the final row (the rest keep their order, deduped, cut at 25). Dead per
+  the rank-only rules (target pseudo_c3). Report fires per cohort, kept of the 55 correct generated BASE #1 (K0), and
+  rank-1 displacements on every cohort.
+- **I1 isomer-mut-sim reach (CPU):** mass-preserving isomer operators (formula identical, checked) on the V22 fused top
+  10 per molecule; dedupe by plain IK14 (tautomer IK14 only on the top few); CPU fragment pre-screen scored against the
+  query's **measured** spectrum (R10) → top N = 20 mutants per molecule. **DEAD iff reach_20 (truth IK14 among the 20)
+  < 10% on pseudo_c3.** The truth only reports reach, never selects. Also report reach_all, acyclic/ring and
+  15-timsTOF splits, mutants per molecule on C1/C2, and CPU s per molecule (for the K4 runtime projection).
+- **I2 (GPU, only after a human go on a costed plan):** ICEBERG cosine on retrieved + the 20 mutants, every cohort.
+- **I3 replay (knob `ISO_MUT`, default off):** fire iff best-mutant ICE − max retrieved-candidate ICE > m; m chosen once
+  on a scaffold-grouped half of the pooled cohorts and frozen (never re-swept against the LB). Insert at rank 2 (never
+  rank 1; rule + fixture); other mutants above m fill ranks 21–25. Dead per the rank-only rules; report fires per
+  cohort and the C1/C2 split by truth ∈ MassSpecGym (ICEBERG training overlap biases false fires low).
+- **Ship (any idea):** projected hidden runtime ≤ 8.5 h; value-checked counters (`gen1_kept`, `iso_fired`); the paired
+  control is an own-account V22 replicate pushed in the same window; KEEP iff probe ≥ control + 0.004, then replicate
+  (`poll_lb.decide`).
+
+### 2026-10-17: c3-iso P0 MEASURED (line parity)
+- **P0: PASS.** `harness.py scorecard --line c3 --a <V22> --b <V22> --target pseudo_c3`: Δ +0.0000 and 0 displaced on all
+  six cohorts; MRR@25 equal to `baseline_calibration.json` (C2 0.5907, C1_npx 0.9285, C2_hard 0.5707, C1_xlib 0.9153,
+  pseudo_c3 0.0562, C2_np 0.5432). Worktree `E:/casmi/lines/c3` @ dab59b0. (The scorecard's "VERDICT DEAD" is the a = b no-op.)
+
+### 2026-10-17: c3-iso wave 1 MEASURED (S1, R1, I1; human checkpoint the same day)
+- **S1 c3-slot-curve (instrument):** no slot pays without a trigger. Pre-registered s* = 7, E[Δ] at π 0.25 = −0.0009
+  [−0.0027, +0.0007]; every slot ≤ 0 at π 0.15/0.25. Slot 2: pseudo_c3 +0.039, C2 −0.054, C2_hard −0.047. A supplementary
+  keep-higher variant (not pre-registered, never used for a choice) gives +0.0018 at s 7. `research/c3/20261017-c3-slot-curve/result.md`.
+- **R1 gen-rank1-keep:** pseudo_c3 **+0.0100** [+0.0045, +0.0163] (10 up / 0 down, 37 fires, 0 displaced); C2 +0.0029
+  [0, +0.0088] (3 fires); C1_npx, C1_xlib, C2_hard 0 (C2_hard 1 fire); composite +0.0038. Recovers 10 of the 44 correct
+  generated BASE #1 that post-scoring demotes. Attack A2 (C1/C2 fires by MassSpecGym overlap) ran on a proxy (raw fires,
+  0 displaced; msg_ik14.npy only on Colab Drive); **the human accepted the proxy at the checkpoint** → gate.py decides.
+- **I1 isomer-mut-sim reach: DEAD** (bar reach_20 ≥ 0.10). reach_20 **0.073** (44/600, Wilson 90% CI [0.058, 0.093]);
+  reach_all 0.167 (100/600) → attack A5: the operators reach the truth, the CPU frag pre-screen loses it. 43 of the 44
+  hits are molecules whose truth is not in the V22 top 25. 474/600 molecules hit the 300-children cap; 76 timed out;
+  CPU 17.9 s/molecule. acyclic reach_20 0.093 (n 129), ring 0.068 (n 471), timsTOF 0/15. Hit operators: subst_shift
+  25, chain_iso 10, group_move 4. `research/c3/20261017-isomer-mut-sim/i1_result.md`, `E:/casmi/c3_iso/measure_pseudo_c3_full.json`.
+
+### 2026-10-17: c3-iso I1b (isomer-mut-ice), PRE-REGISTERED (human decision at the wave-1 checkpoint; I1 stays DEAD; written before any I1b measurement)
+New idea `research/c3/20261017-isomer-mut-ice`: the I1 operators (`build/isomer_mut.py`, unchanged), but ICEBERG ranks
+the children instead of the CPU frag score. Truth only reports reach (A1 of I1 applies unchanged).
+- **I1b.0 (CPU, free):** children cap 600 (was 300), deadline 120 s; CPU frag score kept only as a coarse cut to the
+  top 150 per molecule. **DEAD iff reach_150 < 0.12 on pseudo_c3** (below that, even a perfect ICEBERG re-rank of the
+  150 cannot reach the I1b.1 bar with margin). Report reach_all at cap 600 vs 300.
+- **I1b.1 (GPU, only after a human go on the costed plan):** ICEBERG (msg_all weights, the base's worker
+  `build/iceberg_worker.py`, the query's adducts/CEs) on the 150 children + the V22 fused top 10; cosine vs the query's
+  measured spectrum (R10) aggregated over the molecule's spectra as the base does. **DEAD iff reach_20 by ICE < 0.10 on
+  pseudo_c3.** Also report: rank of the best child vs the best retrieved candidate (the I3 fire signal) on pseudo_c3 and
+  on a 100-molecule sample of C2 and C1_npx, split by truth ∈ MassSpecGym where the list is available.
+- I3 (replay, `ISO_MUT`) and ship stay as pre-registered in the c3-iso block.
+
+### 2026-10-18: c3-iso I1b.0 MEASURED (isomer-mut-ice, CPU reach)
+- **PASS**: reach_150 **0.140** (84/600, 90% CI 0.118–0.165; bar ≥ 0.12). reach_all 0.185, reach_50 0.107, reach_20 0.060.
+  Truth not in V22 top 25 (n 512): reach_150 0.162. timsTOF 1/15. CPU 21.9 s/mol (max 135 s). Formula drops 0.
+- Frozen locally before truth (d70d9ea); measure step on Kaggle CPU `syedtoubur/c3iso-i1b-measure-run` v1 (RDKit 2026.03.3).
+  Flag: CI lower bound 0.118 sits just under the bar. Display bug: summary `cap` label prints 300 (run used 600).
+- I1b.1 unlocked: 117,660 ICEBERG requests ((top 150 + fused 10) × settings) on a Kaggle T4 (human go 2026-10-18 to ship it).
+  `research/c3/20261017-isomer-mut-ice/i1b0_result.{json,md}`.
+
+### 2026-10-18: back-test suite result (C2, C1_npx), rerun on Kaggle CPU for new families
+- `harness.py suite --dump C2 --dump C1_npx` on `syedtoubur/casmi26-harness-run` v2 (kit `syedtoubur/casmi26-harness-kit`,
+  RDKit 2026.03.3). Every existing family verdict is unchanged (table 2026-10-17 14:11). New families (backtests.yaml
+  append, no flip yet → ADVISORY, not measured): `v22_overlay` [FRAG_GAP, E2R2], `gen1_keep` [GEN1_KEEP].
+- Same kernel re-ran the gen-rank1-keep scorecard: numbers identical to the local run (pseudo_c3 +0.0100 [+0.0045,+0.0163],
+  composite +0.0038, VERDICT QUEUE), now `family: gen1_keep` (R08 clears). The gain sits on leak-hit molecules
+  (other Δ 0.0): the LB decides (card flag).
+
+### 2026-10-18: c3-iso I1b.1 MEASURED (isomer-mut-ice, ICEBERG on frozen top 150 + fused 10)
+- **Verdict: NOT DEAD, marginal.** Pre-registered bar: DEAD iff reach_20 by ICE < 0.10 (all 600, CPU-frag order fallback for the
+  118 ICE-uncovered molecules). reach_20 by ICE **0.1017** (61/600, 90% CI 0.083-0.124); the CI straddles the bar (flag).
+  reach_50 0.1317 (79/600, CI 0.111-0.156); reach_150 0.1400 (84/600, CI 0.118-0.165, ceiling). CPU-frag reach_20 was 0.060.
+- ICE-covered 482: reach_20 0.1120 (54/482, CI 0.091-0.138), reach_50 0.1432, reach_150 0.1494. Truth not in fused top 10
+  (n 519): reach_20 0.1156. Truth ICE rank among the 84 reachable: median 11.
+- Counters: 600 molecules, 482 covered/scored, 92,074 candidates in, 73,620 scored, 18,454 null (all in the 118 uncovered),
+  n_pred 238,092, n_pred_fail 0, bad smiles 2. GPU 205 min at 5.99 cand/s (hidden ~400 mols ~2.3 h GPU + ~20 s/mol CPU).
+- **I3 fire signal does not discriminate:** best child beats best fused-top-10 candidate by ICE on 356/482 covered (74%) and on
+  44/61 hits (72%). I3 needs a margin/rank rule pre-registered on a scaffold half split before any replay.
+- **C1/C2 part UNTESTED this round** (C2 and C1_npx 100-molecule samples not run).
+- Kernels: ICE `syedtoubur/c3iso-i1b1-ice-run` v2, measure `syedtoubur/c3iso-i1b1-measure-run` v1; code 9c1ef2b in
+  E:/casmi/lines/c3-isomer-mut-ice. `research/c3/20261017-isomer-mut-ice/i1b1_result.{json,md}`.

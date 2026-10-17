@@ -1,0 +1,51 @@
+[
+ {
+  "id": "A1",
+  "died": false,
+  "status": "pass",
+  "blocking": true,
+  "note": "frozen top-20 pickle written by generate() before measure() loads harness.truths(); AST test asserts generate/_work/spectra loaders reference no truth; pre-screen reference = measured train.parquet spectra (R10)"
+ },
+ {
+  "id": "A2",
+  "died": false,
+  "status": "flag",
+  "blocking": true,
+  "note": "81/600 pseudo_c3 molecules have the truth in the V22 fused top 10 (88 in top 25): known FPNet/popularity leak, K0 ban does not cover it. Truth parents cannot produce a counted hit (equal-to-retrieved children dropped). Reported also on the 512 not-in-top-25 subset (reach_20 8.4%, still dead)."
+ },
+ {
+  "id": "A3",
+  "died": false,
+  "status": "pass",
+  "blocking": true,
+  "note": "0 formula drift in unit test (1984 children) and in the 600-molecule run (all children checked inside _moves_checked; 0 drops)"
+ },
+ {
+  "id": "A4",
+  "died": false,
+  "status": "pass",
+  "blocking": true,
+  "note": "verdict computed on reach_20 (7.3%), not reach_all (16.7%)"
+ },
+ {
+  "id": "A5",
+  "died": false,
+  "status": "flag",
+  "blocking": false,
+  "note": "reach_all 16.7% >= 10% while reach_20 7.3% < 10%: pre-screen loses 56 of 100 reachable truths; GPU ICEBERG pre-screen is the human's decision"
+ },
+ {
+  "id": "A6",
+  "died": false,
+  "status": "flag",
+  "blocking": false,
+  "note": "timsTOF 15 molecules: reach_20 0/15 (reach_all 1/15); uninformative"
+ },
+ {
+  "id": "A7",
+  "died": false,
+  "status": "flag",
+  "blocking": false,
+  "note": "17.9 CPU s/molecule (max 68 s on pseudo_c3); 400 molecules ~2.0 h single core, ~0.5 h on 4 cores; the 60 s deadline can overrun"
+ }
+]

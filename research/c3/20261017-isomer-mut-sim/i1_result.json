@@ -1,0 +1,308 @@
+{
+ "stage": "I1",
+ "cohort": "pseudo_c3",
+ "verdict": "DEAD (reach_20 < 0.10)",
+ "bar": 0.1,
+ "summary": {
+  "n": 600,
+  "reach_all": {
+   "k": 100,
+   "n": 600,
+   "rate": 0.16666666666666666,
+   "ci90": [
+    0.14314816582898018,
+    0.19317800024501144
+   ]
+  },
+  "reach_20": {
+   "k": 44,
+   "n": 600,
+   "rate": 0.07333333333333333,
+   "ci90": [
+    0.05767779798770753,
+    0.09281969458700182
+   ]
+  },
+  "truth_in_fused_top10": 81,
+  "truth_in_fused_top25": 88,
+  "not_in_top25": {
+   "n": 512,
+   "reach_all": {
+    "k": 99,
+    "n": 512,
+    "rate": 0.193359375,
+    "ci90": [
+     0.16629193896988229,
+     0.2236506973092013
+    ]
+   },
+   "reach_20": {
+    "k": 43,
+    "n": 512,
+    "rate": 0.083984375,
+    "ci90": [
+     0.06594278156494739,
+     0.10639977593470105
+    ]
+   }
+  },
+  "acyclic": {
+   "n": 129,
+   "reach_all": {
+    "k": 19,
+    "n": 129,
+    "rate": 0.14728682170542637,
+    "ci90": [
+     0.10322360138265028,
+     0.2058419686205586
+    ]
+   },
+   "reach_20": {
+    "k": 12,
+    "n": 129,
+    "rate": 0.09302325581395349,
+    "ci90": [
+     0.05892040497412465,
+     0.14384756041419325
+    ]
+   }
+  },
+  "ring": {
+   "n": 471,
+   "reach_all": {
+    "k": 81,
+    "n": 471,
+    "rate": 0.17197452229299362,
+    "ci90": [
+     0.14526733326426094,
+     0.2024289207544432
+    ]
+   },
+   "reach_20": {
+    "k": 32,
+    "n": 471,
+    "rate": 0.06794055201698514,
+    "ci90": [
+     0.05123063666734598,
+     0.0895861121534067
+    ]
+   }
+  },
+  "timstof": {
+   "n": 15,
+   "reach_all": {
+    "k": 1,
+    "n": 15,
+    "rate": 0.06666666666666667,
+    "ci90": [
+     0.015015573606862412,
+     0.2507574300266729
+    ]
+   },
+   "reach_20": {
+    "k": 0,
+    "n": 15,
+    "rate": 0.0,
+    "ci90": [
+     0.0,
+     0.15281500419254065
+    ]
+   }
+  },
+  "not_timstof": {
+   "n": 585,
+   "reach_all": {
+    "k": 99,
+    "n": 585,
+    "rate": 0.16923076923076924,
+    "ci90": [
+     0.14526673359357173,
+     0.1962404142401375
+    ]
+   },
+   "reach_20": {
+    "k": 44,
+    "n": 585,
+    "rate": 0.07521367521367521,
+    "ci90": [
+     0.05916789984486369,
+     0.09517073703718655
+    ]
+   }
+  },
+  "children_per_mol": {
+   "mean": 269.53833333333336,
+   "zero": 0,
+   "capped": 474
+  },
+  "hit_ops_20": {
+   "subst_shift": 25,
+   "chain_iso": 10,
+   "db_shift+db_shift": 1,
+   "methyl_swap": 2,
+   "db_shift": 2,
+   "group_move": 4
+  },
+  "hit_ops_all": {
+   "subst_shift": 61,
+   "chain_iso": 16,
+   "db_shift+db_shift": 2,
+   "methyl_swap": 3,
+   "subst_shift+subst_shift": 3,
+   "db_shift": 2,
+   "group_move": 11,
+   "chain_iso+chain_iso": 1,
+   "methyl_swap+group_move": 1
+  },
+  "truth_rank_in_20": [
+   1,
+   1,
+   9,
+   7,
+   15,
+   18,
+   20,
+   12,
+   17,
+   5,
+   2,
+   6,
+   4,
+   10,
+   2,
+   3,
+   18,
+   20,
+   8,
+   15,
+   13,
+   19,
+   1,
+   1,
+   1,
+   15,
+   1,
+   1,
+   2,
+   2,
+   9,
+   2,
+   6,
+   8,
+   9,
+   18,
+   14,
+   2,
+   1,
+   9,
+   16,
+   3,
+   1,
+   18
+  ],
+  "mean_truth_rank_in_20": 8.295454545454545,
+  "cpu_s_per_mol": {
+   "gen": 16.711052227333216,
+   "score": 1.2351437878332823,
+   "total": 17.946196015166496,
+   "max": 67.58172469999408
+  },
+  "timed_out": 76,
+  "formula_drops": 0,
+  "score_errors": 0,
+  "no_spectra": 0,
+  "cohort": "pseudo_c3",
+  "tag": "pseudo_c3_full",
+  "spectra_source": "E:/casmi/data/comp_raw/train.parquet rows=pseudo_c3.parquet:train_rows",
+  "wall_s": 2722.9697484970093,
+  "seed": 0
+ },
+ "other_cohorts_sample100": {
+  "C2_n100": {
+   "n": 100,
+   "truth_in_fused_top10": 93,
+   "truth_in_fused_top25": 96,
+   "reach_all_not_in_top25": {
+    "k": 0,
+    "n": 4,
+    "rate": 0.0,
+    "ci90": [
+     0.0,
+     0.40349219618143706
+    ]
+   },
+   "reach_20_not_in_top25": {
+    "k": 0,
+    "n": 4,
+    "rate": 0.0,
+    "ci90": [
+     0.0,
+     0.40349219618143706
+    ]
+   },
+   "children_per_mol": {
+    "mean": 248.55,
+    "zero": 0,
+    "capped": 71
+   },
+   "cpu": {
+    "gen": 12.40381594499966,
+    "score": 1.3706969860001845,
+    "total": 13.774512930999844,
+    "max": 86.9141307999962
+   },
+   "hit_ops_20": {}
+  },
+  "C1_npx_n100": {
+   "n": 100,
+   "truth_in_fused_top10": 100,
+   "truth_in_fused_top25": 100,
+   "reach_all_not_in_top25": {
+    "k": 0,
+    "n": 0,
+    "rate": null,
+    "ci90": [
+     NaN,
+     NaN
+    ]
+   },
+   "reach_20_not_in_top25": {
+    "k": 0,
+    "n": 0,
+    "rate": null,
+    "ci90": [
+     NaN,
+     NaN
+    ]
+   },
+   "children_per_mol": {
+    "mean": 259.01,
+    "zero": 0,
+    "capped": 74
+   },
+   "cpu": {
+    "gen": 19.884221409000236,
+    "score": 1.9186918269996385,
+    "total": 21.802913235999878,
+    "max": 82.97101669999392
+   },
+   "hit_ops_20": {
+    "db_shift": 3
+   }
+  }
+ },
+ "spectra_source": "E:/casmi/data/comp_raw/train.parquet rows=pseudo_c3.parquet:train_rows",
+ "timstof_flag": "p1_novel/pseudo_c3.parquet column timstof (15 True); no instrument column",
+ "acyclic_flag": "RDKit ring count of truth SMILES == 0",
+ "runtime": {
+  "cpu_s_per_mol": {
+   "gen": 16.711052227333216,
+   "score": 1.2351437878332823,
+   "total": 17.946196015166496,
+   "max": 67.58172469999408
+  },
+  "projected_400_mol_single_core_h": 1.994021779462944,
+  "projected_400_mol_4core_h": 0.498505444865736
+ },
+ "frozen_before_truth": "E:/casmi/c3_iso/frozen_pseudo_c3_full.pkl (written by generate() before measure() loads truths)"
+}
