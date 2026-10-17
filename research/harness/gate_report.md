@@ -520,3 +520,44 @@ Idea chain: pseudo-c3-dump → c3-gen-union → c3-detector → c3-slot2-route. 
 - Deviation from the pre-registered wording: the union was ranked by decoder log-p only; the ICEBERG-cosine re-score of the
   amendment was not applied in K1. h is therefore a no-ICE figure.
 - Checkpoint: the human reads K1 before K2 (c3-detector).
+
+### 2026-10-17: K2 amendment (c3-detector v0; human decisions in the K2 grill; written before any K2 measurement)
+Context (scratch probe, not a verdict): leak-free "other" negatives are only 133 (C1_npx 26, C1_xlib 31, C2 41, C2_hard 35)
+vs 600 positives; clean dump features reached 2–4% positive recall before the first C1 negative fired. Engine 1 ranks its
+generated candidates with FPNet features (`gen_rank_fz`, `fz_*`), so "BASE#1 is generated" is FPNet-derived. The
+C1/C2 dumps lack the Engine 2 analog export, so generator features on the negatives need a re-dump (v1, not this step).
+- **v0 = dump-only features.** No generator features (decoder log-p, `gen_ice_gap`) in v0; v1 adds them only after a
+  human go on a costed plan, whatever v0's verdict.
+- **Verdict feature set (clean):** lib_max, top_pop, BASE score margin (#1 − #2), ICE coverage and max cosine, BASE / ENG /
+  ICE candidate counts, target mass, DBE of the BASE #1 formula. **FPNet-derived set** (rel = fz_top − best_pool_fz,
+  fz_top, S, BASE#1-is-generated, generated count in the top 25) is fitted on top of the clean set and REPORTED only:
+  that is the drop-test, plus the KS shift of each FPNet-derived feature, pseudo_c3 vs C1/C2 (test.parquet has no dump).
+- **Model:** standardised logistic regression, C = 1 (primary, decides); depth-2 GBDT (150 trees, lr 0.05) diagnostic only.
+  5-fold GroupKFold by truth Murcko scaffold; training = pseudo_c3 (pos) vs the "other" molecules (neg, L40).
+  Leak-hit molecules are never trained on; they are scored by a model fitted on all training rows of the other folds
+  (every leak-hit molecule gets a prediction from a fold model whose training set excludes its scaffold group).
+- **Prior:** OOF p is odds-shifted to a C3 share π = 0.25: odds' = odds · (π/(1−π)) / (n_pos/n_neg). π = 0.15 and 0.35 reported
+  as sensitivity; the verdict uses 0.25.
+- **h_fired (mut-first routing):** per fired positive, the inserted candidate is the mutator's top-1 if the molecule has any
+  mutant, else the decoder's top-1 (from `p4_raw.pkl`); hit = its IK14 equals the truth's. Union and mutator-alone h_fired
+  reported as diagnostics.
+- **L_fired:** mean over the fired "other" negatives of 1/r − 1/(r+1) for E006 truth rank r ∈ 2..25 (0 for rank 1 or miss).
+  If no "other" negative fires, L_fired = the cohort-pooled L (0.058/0.088/0.048/0.048 weighted by n, ≈ 0.060) as a prior.
+- **τ:** the smallest prior-corrected p (over the OOF grid of observed values) with p·h_fired/2 > (1−p)·L_fired, where
+  h_fired and L_fired are measured on the set fired at that p. Chosen once.
+- **Kills at τ (over ALL cohort molecules, leak-hit included):** C1 fire = fired / (C1_npx ∪ C1_xlib, 545) > 1%;
+  fire on the C2 ∪ C2_hard molecules whose E006 truth rank is 2–5 > 2%. Plus: no τ meets the rule → DEAD.
+- **Test fire-rate sanity:** not measured in v0 (no test dump); required before any LB slot (K3/K4).
+- **After v0:** stop and report either way (checkpoint 2). DEAD → a costed v1 plan; no GPU before a human go.
+
+### 2026-10-17: K2 MEASURED (c3-detector v0, dump-only features, under the 2026-10-17 K2 amendment)
+- **K2 v0: DEAD.** Primary (clean set, logistic, π 0.25): AUC 0.656, τ 0.319 (h_fired 0.147 on 259 fired positives,
+  L_fired 0.034 on 33 fired "other"), but **C1 fire 0.171 (93/545) > 1%** and **C2 ∪ C2_hard rank-2–5 fire 0.603 (176/292) > 2%**.
+  `research/exploit/20261017-c3-detector/k2_result.{json,md}`, code `build/c3_detector.py` (idea/20261015-c3-gen-slot2).
+- The break-even rule is easy to meet (L_fired is small, h_fired high); the **fire-rate kills bind**. Every fit and prior
+  is DEAD: clean GBDT (AUC 0.714) C1 fire 0.06–0.19; clean+FPNet logistic (AUC 0.760) and GBDT (AUC 0.812) C1 fire 0.08–0.36.
+  Drop-test moot (both DEAD), so not LEAK-DEPENDENT.
+- h by arm on all 600 (top-1): **mut-first 0.125**, mut 0.120, dec 0.073, union 0.077.
+- Leak check: fz_top median pos 505 / leak-hit 465 / other 126, so the FPNet-seen leak-hit negatives look like pseudo_c3
+  on f·z (KS 0.07) while the "other" don't (KS 0.27): f·z separates FPNet-seen from unseen, not C3 from C1/C2. rel KS 0.43–0.51.
+- Next (checkpoint 2): v1 with generator features needs a human go on a costed plan; test fire rate still unmeasured.
