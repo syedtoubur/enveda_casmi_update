@@ -78,6 +78,14 @@ def test_baseline_and_patch_diff():
     ok("E180_B8" in c36_src, "Cell 36 prints E180_B8 counters")
     ok("'e2r2_e180_blocked': e180_blocked" in c36_src or '"e2r2_e180_blocked": e180_blocked' in c36_src,
        "Cell 36 includes e2r2_e180_blocked in E180_B8")
+    # G4 fix 1: `placeholder` is e2r2_row's parameter, not a name in _e2r2_apply (NameError on Kaggle v2).
+    import ast
+    apply_fn = next(n for n in ast.walk(ast.parse(c36_src))
+                    if isinstance(n, ast.FunctionDef) and n.name == "_e2r2_apply")
+    loads = {n.id for n in ast.walk(apply_fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    ok("placeholder" not in loads, "_e2r2_apply must not read an undefined `placeholder`")
+    # G4 fix 1: rerank_row prunes before the loop counts, so e180_mols must include its audit count.
+    ok('n_pre = audit.get("e180_dropped", 0)' in c34_src, "Cell 34 counts rerank_row's own e180 drops")
 
 
 def test_e180_drop_false_variant():

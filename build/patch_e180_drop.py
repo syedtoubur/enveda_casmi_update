@@ -166,9 +166,11 @@ C34_LOOP_NEW = '''        output, audits = [], []
                 scope, mid, original, window=window, ice_fallback=ice_fallback, processed=active, e180_drop=E180_DROP
             )
             if E180_DROP and _e180_keys is not None and active:
+                # rerank_row has already pruned its own top 25; count those drops too.
+                n_pre = audit.get("e180_dropped", 0) if isinstance(audit, dict) else 0
                 n_k = sum(_is_e180(s) for s in result[:25])
-                if n_k:
-                    dropped_mol[mid] = dropped_mol.get(mid, 0) + n_k
+                if n_k or n_pre:
+                    dropped_mol[mid] = dropped_mol.get(mid, 0) + n_k + n_pre
                 short = len(result) < 25 and (mid in dropped_mol or n_k > 0 or (DREAMS_FILL and _get_dreams() is not None))
                 if n_k or short:
                     kept = [s for s in result if not _is_e180(s)]
@@ -289,7 +291,7 @@ C36_APPLY_LOOP_NEW = '''    check(base)
         old = s.split(';')
         elist = engine_list(mid)
         if _e180_keys is not None and elist:
-            raw_x2 = next((s.strip() for s in elist if isinstance(s, str) and s.strip() not in ('', placeholder)), None)
+            raw_x2 = next((s.strip() for s in elist if isinstance(s, str) and s.strip() not in ('', 'CCO')), None)
             if raw_x2 is not None:
                 kx2 = key(raw_x2)
                 if kx2 is not None and kx2[0] in _e180_keys:
