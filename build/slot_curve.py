@@ -206,7 +206,7 @@ def report_md(res: dict) -> str:
     t = res["cohorts"][POS]["slots"]
     kh = res["expected_keep_higher"]
     L += ["", "## Supplementary: keep-higher variant (x already above slot s is left in place, not demoted to s)", "",
-          f"s\* (keep-higher, pi 0.25 other) = {res['s_star_keep_higher']['s']}: {f(res['s_star_keep_higher']['delta'])}. "
+          f"s* (keep-higher, pi 0.25 other) = {res['s_star_keep_higher']['s']}: {f(res['s_star_keep_higher']['delta'])}. "
           "Not the pre-registered variant; the literal spec removes x from the rest and so demotes a generated "
           "candidate the pipeline already ranked above s.", "",
           "| s | c3 all | c3 leak-hit | c3 other | E pi.15 oth | E pi.25 oth | E pi.35 oth | E pi.25 all |", "|---|---|---|---|---|---|---|---|"]
