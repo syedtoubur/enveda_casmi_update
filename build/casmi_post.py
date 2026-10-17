@@ -57,6 +57,9 @@ CFG = dict(
     # before the 25 cut. E180_KEYS = a set of ik14 or a key-file path (None: first existing of E180_KEY_PATHS)
     E180_DROP=False,
     E180_KEYS=None,
+    # V22 baseline knobs (casmi26-v22-rel150-e2r2-clean; default = False/250.0 for backward compatibility)
+    FRAG_GAP=False,          # v7c MetFrag-lite fragment rescore where GLACIER and ICEBERG are completely blind
+    E2R2=False,              # E2R2: engine-2 top-1 candidate inserted at rank 2 of every eligible row
 )
 
 E180_KEY_PATHS = ('/kaggle/input/casmi26-e180-keys/e180_only_ik14.txt', 'E:/casmi/data/e180/e180_only_ik14.txt')
@@ -237,6 +240,130 @@ def lib_isomer_rows(rows, sims, margin, ik):
     return new_rows, True, new_rows != rows
 
 
+def e2r2_make_key(identity, placeholder='CCO'):
+    """SMILES -> metric identity, or None for a non-string, a blank string, the placeholder (or any SMILES with the
+    placeholder's identity) and an unparseable SMILES. A token whose key is None is never inserted and never matched."""
+    ph = identity(placeholder)
+
+    def key(smiles):
+        if not isinstance(smiles, str) or not smiles.strip() or smiles.strip() == placeholder:
+            return None
+        k = identity(smiles)
+        return None if k is None or k == ph else k
+
+    return key
+
+
+def e2r2_row(toks, eng_list, key, limit=25, placeholder='CCO'):
+    """Put engine 2's top candidate x2 at rank 2 of one final list (best first). Pure function.
+
+    x2 is the first entry of `eng_list` that is a non-blank string other than the placeholder. It is used only when
+    key(x2) is not None; if that entry is unusable the row is left alone (later entries are not tried).
+      empty row, or rank 1 is the placeholder  -> unchanged, 'skipped'
+      no engine list                           -> unchanged, 'no_eng'
+      x2 missing, unparseable or holds ';'     -> unchanged, 'invalid_x2'
+      key(x2) == key(rank 1)                   -> unchanged, 'same_as_rank1'
+      x2's identity already at rank 2          -> that token stays, deeper twins of it are dropped, 'already_rank2'
+      otherwise                                -> every token with key(x2) is dropped, x2 goes to rank 2, the other
+                                                  tokens keep their order, the list is cut to `limit`, 'inserted'
+    Returns (new_toks, tag, moved_from). moved_from is 'absent' or the old 1-based rank (str) of x2's identity when
+    x2 ends at rank 2, else None.
+    """
+    toks = list(toks)
+    if not toks or not isinstance(toks[0], str) or toks[0].strip() in ('', placeholder):
+        return toks, 'skipped', None
+    if isinstance(eng_list, str):
+        eng_list = [eng_list]
+    if not eng_list:
+        return toks, 'no_eng', None
+    x2 = next((s.strip() for s in eng_list if isinstance(s, str) and s.strip() not in ('', placeholder)), None)
+    kx = key(x2) if x2 is not None and not any(c in x2 for c in ';\r\n') else None
+    if kx is None:
+        return toks, 'invalid_x2', None
+    keys = [key(t) for t in toks]
+    if kx == keys[0]:
+        return toks, 'same_as_rank1', None
+    hits = [i for i, k in enumerate(keys) if k == kx]
+    if hits and hits[0] == 1:
+        return [t for i, t in enumerate(toks) if i == 1 or keys[i] != kx][:limit], 'already_rank2', '2'
+    rest = [t for t, k in zip(toks, keys) if k != kx]
+    return (rest[:1] + [x2] + rest[1:])[:limit], 'inserted', (str(hits[0] + 1) if hits else 'absent')
+
+
+_VAL_SPECTRA = None
+_FRAG_LEVEL_CACHE = {}
+
+
+def _load_val_spectra():
+    global _VAL_SPECTRA
+    if _VAL_SPECTRA is not None:
+        return _VAL_SPECTRA
+    _VAL_SPECTRA = {}
+    try:
+        from pathlib import Path
+        import numpy as np
+        import pandas as pd
+        here = Path(__file__).resolve()
+        candidates = [
+            here.parents[2] / 'val_scripts' / 'val.parquet',
+            Path('e:/ENVEDA_casmi/val_scripts/val.parquet'),
+        ]
+        vp = next((p for p in candidates if p.is_file()), None)
+        if vp is not None:
+            vq = pd.read_parquet(vp)
+            for mid, g in vq.groupby('molecule_id', sort=False):
+                _VAL_SPECTRA[str(mid)] = [
+                    dict(mz=np.asarray(r.ms2_mzs, np.float64),
+                         it=np.asarray(r.ms2_normalized_intensities, np.float64),
+                         adduct=r.adduct, prec=float(r.precursor_mz),
+                         mode=1 if r.ionization_mode == 'positive' else -1)
+                    for r in g.itertuples()
+                ][:16]
+    except Exception:
+        pass
+    return _VAL_SPECTRA
+
+
+def _resolve_frag_gap(state, prefusion, ENG, ICE, gl_of):
+    fg = state.get('frag_gap')
+    if isinstance(fg, dict) and fg:
+        return {str(k): v for k, v in fg.items()}
+    spectra_map = state.get('spectra')
+    if not isinstance(spectra_map, dict) or not spectra_map:
+        spectra_map = _load_val_spectra()
+    if not spectra_map:
+        return {}
+    try:
+        import os
+        import sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import frag_rescore
+    except Exception:
+        return {}
+    out = {}
+    for mid, s in prefusion.items():
+        mid = str(mid)
+        ice = ICE.get(mid, {}) if isinstance(ICE, dict) else {}
+        if gl_of(mid) or any(v is not None for v in (ice or {}).values()):
+            continue
+        spec = spectra_map.get(mid)
+        if not spec:
+            continue
+        lst = [x for x in str(s).split(';') if x and x != 'CCO'] if isinstance(s, str) else list(s)
+        e = ENG.get(mid) or {}
+        cands = [x for x in dict.fromkeys(lst + list(e.get('smiles', []))) if x and x != 'CCO']
+        if len(cands) < 2:
+            continue
+        try:
+            sc = frag_rescore.score_molecule(spec, cands, cache=_FRAG_LEVEL_CACHE)
+            out[mid] = {smi: float(v) for smi, v in zip(cands, sc) if v is not None}
+        except Exception:
+            pass
+    return out
+
+
 def _dep(deps, name):
     return deps[name] if isinstance(deps, dict) else getattr(deps, name)
 
@@ -246,6 +373,10 @@ def run(state, deps, stats=None, **overrides):
     c = dict(CFG)
     c.update(state.get('consts') or {})
     c.update(overrides)
+    if 'REL_PROMO' in c and 'REL_PROMOTE' not in overrides:
+        c['REL_PROMOTE'] = float(c['REL_PROMO'])
+    elif 'REL_PROMO' in overrides:
+        c['REL_PROMOTE'] = float(overrides['REL_PROMO'])
     stats = {} if stats is None else stats
     score_key, form = _dep(deps, 'score_key'), _dep(deps, 'form')
     ice_rerank, gl_multi = _dep(deps, 'ice_rerank'), _dep(deps, 'gl_rerank_multi')
@@ -371,12 +502,28 @@ def run(state, deps, stats=None, **overrides):
         out = _final_pass(sub, state, active, OVER, TAIL, ENG, PC, dreams)
     e180, dropped = (e180_keys(c['E180_KEYS']) if c['E180_DROP'] else None), {}
     if c['METRIC_FUSION'] and ENG and c['USE_ENG']:
+        frag_gap = _resolve_frag_gap(state, PREFUSION, ENG, ICE, gl_of) if c.get('FRAG_GAP') else {}
         out = _metric_overlay(out, PREFUSION, active, ENG, ICE, gl_of, c, window, score_key, form,
-                              ice_rerank, gl_multi, stats, e180, dropped)
+                              ice_rerank, gl_multi, stats, e180, dropped, frag_gap=frag_gap)
     if e180 is not None:
         out = _e180_final(out, e180, active, OVER, TAIL, ENG, PC, dropped)
         stats['e180_dropped'] = sum(dropped.values())
         stats['e180_mols'] = len(dropped)
+    if c.get('E2R2'):
+        key = e2r2_make_key(metric_identity)
+        for mid in list(out):
+            if mid not in active:
+                continue
+            e = ENG.get(mid)
+            if e is None and mid.strip().lstrip('-').isdigit():
+                e = ENG.get(int(mid))
+            eng_list = (e.get('smiles') or []) if isinstance(e, dict) else (list(e) if isinstance(e, (list, tuple)) else [])
+            new_toks, tag, _ = e2r2_row(out[mid], eng_list, key)
+            out[mid] = new_toks
+            if tag == 'inserted':
+                stats['e2r2_inserted'] = stats.get('e2r2_inserted', 0) + 1
+            elif tag == 'already_rank2':
+                stats['e2r2_already_rank2'] = stats.get('e2r2_already_rank2', 0) + 1
     if c['LIB_ISOMER_MARGIN'] is not None and state.get('lib_sim'):
         out = _lib_isomer(out, state, c, stats)
     return out
@@ -407,9 +554,10 @@ def _lib_isomer(out, state, c, stats):
 
 
 def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_key, form, ice_rerank, gl_multi,
-                    stats, e180=None, dropped=None):
-    """E006 cell 30 rerank_row (cell 28 metric_fusion + GL-present gate + optional ICE fallback), applied to the
-    final rows: `original` is the reference E006 reads (C12 output, i.e. submission_reference.csv)."""
+                    stats, e180=None, dropped=None, frag_gap=None):
+    """E006 cell 30 rerank_row (cell 28 metric_fusion + GL-present gate + optional ICE fallback / FRAG_GAP), applied to
+    the final rows: `original` is the reference E006 reads (C12 output, i.e. submission_reference.csv)."""
+    frag_gap = frag_gap or {}
     res = {}
     for mid, original in out.items():
         original = list(original)
@@ -429,6 +577,12 @@ def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_ke
                 order = gl_multi(cands, keys, scores, [form(s) for s in cands], [{}, gl],
                                  [c['ICE_LAM'], c['GL_LAM']], top_n=len(cands))
                 cands = [cands[i] for i in order]
+            elif (c['ICE_FALLBACK'] and not gl and frag_gap.get(mid)
+                  and not any(v is not None for v in (ice or {}).values())):
+                order = gl_multi(cands, keys, scores, [form(s) for s in cands],
+                                 [frag_gap[mid]], [0.5], top_n=len(cands))
+                cands = [cands[i] for i in order]
+                stats['frag_gap'] = stats.get('frag_gap', 0) + 1
             elif c['ICE_FALLBACK'] and ice and not gl:
                 order = ice_rerank(cands, keys, scores, [form(s) for s in cands], ice,
                                    lam=c['ICE_LAM'], top_n=len(cands))
