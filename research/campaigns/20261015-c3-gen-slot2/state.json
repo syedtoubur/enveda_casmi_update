@@ -1,0 +1,37 @@
+{
+ "cycle": 3,
+ "lb_probes": 0,
+ "branch_streak": {},
+ "closed_branches": [
+  "class3-route"
+ ],
+ "current": null,
+ "stop": "human 2026-10-17: stopped at checkpoint 2 after K2 v0 DEAD (C1 fire 0.171 > 1%); no v1 GPU; pseudo_c3 instrument and generators kept for Class-3 targeting",
+ "history": [
+  {
+   "idea": "20261014-pseudo-c3-dump",
+   "status": "instrument-ready",
+   "branch": "instrument",
+   "reason": "K0 PASS: POST EQUIV 600/600, 0 pool leaks; E006 pseudo_c3 MRR 0.0612"
+  },
+  {
+   "idea": "20261015-c3-gen-union",
+   "status": "specced",
+   "now": "K1 PASS",
+   "branch": "class3-gen",
+   "reason": "K1 PASS: union h 0.0767 (mut 0.120, mut-first 0.125); 45.2 CU"
+  },
+  {
+   "idea": "20261017-c3-detector",
+   "status": "dead",
+   "branch": "class3-route",
+   "reason": "K2 v0 DEAD: C1 fire 0.171 (bar 0.01), C2 r2-5 fire 0.603 (bar 0.02); AUC 0.656"
+  },
+  {
+   "idea": "c3-slot2-route",
+   "status": "not started",
+   "branch": "class3-route",
+   "reason": "gated on K2; never built"
+  }
+ ]
+}
