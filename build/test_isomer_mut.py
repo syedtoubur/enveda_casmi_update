@@ -120,7 +120,7 @@ def test_generate_phase_never_touches_truth():
     tree = ast.parse(src)
     bad = []
     for fn in tree.body:
-        if isinstance(fn, ast.FunctionDef) and fn.name in ("generate", "_work", "spectra_pseudo_c3", "spectra_val", "_init"):
+        if isinstance(fn, ast.FunctionDef) and fn.name in ("generate", "_work", "spectra_pseudo_c3", "spectra_val", "_init", "generate_i1b", "_compact", "settings_of"):
             for n in ast.walk(fn):
                 nm = n.id if isinstance(n, ast.Name) else n.attr if isinstance(n, ast.Attribute) else ""
                 if nm in ("truths", "T") or "truth" in nm.lower():
@@ -128,6 +128,47 @@ def test_generate_phase_never_touches_truth():
                 if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in ("inchikey14",):
                     bad.append((fn.name, n.value))
     check(not bad, f"no truth access in generate/_work/spectra loaders: {bad}")
+
+
+def test_inner_deadline():
+    """I1b: the deadline is enforced inside generation (per move / per child), not only between parents."""
+    print("test_inner_deadline")
+    ps = real_parents(6)
+    for budget in (0.5, 2.0):
+        t = time.monotonic()
+        st = {}
+        ch = im.mutate_many(ps, cap=600, deadline=time.monotonic() + budget, stats=st)
+        el = time.monotonic() - t
+        check(el < budget + 8.0 and len(ch) > 0, f"budget {budget}s: returned after {el:.2f}s with {len(ch)} children, deadline_hit={st.get('deadline_hit')}")
+    t = time.monotonic()
+    st = {}
+    ch = im.mutate_many(ps, cap=600, deadline=time.monotonic() - 1, stats=st)
+    check(st.get("deadline_hit") == 1 and len(ch) == 0, "expired deadline: no generation, flagged")
+    # unbounded run produces strictly more than a 0.5 s run (the deadline really cuts)
+    full = im.mutate_many(ps[:2], cap=600, deadline=time.monotonic() + 60)
+    cut = im.mutate_many(ps[:2], cap=600, deadline=time.monotonic() + 0.3)
+    check(len(cut) < len(full), f"0.3 s run {len(cut)} < unbounded {len(full)} children")
+
+
+def test_freeze_before_truth():
+    """A1 (I1b.0): run_i1b calls generate_i1b before measure_i1b; measure_i1b refuses a missing frozen file;
+    generate_i1b/_compact never name truths."""
+    print("test_freeze_before_truth")
+    import ast
+    import isomer_reach as ir
+    tree = ast.parse(open(os.path.join(HERE, "isomer_reach.py"), encoding="utf-8").read())
+    fn = {f.name: f for f in tree.body if isinstance(f, ast.FunctionDef)}
+    calls = [(n.lineno, n.func.id) for n in ast.walk(fn["run_i1b"]) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+    g = min(l for l, nm in calls if nm == "generate_i1b")
+    m = min(l for l, nm in calls if nm == "measure_i1b")
+    check(g < m, f"run_i1b: generate_i1b (line {g}) precedes measure_i1b (line {m})")
+    bad = [n.id for f in ("generate_i1b", "_compact") for n in ast.walk(fn[f]) if isinstance(n, ast.Name) and "truth" in n.id.lower()]
+    check(not bad, f"no truth names in generate_i1b/_compact: {bad}")
+    try:
+        ir.measure_i1b("E:/casmi/c3_iso/i1b_does_not_exist.pkl")
+        check(False, "measure_i1b on a missing frozen file must raise")
+    except AssertionError as e:
+        check("freeze-before-truth" in str(e), "measure_i1b refuses a missing frozen file")
 
 
 if __name__ == "__main__":

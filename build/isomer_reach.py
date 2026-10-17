@@ -33,7 +33,7 @@ TRAIN = "E:/casmi/data/comp_raw/train.parquet"
 VAL = "E:/ENVEDA_casmi/val_scripts/val.parquet"
 WORK = "E:/casmi/c3_iso"
 IDEA = "E:/ENVEDA_casmi/research/c3/20261017-isomer-mut-sim"
-N_PARENTS, CAP, DEADLINE, TOP = 10, 300, 60.0, 20
+N_PARENTS, CAP, DEADLINE, TOP = 10, 300, 60.0, 20  # I1 defaults; main() overrides via --cap/--deadline/--top (module globals, set before Pool starts)
 _R = {}
 
 
@@ -51,7 +51,7 @@ def spectra_pseudo_c3(mids):
     offs = np.cumsum([0] + [pf.metadata.row_group(i).num_rows for i in range(pf.metadata.num_row_groups)])
     sel = np.array(sorted(want), dtype=np.int64)
     out = {m: [] for m in c3.molecule_id}
-    cols = ["ms2_mzs", "ms2_normalized_intensities", "precursor_mz", "adduct", "ionization_mode"]
+    cols = ["ms2_mzs", "ms2_normalized_intensities", "precursor_mz", "adduct", "ionization_mode", "collision_energy_orig"]
     for rg in range(pf.metadata.num_row_groups):
         lo, hi = offs[rg], offs[rg + 1]
         loc = sel[(sel >= lo) & (sel < hi)] - lo
@@ -61,7 +61,8 @@ def spectra_pseudo_c3(mids):
         for g, r in zip(sel[(sel >= lo) & (sel < hi)], t.itertuples()):
             out[want[int(g)]].append(dict(
                 mz=np.asarray(r.ms2_mzs, np.float64), it=np.asarray(r.ms2_normalized_intensities, np.float64),
-                adduct=r.adduct, prec=float(r.precursor_mz), mode=1 if r.ionization_mode == "positive" else -1))
+                adduct=r.adduct, prec=float(r.precursor_mz), mode=1 if r.ionization_mode == "positive" else -1,
+                ce=(None if r.collision_energy_orig is None or r.collision_energy_orig != r.collision_energy_orig else str(r.collision_energy_orig).strip())))
     tims = dict(zip(c3.molecule_id, c3.timstof.astype(bool)))
     return out, tims
 
@@ -81,7 +82,10 @@ def spectra_val(mids):
 
 
 # ------------------------------------------------------------------ phase 1
-def _init():
+def _init(cap=None, deadline=None, top=None):
+    global CAP, DEADLINE, TOP
+    if cap is not None:
+        CAP, DEADLINE, TOP = cap, deadline, top
     import frag_rescore
     import isomer_mut
     _R["fr"], _R["im"], _R["cache"] = frag_rescore, isomer_mut, {}
@@ -105,7 +109,7 @@ def _work(task):
     t2 = time.monotonic()
     order = sorted(range(len(ch)), key=lambda i: (-(sc[i] if sc[i] is not None else -1.0), i))[:TOP]
     return dict(mid=mid, children=ch, scores=sc, top=order, gen_s=t1 - t0, score_s=t2 - t1, stats=st,
-                timed_out=(t1 - t0) >= DEADLINE, n_spec=len(spectra or []))
+                timed_out=bool(st.get("deadline_hit")) or (t1 - t0) >= DEADLINE, n_spec=len(spectra or []))
 
 
 def generate(cohort, mids_sel, procs, out_path, log=print):
@@ -130,7 +134,7 @@ def generate(cohort, mids_sel, procs, out_path, log=print):
         tasks.append((m, list(fused.get(m, [])), extra, spec.get(m, [])))
     res = {}
     t0 = time.time()
-    with Pool(procs, _init) as pool:
+    with Pool(procs, _init, (CAP, DEADLINE, TOP)) as pool:
         for i, r in enumerate(pool.imap_unordered(_work, tasks), 1):
             res[r["mid"]] = r
             if i % 25 == 0 or i == len(tasks):
@@ -230,15 +234,173 @@ def summarize(rows):
         no_spectra=sum(r["n_spec"] == 0 for r in rows))
 
 
+# ------------------------------------------------------------------ I1b.0 (chunked, memory-lean)
+def _compact(r):
+    """Per-molecule record stored on disk: all children (smiles, plain ik14, op, frag score) in frag-score order."""
+    ch, sc = r["children"], r["scores"]
+    order = sorted(range(len(ch)), key=lambda i: (-(sc[i] if sc[i] is not None else -1.0), i))
+    kids = [(ch[i][0], ch[i][1], ch[i][2], sc[i]) for i in order]
+    return dict(mid=r["mid"], kids=kids, gen_s=r["gen_s"], score_s=r["score_s"], timed_out=r["timed_out"],
+                n_spec=r["n_spec"], stats=r["stats"])
+
+
+def settings_of(spectra):
+    """Distinct (adduct, collision energy) settings of a molecule's query spectra (NaN CE = one setting)."""
+    return sorted({(s["adduct"], s.get("ce")) for s in spectra}, key=lambda x: (str(x[0]), "" if x[1] is None else x[1]))
+
+
+def generate_i1b(cohort, mids_sel, procs, tag, chunk=30, log=print):
+    """No truth anywhere here. Per-chunk pickles + the frozen top-TOP file; returns the frozen file path."""
+    import gc
+    import harness
+    state, deps, cp = harness.load_dump(cohort, Path(HERE) / "casmi_post.py")
+    mids = [m for m in state["te_mids"] if (mids_sel is None or m in mids_sel)]
+    fused = cp.run(state, deps, **V22)
+    spec, tims = spectra_pseudo_c3(mids) if cohort == "pseudo_c3" else spectra_val(mids)
+    tasks = []
+    for m in mids:
+        extra = list((state.get("eng") or {}).get(m, {}).get("smiles") or []) + \
+            list(((state.get("pc") or {}).get(m) or {}).get("pc") or []) + list((state["base"][m][0]) or [])
+        tasks.append((m, list(fused.get(m, [])), extra, spec.get(m, [])))
+    fused = {m: fused.get(m, []) for m in mids}
+    meta = dict(cohort=cohort, cfg=dict(V22=V22, n_parents=N_PARENTS, cap=CAP, deadline=DEADLINE, top=TOP, chunk=chunk),
+                timstof=tims, settings={m: settings_of(spec.get(m, [])) for m in mids},
+                n_spec={m: len(spec.get(m, [])) for m in mids})
+    del state, deps, spec
+    gc.collect()
+    top, chunks, t0 = {}, [], time.time()
+    os.makedirs(WORK, exist_ok=True)
+    with Pool(procs, _init, (CAP, DEADLINE, TOP)) as pool:
+        for ci in range(0, len(tasks), chunk):
+            part = {}
+            for r in pool.imap_unordered(_work, tasks[ci:ci + chunk]):
+                c = _compact(r)
+                part[r["mid"]] = c
+                top[r["mid"]] = dict(top=c["kids"][:TOP], n_children=len(c["kids"]), gen_s=c["gen_s"],
+                                     score_s=c["score_s"], timed_out=c["timed_out"], stats=c["stats"])
+            cp_path = f"{WORK}/i1b_{tag}_chunk{ci // chunk:03d}.pkl"
+            pickle.dump(part, open(cp_path, "wb"), protocol=4)
+            chunks.append(cp_path)
+            del part
+            log(f"  chunk {ci // chunk + 1}/{(len(tasks) + chunk - 1) // chunk} done {len(top)}/{len(tasks)} "
+                f"{time.time() - t0:.0f}s")
+    frozen = dict(meta, fused=fused, top=top, chunks=chunks, wall_s=time.time() - t0,
+                  spectra_source="train.parquet:train_rows")
+    path = f"{WORK}/i1b_{tag}_top{TOP}.pkl"
+    pickle.dump(frozen, open(path, "wb"), protocol=4)
+    log(f"FROZEN {path}")
+    return path
+
+
+def _rank_bins(ranks):
+    out, lo = {}, 0
+    for hi, name in ((20, "<=20"), (50, "21-50"), (150, "51-150"), (300, "151-300"), (10 ** 9, ">300")):
+        out[name] = sum(lo < r <= hi for r in ranks)
+        lo = hi
+    return out
+
+
+def measure_i1b(frozen_path, log=print):
+    """Truth is loaded HERE. Asserts the frozen file already exists (A1) and is not modified afterwards."""
+    assert os.path.exists(frozen_path), "freeze-before-truth violated: frozen top file missing"
+    mt0 = os.path.getmtime(frozen_path)
+    frozen = pickle.load(open(frozen_path, "rb"))
+    import harness
+    import isomer_mut as im
+    state, deps, cp = harness.load_dump(frozen["cohort"], Path(HERE) / "casmi_post.py")
+    T = harness.truths()
+    rows = []
+    kids_by = {}
+    for cpth in frozen["chunks"]:
+        kids_by.update({m: [k[:3] for k in v["kids"]] for m, v in pickle.load(open(cpth, "rb")).items()})
+    for m, r in frozen["top"].items():
+        if m not in T:
+            continue
+        t = T[m]
+        tk_taut = cp.canonicalize_smiles_to_ik14(t["smiles"])
+        tk_plain = im.ik14_plain(t["smiles"])
+        tm = im.Chem.MolFromSmiles(t["smiles"])
+        kids = kids_by[m]                                   # (smiles, plain ik14, op) in frag-score order
+        top_taut = [cp.canonicalize_smiles_to_ik14(k[0]) for k in r["top"]]
+        hit_top = [j for j, k in enumerate(top_taut) if k == tk_taut]
+        plain_rank = [j + 1 for j, k in enumerate(kids) if k[1] == tk_plain]
+        big = 10 ** 9
+        rank = min(plain_rank[0] if plain_rank else big, hit_top[0] + 1 if hit_top else big)
+        f = frozen["fused"][m]
+        f10 = [cp.canonicalize_smiles_to_ik14(x) for x in f[:N_PARENTS]]
+        f25 = [cp.canonicalize_smiles_to_ik14(x) for x in f[:25]]
+        j0 = (hit_top[0] + 1) if hit_top else big
+        rows.append(dict(
+            mid=m, n_children=r["n_children"], gen_s=r["gen_s"], score_s=r["score_s"], timed_out=r["timed_out"],
+            reach_all=rank < big, reach_150=j0 <= 150, reach_50=j0 <= 50, reach_20=j0 <= 20,
+            truth_rank=(rank if rank < big else 0),
+            op_all=(kids[plain_rank[0] - 1][2] if plain_rank else (r["top"][hit_top[0]][2] if hit_top else None)),
+            truth_in_top10=tk_taut in f10, truth_in_top25=tk_taut in f25,
+            acyclic=bool(tm is not None and tm.GetRingInfo().NumRings() == 0),
+            timstof=bool(frozen["timstof"].get(m, False)), n_spec=frozen["n_spec"][m], stats=r["stats"],
+            n_settings=len(frozen["settings"][m]), n_adducts=len({a for a, _ in frozen["settings"][m]}),
+            n_top=len(r["top"]), n_fused10=len(f[:N_PARENTS])))
+    assert os.path.getmtime(frozen_path) == mt0, "frozen file modified during measurement"
+    return rows
+
+
+def summarize_i1b(rows):
+    def sub(f):
+        s = [r for r in rows if f(r)]
+        return dict(n=len(s), **{k: _rate([r[k] for r in s]) for k in ("reach_all", "reach_150", "reach_50", "reach_20")})
+    n = max(len(rows), 1)
+    ranks = [r["truth_rank"] for r in rows if r["truth_rank"]]
+    srt = sorted(ranks)
+    req = sum((r["n_top"] + r["n_fused10"]) * r["n_settings"] for r in rows)
+    req_ad = sum((r["n_top"] + r["n_fused10"]) * r["n_adducts"] for r in rows)
+    return dict(
+        n=len(rows), **{k: _rate([r[k] for r in rows]) for k in ("reach_all", "reach_150", "reach_50", "reach_20")},
+        not_in_top25=sub(lambda r: not r["truth_in_top25"]), acyclic=sub(lambda r: r["acyclic"]),
+        ring=sub(lambda r: not r["acyclic"]), timstof=sub(lambda r: r["timstof"]),
+        not_timstof=sub(lambda r: not r["timstof"]),
+        truth_in_fused_top10=sum(r["truth_in_top10"] for r in rows),
+        truth_in_fused_top25=sum(r["truth_in_top25"] for r in rows),
+        truth_frag_rank_bins=_rank_bins(ranks), n_truth_in_children=len(ranks),
+        truth_frag_rank_median=(srt[len(srt) // 2] if srt else None),
+        children_per_mol=dict(mean=sum(r["n_children"] for r in rows) / n, zero=sum(r["n_children"] == 0 for r in rows),
+                              capped=sum(r["n_children"] >= CAP for r in rows), cap=CAP),
+        cpu_s_per_mol=dict(gen=sum(r["gen_s"] for r in rows) / n, score=sum(r["score_s"] for r in rows) / n,
+                           total=sum(r["gen_s"] + r["score_s"] for r in rows) / n,
+                           max=max((r["gen_s"] + r["score_s"] for r in rows), default=0),
+                           max_gen=max((r["gen_s"] for r in rows), default=0)),
+        timed_out=sum(r["timed_out"] for r in rows), gen_over_deadline_plus5=sum(r["gen_s"] > DEADLINE + 5 for r in rows),
+        formula_drops=sum(r["stats"].get("formula_drop", 0) for r in rows),
+        score_errors=sum("score_error" in r["stats"] for r in rows), no_spectra=sum(r["n_spec"] == 0 for r in rows),
+        iceberg_requests=dict(total_child_fused_x_settings=req, adduct_only_variant=req_ad,
+                              mean_settings_per_mol=sum(r["n_settings"] for r in rows) / n,
+                              children_in_top=sum(r["n_top"] for r in rows), fused10=sum(r["n_fused10"] for r in rows)))
+
+
+def run_i1b(cohort, mids_sel, procs, tag, chunk, log=print):
+    path = generate_i1b(cohort, mids_sel, procs, tag, chunk, log)   # freeze first ...
+    rows = measure_i1b(path, log)                                   # ... truths only afterwards
+    summ = summarize_i1b(rows)
+    json.dump(dict(summary=summ, rows=rows), open(f"{WORK}/i1b_measure_{tag}.json", "w"), indent=1, default=str)
+    print(json.dumps(summ, indent=1, default=str))
+    return summ
+
+
 def main(argv=None):
+    global CAP, DEADLINE, TOP
     ap = argparse.ArgumentParser()
     ap.add_argument("--cohort", default="pseudo_c3")
     ap.add_argument("--limit", type=int, default=0, help="first N after a seeded shuffle (0 = all)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--procs", type=int, default=4)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--cap", type=int, default=CAP)
+    ap.add_argument("--deadline", type=float, default=DEADLINE)
+    ap.add_argument("--top", type=int, default=TOP)
+    ap.add_argument("--i1b", action="store_true", help="chunked I1b.0 pipeline (top-N freeze, i1b_ files)")
+    ap.add_argument("--chunk", type=int, default=30)
     a = ap.parse_args(argv)
-    assert a.procs <= 4
+    CAP, DEADLINE, TOP = a.cap, a.deadline, a.top
+    assert a.procs <= (3 if a.i1b else 4)
     import random
     st = pickle.load(open(f"E:/ENVEDA_casmi/research/harness/dumps/{a.cohort}/post_dump/state.pkl", "rb"))
     mids = list(st["te_mids"])
@@ -247,6 +409,9 @@ def main(argv=None):
         mids = mids[:a.limit]
     sel = set(mids)
     tag = a.tag or (f"{a.cohort}_n{len(sel)}")
+    if a.i1b:
+        run_i1b(a.cohort, sel, a.procs, tag, a.chunk)
+        return 0
     frozen_path = f"{WORK}/frozen_{tag}.pkl"
     frozen = generate(a.cohort, sel, a.procs, frozen_path)
     rows = measure(frozen)

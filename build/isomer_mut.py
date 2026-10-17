@@ -22,6 +22,7 @@ from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 
 RDLogger.DisableLog("rdApp.*")
 
+SELECT_GRACE = 30.0  # seconds past the generation deadline allowed for the dedupe/selection pass
 MAX_FRAG = 25  # heavy atoms of a moved group
 
 
@@ -241,13 +242,17 @@ def _one_moves(m):
     return out
 
 
-def _moves_checked(smi, f0, stats):
-    """Single moves of SMILES `smi`, formula-checked against f0 (parent's)."""
+def _moves_checked(smi, f0, stats, deadline=None):
+    """Single moves of SMILES `smi`, formula-checked against f0 (parent's). `deadline` (time.monotonic) is checked per
+    candidate move, so one expensive parent cannot overrun it."""
     m = Chem.MolFromSmiles(smi)
     if m is None:
         return []
     res = []
     for op, s, pr in _one_moves(m):
+        if deadline and time.monotonic() > deadline:
+            stats["deadline_hit"] = 1
+            break
         c = Chem.MolFromSmiles(s)
         if c is None:
             stats["bad_smiles"] = stats.get("bad_smiles", 0) + 1
@@ -271,7 +276,7 @@ def mutate(parent_smi, max_moves=2, cap=300, deadline=None, stats=None, l2_from=
     p0 = Chem.MolToSmiles(pm)
     seen = {p0}
     out = []
-    l1 = _moves_checked(p0, f0, st)
+    l1 = _moves_checked(p0, f0, st, deadline)
     l1.sort(key=lambda x: -x[2])
     l1u = []
     for op, s, pr in l1:
@@ -283,7 +288,7 @@ def mutate(parent_smi, max_moves=2, cap=300, deadline=None, stats=None, l2_from=
         for op1, s1, _ in l1u[:l2_from]:
             if (cap and len(out) >= cap) or (deadline and time.monotonic() > deadline):
                 break
-            l2 = _moves_checked(s1, f0, st)
+            l2 = _moves_checked(s1, f0, st, deadline)
             l2.sort(key=lambda x: -x[2])
             for op2, s2, pr in l2:
                 if s2 not in seen:
@@ -301,6 +306,7 @@ def mutate_many(parents, cap=300, deadline=None, exclude_keys=(), stats=None, ma
     per = []
     for p in parents:
         if deadline and time.monotonic() > deadline:
+            st["deadline_hit"] = 1
             break
         per.append((p, mutate(p, max_moves=max_moves, cap=0, deadline=deadline, stats=st)))
     keys, out = set(exclude_keys), []
@@ -311,6 +317,9 @@ def mutate_many(parents, cap=300, deadline=None, exclude_keys=(), stats=None, ma
         i = 0
         while any(len(l) > i for _, l in lists):
             for p, l in lists:
+                if deadline and time.monotonic() > deadline + SELECT_GRACE:  # selection may finish what generation made
+                    st["deadline_hit"] = 1
+                    return out
                 if i < len(l):
                     s, op, n = l[i]
                     k = ik14_plain(s)
