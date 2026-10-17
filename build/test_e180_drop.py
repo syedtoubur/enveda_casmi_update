@@ -1,0 +1,172 @@
+"""Unit tests for e180-drop-dreamsnp-pclite candidate post-scoring module."""
+from __future__ import annotations
+
+import copy
+import json
+import os
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import casmi_post as cp  # noqa: E402
+
+SM = ['CCCCCCCO', 'CCCO', 'CCCCO', 'CCCCCO', 'CCCCCCO', 'CC(C)O', 'CC(C)CO', 'OCCO', 'OCCCO', 'CC(O)CO']
+
+
+def k(s):
+    return cp.canonicalize_smiles_to_ik14(s)
+
+
+def deps(gl_reverse=True, dreams=None):
+    return dict(
+        score_key=lambda s: cp.canonicalize_smiles_to_ik14(s),
+        form=lambda s: 'F',
+        ice_rerank=lambda smis, keys, scs, forms, ice, lam, top_n: list(range(len(smis)))[:top_n],
+        gl_rerank_multi=(
+            lambda smis, keys, scs, forms, cols, lams, top_n: list(range(len(smis)))[::-1][:top_n]
+        ) if gl_reverse else (lambda *a, **kw: list(range(len(a[0])))),
+        dreams=dreams,
+    )
+
+
+def state():
+    base = {
+        'm1': (SM[:3], [k(s) for s in SM[:3]], 0.95, [3.0, 2.0, 1.0], ['F'] * 3),
+        'm2': (SM[:3], [k(s) for s in SM[:3]], 0.10, [3.0, 2.0, 1.0], ['F'] * 3),
+        'm3': (SM[:2], [k(s) for s in SM[:2]], 0.95, [2.0, 1.0], ['F'] * 2),
+    }
+    pc = {
+        'm1': dict(pc=[SM[5]], pc_keys=[k(SM[5])], pc_fz=[1.0], best_pool_fz=0.0, S=None, top_pop=0),
+        'm2': dict(pc=[SM[5], SM[6]], pc_keys=[k(SM[5]), k(SM[6])], pc_fz=[900.0, 1.0], best_pool_fz=0.0, S=None, top_pop=0),
+    }
+    eng = {'m3': dict(smiles=[SM[7], SM[1]], keys=[k(SM[7]), k(SM[1])])}
+    return dict(
+        base=base, pc=pc, eng=eng, ice={'m3': {'x': 1.0}}, gl={'m3': {'x': 1.0}},
+        te_mids=['m1', 'm2', 'm3'], sample_ids=['m1', 'm2', 'm3', 'mX'], targets={}, consts={}
+    )
+
+
+def test_backward_compatibility_defaults():
+    assert cp.CFG['E180_DROP'] is False
+    assert cp.CFG['DREAMS_FILL'] is False
+    assert cp.CFG['E180_KEYS'] is None
+    s = state()
+    before = json.dumps(s, sort_keys=True, default=str)
+    out = cp.run(s, deps())
+    assert json.dumps(s, sort_keys=True, default=str) == before
+    assert out['m1'][:3] == SM[:3]
+    assert out['m2'][0] == SM[5]
+    assert out['mX'] == ['CCO']
+
+
+def test_missing_key_file_raises():
+    s = state()
+    raised = False
+    try:
+        cp.run(s, deps(), E180_DROP=True, E180_KEYS='/nonexistent/path/to/keys.txt')
+    except FileNotFoundError:
+        raised = True
+    assert raised, "E180_DROP=True with non-existent E180_KEYS must raise FileNotFoundError"
+
+
+def test_e180_drop_prunes_and_backfills():
+    s = state()
+    # Let SM[0] be keyed
+    keyed_ik = k(SM[0])
+    e180_set = {keyed_ik}
+
+    st = {}
+    out = cp.run(
+        s, deps(gl_reverse=False), stats=st,
+        METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40,
+        E180_DROP=True, E180_KEYS=e180_set
+    )
+    # SM[0] must not appear in any molecule's output
+    for mid in ('m1', 'm2', 'm3'):
+        assert SM[0] not in out[mid], f"Keyed structure {SM[0]} found in output for {mid}"
+        for smi in out[mid]:
+            assert cp.canonicalize_smiles_to_ik14(smi) != keyed_ik
+        # Assert no duplicate metric identities
+        idents = [cp.metric_identity(x) for x in out[mid]]
+        assert len(idents) == len(set(idents)), f"Duplicates in {mid}"
+
+    assert st.get('e180_dropped', 0) > 0, "e180_dropped counter should be > 0"
+    assert st.get('e180_mols', 0) > 0, "e180_mols counter should be > 0"
+
+
+def test_e2r2_decoy_guard():
+    s = state()
+    # Configure m3 so Engine 2 top-1 is SM[7] (which we will mark as keyed)
+    # and second candidate is SM[8] (clean)
+    keyed_x2 = k(SM[7])
+    e180_set = {keyed_x2}
+
+    s['eng']['m3'] = dict(smiles=[SM[7], SM[8]], keys=[k(SM[7]), k(SM[8])])
+
+    # Run without E180_DROP -> SM[7] should be inserted at rank 2
+    st_noguard = {}
+    out_noguard = cp.run(
+        s, deps(gl_reverse=False), stats=st_noguard,
+        METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=True,
+        E180_DROP=False
+    )
+    assert out_noguard['m3'][1] == SM[7]
+
+    # Run with E180_DROP -> SM[7] is blocked, SM[8] becomes x2 inserted at rank 2!
+    st_guard = {}
+    out_guard = cp.run(
+        s, deps(gl_reverse=False), stats=st_guard,
+        METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=True,
+        E180_DROP=True, E180_KEYS=e180_set
+    )
+    assert out_guard['m3'][1] == SM[8], f"Expected SM[8] at rank 2, got {out_guard['m3'][1]}"
+    assert SM[7] not in out_guard['m3']
+    assert st_guard.get('e2r2_e180_blocked', 0) == 1, "e2r2_e180_blocked counter must be 1"
+
+
+def test_dreams_backfill():
+    import numpy as np
+    s = state()
+    s['targets']['m3'] = 200.0  # target mass
+
+    # Candidate mass matching m3 target
+    dm_mass = np.array([100.0, 200.0001, 300.0], dtype=np.float64)
+    # One keyed, one clean
+    dm_smiles = np.array(['CCO', SM[9], 'CCCCCCCO'], dtype=object)
+    keyed_dm = k('CCO')
+    e180_set = {keyed_dm}
+
+    st = {}
+    out = cp.run(
+        s, deps(gl_reverse=False, dreams=(dm_mass, dm_smiles)), stats=st,
+        METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40,
+        E180_DROP=True, E180_KEYS=e180_set, DREAMS_FILL=True
+    )
+    # SM[9] should be backfilled into m3 since m3 has only 2 candidates
+    assert SM[9] in out['m3']
+    # 'CCO' (keyed) should NOT be backfilled
+    assert 'CCO' not in out['m3']
+    assert st.get('dreams_added', 0) >= 1
+
+
+def main():
+    print("Running test_candidate.py...")
+    test_backward_compatibility_defaults()
+    print("PASS: test_backward_compatibility_defaults")
+    test_missing_key_file_raises()
+    print("PASS: test_missing_key_file_raises")
+    test_e180_drop_prunes_and_backfills()
+    print("PASS: test_e180_drop_prunes_and_backfills")
+    test_e2r2_decoy_guard()
+    print("PASS: test_e2r2_decoy_guard")
+    test_dreams_backfill()
+    print("PASS: test_dreams_backfill")
+    print("ALL TESTS PASSED in test_candidate.py!")
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

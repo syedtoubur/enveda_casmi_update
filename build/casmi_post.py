@@ -1,36 +1,21 @@
-"""Post-scoring stage of casmi-notebook-0-433 as one importable function (the harness's replay engine).
+"""Candidate post-scoring module for e180-drop-dreamsnp-pclite (Wave 1 B8).
 
-Mirrors, line for line, what the notebook does after ICEBERG/GLACIER have scored:
-  C8 rerank loop  (BASE truncation to 25, BASE_ICE rerank, PubChem-list ICE/GL rerank)
-  C9              (gated PubChem merge / promotion -> per-molecule list)
-  C10             (two-engine RRF fusion + fused-list GLACIER rerank, FUSION_OVERFLOW)
-  C12             (metric-safe dedupe + append-only tail; optional DreaMS mass fill)
-  E006 knobs      (off by default) METRIC_FUSION: E004/E006 metric-identity RRF overlay on the final rows;
-                  ICE_FALLBACK: ICEBERG rerank of the fused list where GLACIER is blind; FUSION_WINDOW: shortlist size
-
-The notebook keeps its own cells; build/patch_harness_dump.py snapshots the state just before the C8 rerank loop
-and, at the end of the run, asserts run(state, deps) == the notebook's submission.csv for every molecule
-(`POST EQUIV`). A probe adds a knob to CFG (default = the base behaviour), is measured by research/harness on a
-val-mode dump, and ships by letting the notebook write run()'s output.
-
-state (dict, pickled by the dump):
-  base         {mid: (smis, keys, lib_max, scores, forms)}   pre-rerank BASE, top TOPN (C7 output)
-  pc           {mid: {...}}   PubChem-only lists after the ICE_PC block (pc, pc_keys, pc_fz, pc_form, fz_top,
-                              best_pool_fz, S, top_pop)
-  eng          {str mid: {smiles, keys}}   Engine 2 top 40
-  ice, gl      {str mid: {...}}            ICE_SCORES, GL_SCORES as the notebook holds them
-  te_mids      molecule ids in te order (te.molecule_id.unique())
-  sample_ids   sample_submission molecule ids, in file order
-  targets      {mid: median neutral mass}
-  consts       the notebook's constants (override CFG defaults)
-deps (object or dict): score_key(smiles), ice_rerank(...) = fuse.rerank, gl_rerank_multi(...) = gl_fuse.rerank_multi,
-  form(smiles) -> formula, dreams = None | (mass array, smiles array)
+Extends the V22 baseline (casmi26-v22-rel150-e2r2-clean: REL_PROMOTE=150.0, FRAG_GAP=True, E2R2=True)
+with:
+  - E180_DROP (default False): filters R1b enveda-180-only synthetic combinatorial decoys
+    after simulator / FRAG_GAP rerank before the 25-slot cut, back-filling to 25 from fused ranks 26-40,
+    C12 extras (OVER, TAIL, ENG, PC), and mass-matched DreamsNP natural products.
+  - E2R2 decoy guard: prevents E2R2 from hijacking Rank 2 with an e180_only decoy from Engine 2.
+  - DREAMS_FILL (default False): mass-matched DreamsNP backfill (+/- 10 ppm) with e180_keys excluded.
 """
 from __future__ import annotations
 
 import copy
 import math
+import os
+import sys
 from functools import lru_cache
+from pathlib import Path
 
 CFG = dict(
     # notebook constants (consts in the state override these)
@@ -53,6 +38,15 @@ CFG = dict(
     # V22 baseline knobs (casmi26-v22-rel150-e2r2-clean; default = False/250.0 for backward compatibility)
     FRAG_GAP=False,          # v7c MetFrag-lite fragment rescore where GLACIER and ICEBERG are completely blind
     E2R2=False,              # E2R2: engine-2 top-1 candidate inserted at rank 2 of every eligible row
+    # e180-drop-dreamsnp-pclite knobs (default False/None = base behaviour)
+    E180_DROP=False,         # remove R1b enveda-180-only structures from final rows before 25 cut and guard E2R2
+    E180_KEYS=None,          # set/frozenset of ik14 or path to key file (default: E180_KEY_PATHS)
+    DREAMS_FILL=False,       # mass-matched DreamsNP backfill (+/- 10 ppm) with e180_keys excluded
+)
+
+E180_KEY_PATHS = (
+    '/kaggle/input/casmi26-e180-keys/e180_only_ik14.txt',
+    'E:/casmi/data/e180/e180_only_ik14.txt',
 )
 
 
@@ -118,6 +112,119 @@ def safe_extend(original, extra, limit=25):
     return out
 
 
+# ---------------------------------------------------------------- e180-drop helper functions
+@lru_cache(maxsize=4)
+def _read_keys(path):
+    with open(path, encoding='utf-8') as f:
+        return frozenset(line.strip() for line in f if line.strip())
+
+
+def e180_keys(spec=None, state=None):
+    """The enveda-180-only ik14 set.
+    spec: a set/frozenset/list/dict of ik14, a file path, or None (checks state['e180_keys'] then E180_KEY_PATHS).
+    Raises FileNotFoundError when nothing is found: a silent no-op is the L38 failure."""
+    if spec is not None and not isinstance(spec, (str, os.PathLike)):
+        keys = frozenset(spec)
+    elif spec is not None:
+        p = Path(spec)
+        if not p.is_file():
+            raise FileNotFoundError(f'E180_DROP=True but key file not found: {p}')
+        keys = _read_keys(str(p))
+    else:
+        st_keys = state.get('e180_keys') if isinstance(state, dict) else None
+        if st_keys is not None:
+            keys = frozenset(st_keys)
+        else:
+            path = next((p for p in E180_KEY_PATHS if os.path.exists(p)), None)
+            if path is None:
+                raise FileNotFoundError(f'E180_DROP=True but no key file found (tried {E180_KEY_PATHS})')
+            keys = _read_keys(str(path))
+    if not keys:
+        raise ValueError('E180_DROP=True but the key set is empty')
+    return keys
+
+
+def _is_keyed(smi, keys):
+    ident = metric_identity(str(smi).strip())
+    return ident is not None and ident[0] in keys
+
+
+_DREAMS_CACHE = None
+
+
+def _load_dreams(deps=None):
+    global _DREAMS_CACHE
+    if _DREAMS_CACHE is not None:
+        return _DREAMS_CACHE
+    if deps is not None:
+        d = deps.get('dreams') if isinstance(deps, dict) else getattr(deps, 'dreams', None)
+        if d is not None:
+            return d
+    candidates = [
+        Path('E:/casmi/data/dreams'),
+        Path('/kaggle/input/casmi26-dreams-np'),
+    ]
+    for p in candidates:
+        mp = p / 'dreams_np_mass.npy'
+        sp = p / 'dreams_np_smiles.npy'
+        if mp.is_file() and sp.is_file():
+            import numpy as np
+            _DREAMS_CACHE = (np.load(mp), np.load(sp))
+            return _DREAMS_CACHE
+    try:
+        import glob
+        matches = glob.glob('/kaggle/input/**/dreams_np_mass.npy', recursive=True)
+        if matches:
+            p = Path(matches[0]).parent
+            mp = p / 'dreams_np_mass.npy'
+            sp = p / 'dreams_np_smiles.npy'
+            if mp.is_file() and sp.is_file():
+                import numpy as np
+                _DREAMS_CACHE = (np.load(mp), np.load(sp))
+                return _DREAMS_CACHE
+    except Exception:
+        pass
+    return None
+
+
+def _e180_final(out, keys, active, OVER, TAIL, ENG, PC, dropped, targets=None, dreams=None, dreams_fill=False, stats=None):
+    """Step 2: on every active row still holding a keyed structure or left short (<25),
+    drop keyed and back-fill from the C12 extras (keyed rows excluded) and optionally DreamsNP."""
+    res = {}
+    for mid, rows in out.items():
+        rows = list(rows)
+        n = sum(_is_keyed(s, keys) for s in rows[:25])
+        short = len(rows) < 25 and (mid in dropped or n > 0 or (dreams_fill and dreams is not None))
+        if mid not in active or not (n or short):
+            res[mid] = rows
+            continue
+        if n:
+            dropped[mid] = dropped.get(mid, 0) + n
+        kept = [s for s in rows if not _is_keyed(s, keys)]
+        extras = list(OVER.get(mid, [])) + list(TAIL.get(mid, []))
+        extras.extend((ENG.get(mid) or {}).get('smiles', []))
+        extras.extend((PC.get(mid) or {}).get('pc', []))
+        non_keyed_extras = [s for s in extras if not _is_keyed(s, keys)]
+        revised = safe_extend(kept, non_keyed_extras, limit=25)
+        if dreams_fill and dreams is not None and len(revised) < 25 and targets:
+            t = float(targets.get(mid, float('nan')))
+            if math.isfinite(t) and t > 0:
+                import numpy as np
+                dm_mass, dm_smiles = dreams
+                order_ = np.argsort(dm_mass, kind='stable'); srt = dm_mass[order_]
+                lo, hi = np.searchsorted(srt, [t * (1 - 10e-6), t * (1 + 10e-6)])
+                ix = order_[lo:hi]
+                ix = ix[np.argsort(np.abs(dm_mass[ix] - t), kind='stable')]
+                dm_cands = [x.decode() if isinstance(x, bytes) else str(x) for x in dm_smiles[ix]]
+                dm_non_keyed = [s for s in dm_cands if not _is_keyed(s, keys)]
+                before_len = len(revised)
+                revised = safe_extend(revised, dm_non_keyed, limit=25)
+                if stats is not None and len(revised) > before_len:
+                    stats['dreams_added'] = stats.get('dreams_added', 0) + (len(revised) - before_len)
+        res[mid] = revised or ['CCO']
+    return res
+
+
 # ---------------------------------------------------------------- C9 pure functions (copied from the notebook)
 def merge(base, base_keys, pc, pc_keys, slots, n=25):
     bk = set(base_keys)
@@ -175,11 +282,12 @@ def e2r2_make_key(identity, placeholder='CCO'):
     return key
 
 
-def e2r2_row(toks, eng_list, key, limit=25, placeholder='CCO'):
+def e2r2_row(toks, eng_list, key, limit=25, placeholder='CCO', e180_keys=None):
     """Put engine 2's top candidate x2 at rank 2 of one final list (best first). Pure function.
 
-    x2 is the first entry of `eng_list` that is a non-blank string other than the placeholder. It is used only when
-    key(x2) is not None; if that entry is unusable the row is left alone (later entries are not tried).
+    x2 is the first entry of `eng_list` that is a non-blank string other than the placeholder
+    (and not in e180_keys when provided). It is used only when key(x2) is not None; if that entry
+    is unusable the row is left alone (later entries are not tried).
       empty row, or rank 1 is the placeholder  -> unchanged, 'skipped'
       no engine list                           -> unchanged, 'no_eng'
       x2 missing, unparseable or holds ';'     -> unchanged, 'invalid_x2'
@@ -197,6 +305,10 @@ def e2r2_row(toks, eng_list, key, limit=25, placeholder='CCO'):
         eng_list = [eng_list]
     if not eng_list:
         return toks, 'no_eng', None
+    if e180_keys is not None:
+        eng_list = [s for s in eng_list if not _is_keyed(s, e180_keys)]
+        if not eng_list:
+            return toks, 'no_eng', None
     x2 = next((s.strip() for s in eng_list if isinstance(s, str) and s.strip() not in ('', placeholder)), None)
     kx = key(x2) if x2 is not None and not any(c in x2 for c in ';\r\n') else None
     if kx is None:
@@ -255,8 +367,6 @@ def _resolve_frag_gap(state, prefusion, ENG, ICE, gl_of):
     if not spectra_map:
         return {}
     try:
-        import os
-        import sys
         here = os.path.dirname(os.path.abspath(__file__))
         if here not in sys.path:
             sys.path.insert(0, here)
@@ -302,6 +412,8 @@ def run(state, deps, stats=None, **overrides):
     score_key, form = _dep(deps, 'score_key'), _dep(deps, 'form')
     ice_rerank, gl_multi = _dep(deps, 'ice_rerank'), _dep(deps, 'gl_rerank_multi')
     dreams = deps.get('dreams') if isinstance(deps, dict) else getattr(deps, 'dreams', None)
+    if dreams is None and c.get('DREAMS_FILL'):
+        dreams = _load_dreams(deps)
 
     BASE = {m: tuple(v) for m, v in state['base'].items()}
     PC = copy.deepcopy(state.get('pc') or {})
@@ -420,11 +532,22 @@ def run(state, deps, stats=None, **overrides):
     if not c['FINAL_PASS']:
         out = {m: s.split(';') for m, s in sub.items()}
     else:
-        out = _final_pass(sub, state, active, OVER, TAIL, ENG, PC, dreams)
+        out = _final_pass(sub, state, active, OVER, TAIL, ENG, PC, dreams if not c.get('E180_DROP') else None)
+
+    e180, dropped = (e180_keys(c['E180_KEYS'], state=state) if c['E180_DROP'] else None), {}
+
     if c['METRIC_FUSION'] and ENG and c['USE_ENG']:
         frag_gap = _resolve_frag_gap(state, PREFUSION, ENG, ICE, gl_of) if c.get('FRAG_GAP') else {}
         out = _metric_overlay(out, PREFUSION, active, ENG, ICE, gl_of, c, window, score_key, form,
-                              ice_rerank, gl_multi, stats, frag_gap=frag_gap)
+                              ice_rerank, gl_multi, stats, frag_gap=frag_gap, e180=e180, dropped=dropped)
+
+    if e180 is not None:
+        out = _e180_final(out, e180, active, OVER, TAIL, ENG, PC, dropped,
+                          targets=state.get('targets'), dreams=dreams,
+                          dreams_fill=c.get('DREAMS_FILL', False), stats=stats)
+        stats['e180_dropped'] = sum(dropped.values())
+        stats['e180_mols'] = len(dropped)
+
     if c.get('E2R2'):
         key = e2r2_make_key(metric_identity)
         for mid in list(out):
@@ -434,7 +557,11 @@ def run(state, deps, stats=None, **overrides):
             if e is None and mid.strip().lstrip('-').isdigit():
                 e = ENG.get(int(mid))
             eng_list = (e.get('smiles') or []) if isinstance(e, dict) else (list(e) if isinstance(e, (list, tuple)) else [])
-            new_toks, tag, _ = e2r2_row(out[mid], eng_list, key)
+            if e180 is not None:
+                raw_x2 = next((s.strip() for s in eng_list if isinstance(s, str) and s.strip() not in ('', 'CCO')), None)
+                if raw_x2 is not None and _is_keyed(raw_x2, e180):
+                    stats['e2r2_e180_blocked'] = stats.get('e2r2_e180_blocked', 0) + 1
+            new_toks, tag, _ = e2r2_row(out[mid], eng_list, key, e180_keys=e180)
             out[mid] = new_toks
             if tag == 'inserted':
                 stats['e2r2_inserted'] = stats.get('e2r2_inserted', 0) + 1
@@ -444,7 +571,7 @@ def run(state, deps, stats=None, **overrides):
 
 
 def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_key, form, ice_rerank, gl_multi,
-                    stats, frag_gap=None):
+                    stats, frag_gap=None, e180=None, dropped=None):
     """E006 cell 30 rerank_row (cell 28 metric_fusion + GL-present gate + optional ICE fallback / FRAG_GAP), applied to
     the final rows: `original` is the reference E006 reads (C12 output, i.e. submission_reference.csv)."""
     frag_gap = frag_gap or {}
@@ -480,7 +607,16 @@ def _metric_overlay(out, prefusion, active, ENG, ICE, gl_of, c, window, score_ke
                 stats['ice_fallback'] = stats.get('ice_fallback', 0) + 1
         except Exception:
             pass
-        res[mid] = safe_extend(cands[:25], cands[25:] + original) if cands else original
+        row = safe_extend(cands[:25], cands[25:] + original) if cands else original
+        if e180 is not None and cands:
+            n = sum(_is_keyed(s, e180) for s in row[:25])
+            if n:
+                kept = [s for s in cands if not _is_keyed(s, e180)]
+                orig = [s for s in original if not _is_keyed(s, e180)]
+                row = safe_extend(kept[:25], kept[25:] + orig) or row
+                if dropped is not None:
+                    dropped[mid] = dropped.get(mid, 0) + n
+        res[mid] = row
     return res
 
 
