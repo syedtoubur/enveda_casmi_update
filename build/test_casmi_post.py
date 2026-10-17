@@ -188,9 +188,8 @@ def test_e2r2_integration_in_run():
     # Give m1 an Engine 2 list whose top candidate is SM[8] (not in m1's list).
     s['eng']['m1'] = dict(smiles=[SM[8], SM[0]], keys=[k(SM[8]), k(SM[0])])
     # Give m2 an Engine 2 list whose top candidate is SM[5] (which is already at Rank 2 of m2 after metric_fusion)
-    out_probe = cp.run(s, deps(), METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=False)
-    r2_m2 = out_probe['m2'][1]
-    eng_m2 = [r2_m2, SM[9]]
+    s['base']['m2'] = (SM[:3], [k(x) for x in SM[:3]], 0.95, [3.0, 2.0, 1.0], ['F'] * 3)
+    eng_m2 = [SM[1], SM[0]]
     s['eng']['m2'] = dict(smiles=eng_m2, keys=[k(x) for x in eng_m2])
 
     out_no_e2r2 = cp.run(s, deps(), METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=False)
