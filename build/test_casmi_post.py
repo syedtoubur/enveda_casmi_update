@@ -187,19 +187,21 @@ def test_e2r2_integration_in_run():
     # For m1, lib_max=0.95 -> base list is [SM[0], SM[1], SM[2]].
     # Give m1 an Engine 2 list whose top candidate is SM[8] (not in m1's list).
     s['eng']['m1'] = dict(smiles=[SM[8], SM[0]], keys=[k(SM[8]), k(SM[0])])
-    # Give m2 an Engine 2 list whose top candidate is a metric twin of m2's Rank 2 candidate
-    st = {}
-    out_no_e2r2 = cp.run(s, deps(), METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=False)
-    r2_m2 = out_no_e2r2['m2'][1]
-    s['eng']['m2'] = dict(smiles=[r2_m2], keys=[k(r2_m2)])
+    # Give m2 an Engine 2 list whose top candidate is SM[5] (which is already at Rank 2 of m2 after metric_fusion)
+    out_probe = cp.run(s, deps(), METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=False)
+    r2_m2 = out_probe['m2'][1]
+    eng_m2 = [r2_m2] + [x for x in s['eng']['m2']['smiles'] if x != r2_m2]
+    s['eng']['m2'] = dict(smiles=eng_m2, keys=[k(x) for x in eng_m2])
 
+    out_no_e2r2 = cp.run(s, deps(), METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=False)
+    st = {}
     out_e2r2 = cp.run(s, deps(), stats=st, METRIC_FUSION=True, ICE_FALLBACK=True, FUSION_WINDOW=40, E2R2=True)
     # m1: Rank 1 unchanged, SM[8] inserted at Rank 2
     assert out_e2r2['m1'][0] == out_no_e2r2['m1'][0]
     assert out_e2r2['m1'][1] == SM[8]
-    # m2: already at Rank 2
+    # m2: Rank 1 unchanged, top eng candidate at Rank 2
     assert out_e2r2['m2'][0] == out_no_e2r2['m2'][0]
-    assert out_e2r2['m2'][1] == r2_m2
+    assert out_e2r2['m2'][1] == eng_m2[0]
     # mX (inactive placeholder): untouched
     assert out_e2r2['mX'] == ['CCO']
     assert st.get('e2r2_inserted', 0) >= 1
