@@ -60,6 +60,9 @@ CFG = dict(
     # V22 baseline knobs (casmi26-v22-rel150-e2r2-clean; default = False/250.0 for backward compatibility)
     FRAG_GAP=False,          # v7c MetFrag-lite fragment rescore where GLACIER and ICEBERG are completely blind
     E2R2=False,              # E2R2: engine-2 top-1 candidate inserted at rank 2 of every eligible row
+    # gen-rank1-keep (default False = off = byte-identical): a generated ('|gen') BASE #1 that ICEBERG also ranks >= every
+    # other BASE top-5 candidate with an ICE score is pinned to rank 1 of the final row. Reads no FPNet value.
+    GEN1_KEEP=False,
 )
 
 E180_KEY_PATHS = ('/kaggle/input/casmi26-e180-keys/e180_only_ik14.txt', 'E:/casmi/data/e180/e180_only_ik14.txt')
@@ -526,7 +529,59 @@ def run(state, deps, stats=None, **overrides):
                 stats['e2r2_already_rank2'] = stats.get('e2r2_already_rank2', 0) + 1
     if c['LIB_ISOMER_MARGIN'] is not None and state.get('lib_sim'):
         out = _lib_isomer(out, state, c, stats)
+    if c.get('GEN1_KEEP'):
+        out = _gen1_keep(out, state, ICE, active, stats)
     return out
+
+
+def _gen1_fire(base_entry, ice):
+    """-> generated BASE #1 smiles if the GEN1_KEEP trigger fires, else None. Reads only formula tags and ICE scores."""
+    smis, keys, _lib, _scs, forms = base_entry
+    if not smis or not forms or not str(forms[0]).endswith('|gen') or not ice:
+        return None
+
+    def ice_of(i):
+        if isinstance(ice, dict):
+            v = ice.get(smis[i])
+            if v is None and keys is not None and i < len(keys):
+                v = ice.get(keys[i])
+            return v
+        return ice[i] if i < len(ice) else None
+
+    g = ice_of(0)
+    if g is None:
+        return None
+    others = [v for v in (ice_of(i) for i in range(1, min(5, len(smis)))) if v is not None]
+    if not others or any(g < v for v in others):
+        return None
+    return smis[0]
+
+
+def _gen1_keep(out, state, ICE, active, stats):
+    stats.setdefault('gen1_kept', 0)
+    stats.setdefault('gen1_moved', 0)
+    res = dict(out)
+    for mid, row in out.items():
+        if mid not in active:
+            continue
+        b = state['base'].get(mid)
+        if b is None and mid.strip().lstrip('-').isdigit():
+            b = state['base'].get(int(mid))
+        if b is None:
+            continue
+        g = _gen1_fire(tuple(b), ICE.get(str(mid), {}) if ICE else {})
+        if g is None:
+            continue
+        gid = metric_identity(g)
+        if gid is None:
+            continue
+        stats['gen1_kept'] += 1
+        row = list(row)
+        if row and metric_identity(row[0]) == gid:
+            continue
+        stats['gen1_moved'] += 1
+        res[mid] = ([g] + [x for x in row if metric_identity(x) != gid])[:25]
+    return res
 
 
 def _lib_isomer(out, state, c, stats):

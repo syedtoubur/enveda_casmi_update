@@ -208,3 +208,71 @@ def test_e2r2_integration_in_run():
     for m in ('m1', 'm2', 'm3'):
         assert 1 <= len(out_e2r2[m]) <= 25
         assert len(set(map(cp.metric_identity, out_e2r2[m]))) == len(out_e2r2[m])
+
+
+# ---------------------------------------------------------------- GEN1_KEEP
+def _gen_state(forms2=('F|gen', 'F', 'F'), ice2=None):
+    s = state()
+    s['base']['m2'] = (SM[:3], [k(x) for x in SM[:3]], 0.10, [3.0, 2.0, 1.0], list(forms2))
+    s['ice']['m2'] = ice2 if ice2 is not None else {SM[0]: 0.9, SM[1]: 0.5, SM[2]: 0.3}
+    return s
+
+
+def test_gen1_keep_off_and_no_gen_identical():
+    assert cp.CFG['GEN1_KEEP'] is False
+    s = _gen_state()
+    assert cp.run(copy.deepcopy(s), deps()) == cp.run(copy.deepcopy(s), deps(), GEN1_KEEP=False)
+    s2 = _gen_state(forms2=('F', 'F', 'F'))
+    st = {}
+    assert cp.run(copy.deepcopy(s2), deps()) == cp.run(copy.deepcopy(s2), deps(), stats=st, GEN1_KEEP=True)
+    assert st.get('gen1_kept', 0) == 0
+
+
+def test_gen1_keep_fires_with_ice_agreement_and_dedupes():
+    s = _gen_state()
+    base = cp.run(copy.deepcopy(s), deps())
+    assert base['m2'][0] == SM[5]
+    st = {}
+    out = cp.run(copy.deepcopy(s), deps(), stats=st, GEN1_KEEP=True)
+    assert out['m2'][0] == SM[0]
+    assert st['gen1_kept'] == 1 and st['gen1_moved'] == 1
+    assert len(out['m2']) <= 25
+    assert len(set(map(cp.metric_identity, out['m2']))) == len(out['m2'])
+    assert set(out['m2']) == set(base['m2'])
+    for m in ('m1', 'm3', 'mX'):
+        assert out[m] == base[m]
+
+
+def test_gen1_keep_needs_ice_agreement():
+    for ice2 in ({SM[0]: 0.2, SM[1]: 0.5, SM[2]: 0.3},      # another top-5 candidate beats g
+                 {SM[0]: 0.9},                               # no comparison available
+                 {SM[1]: 0.5},                               # g has no ICE score
+                 {}):
+        st = {}
+        s = _gen_state(ice2=ice2)
+        out = cp.run(copy.deepcopy(s), deps(), stats=st, GEN1_KEEP=True)
+        assert out == cp.run(copy.deepcopy(s), deps())
+        assert st.get('gen1_kept', 0) == 0
+    st = {}  # tie fires
+    cp.run(_gen_state(ice2={SM[0]: 0.5, SM[1]: 0.5}), deps(), stats=st, GEN1_KEEP=True)
+    assert st['gen1_kept'] == 1
+
+
+def test_gen1_keep_trigger_reads_no_fpnet():
+    import inspect
+    src = inspect.getsource(cp._gen1_fire) + inspect.getsource(cp._gen1_keep)
+    for tok in ('fz', 'rel', 'S', 'pc_fz', 'scs', '_scs'):
+        assert f"['{tok}']" not in src and f"get('{tok}')" not in src
+    assert 'pc' not in src.replace('process', '')
+
+
+def test_gen1_keep_pseudo_c3_dump_non_vacuous():
+    import pickle
+    path = 'E:/ENVEDA_casmi/research/harness/dumps/pseudo_c3/post_dump/state.pkl'
+    if not os.path.exists(path):
+        return
+    s = pickle.load(open(path, 'rb'))
+    gen = [m for m, b in s['base'].items() if b[4] and str(b[4][0]).endswith('|gen')]
+    assert len(gen) > 50, len(gen)
+    fires = [m for m in gen if cp._gen1_fire(tuple(s['base'][m]), s['ice'].get(str(m), {})) is not None]
+    assert 0 < len(fires) <= len(gen)
