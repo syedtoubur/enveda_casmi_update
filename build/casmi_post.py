@@ -60,6 +60,10 @@ CFG = dict(
     # V22 baseline knobs (casmi26-v22-rel150-e2r2-clean; default = False/250.0 for backward compatibility)
     FRAG_GAP=False,          # v7c MetFrag-lite fragment rescore where GLACIER and ICEBERG are completely blind
     E2R2=False,              # E2R2: engine-2 top-1 candidate inserted at rank 2 of every eligible row
+    # iso-rank knob (default False = off = base behaviour): last step on every row, needs state['iso'] = {mid: rec}
+    # (rec = {children, scores, parent_scores}; see build/iso_rank.py)
+    ISO_MUT=False,
+    ISO_M_ICE=0.0, ISO_RRF_K=10, ISO_LISTS=('ice', 'frag', 'mult', 'parent_rank', 'nl', 'gl'), ISO_TAIL=True,
 )
 
 E180_KEY_PATHS = ('/kaggle/input/casmi26-e180-keys/e180_only_ik14.txt', 'E:/casmi/data/e180/e180_only_ik14.txt')
@@ -526,7 +530,41 @@ def run(state, deps, stats=None, **overrides):
                 stats['e2r2_already_rank2'] = stats.get('e2r2_already_rank2', 0) + 1
     if c['LIB_ISOMER_MARGIN'] is not None and state.get('lib_sim'):
         out = _lib_isomer(out, state, c, stats)
+    if c['ISO_MUT'] and state.get('iso'):
+        _ensure_path()
+        out = _iso_rank(out, state, active, c, stats)
     return out
+
+
+def _iso_rank(out, state, active, c, stats):
+    """iso-rank: final step. state['iso'] = {mid: {children, scores, parent_scores}} (build/iso_rank.py).
+    Counters: iso_children = molecules with >= 1 child, iso_fired = molecules fired, iso_tail = molecules whose
+    ranks 21-25 took a child."""
+    import iso_rank
+    for k_ in ('iso_children', 'iso_fired', 'iso_tail'):
+        stats.setdefault(k_, 0)
+    cfg = {k_: c[k_] for k_ in ('ISO_M_ICE', 'ISO_RRF_K', 'ISO_LISTS', 'ISO_TAIL')}
+    iso = {str(m): v for m, v in state['iso'].items()}
+    res = {}
+    for mid, rows in out.items():
+        rec = iso.get(str(mid))
+        if mid not in active or not rec or not rec.get('children'):
+            res[mid] = rows
+            continue
+        stats['iso_children'] += 1
+        new_rows, info = iso_rank.apply(rows, rec, cfg)
+        stats['iso_fired'] += int(info['fired'])
+        stats['iso_tail'] += int(info['tail'] > 0)
+        res[mid] = new_rows
+    return res
+
+
+def _ensure_path():
+    import os
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
 
 
 def _lib_isomer(out, state, c, stats):
