@@ -1,4 +1,4 @@
-# Submit queue (generated 2026-10-18 21:23 by research/bin/dossier.py; do not edit)
+# Submit queue (generated 2026-10-18 21:28 by research/bin/dossier.py; do not edit)
 
 Ranked by the scorecard composite (equal C1/C2/C3 weights until refit; heavy path: measured ceiling). "other Δ" is the target-cohort Δ on molecules BASE has not memorised, the honest part of the signal (calibration.md). Submit the kernel version shown, then bind it: `python research/bin/poll_lb.py --claim <idea folder>` (Kaggle's submission list carries no kernel name).
 
