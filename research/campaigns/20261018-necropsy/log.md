@@ -13,3 +13,7 @@
 - 2026-10-18 20:58 necropsy-synth -> claude:opus: done
 - 2026-10-18 20:58 necropsy round 1: 5 autopsied, 18 left; back to /replan
 - 2026-10-18 21:02 replan (router) brief 4469 chars
+- 2026-10-18 21:05 replan pick: research/necropsy/20261018-nl-tiebreak-r1frozen (revives nl-sim-rda; branch post-fusion-tiebreak; rank-1-frozen within-formula reorder of ranks 2..25). EV ≈ reach C2_hard same-formula ranks 2-25 × +0.004 ASSUMED (revivals.md:39-42) × P 0.5 ÷ cost 2 ≈ 0.0010; next: taut-rekey 0.0003, xformula-c3 0.0004, netstoich/ce-band ≈ 0 (power STOP expected)
+- 2026-10-18 21:04 replan -> claude:opus: done
+- 2026-10-18 21:04 replan: no progress (STATUS still ), attempt 1/2
+- 2026-10-18 21:07 replan (router) brief 4469 chars
