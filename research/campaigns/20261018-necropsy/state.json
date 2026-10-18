@@ -4,14 +4,14 @@
  "branch_streak": {},
  "closed_branches": [],
  "current": null,
- "stop": null,
+ "stop": "replan picked no idea 2 times",
  "history": [],
  "calls": {
   "claude:sonnet": 5,
-  "claude:opus": 2
+  "claude:opus": 3
  },
  "stalls": {
-  "replan": 1
+  "replan": 2
  },
  "ideation_rounds": 1,
  "ideate": null,

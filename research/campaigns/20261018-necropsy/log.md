@@ -17,3 +17,7 @@
 - 2026-10-18 21:04 replan -> claude:opus: done
 - 2026-10-18 21:04 replan: no progress (STATUS still ), attempt 1/2
 - 2026-10-18 21:07 replan (router) brief 4469 chars
+- 2026-10-18 21:09 replan pick (retry; prior attempt wrote the folder + STATUS proposed but left state.json current null): research/necropsy/20261018-nl-tiebreak-r1frozen (revives nl-sim-rda; branch post-fusion-tiebreak). EV ≈ C2_hard same-formula ranks 2-25 × +0.004 ASSUMED (revivals.md:39-42) × P 0.5 ÷ cost 2 ≈ 0.0010; still top of pool (taut-rekey 0.0003, xformula-c3 0.0004, netstoich/ce-band ≈ 0)
+- 2026-10-18 21:08 replan -> claude:opus: done
+- 2026-10-18 21:08 replan: no progress (STATUS still ), attempt 2/2
+- 2026-10-18 21:08 stopped: replan picked no idea 2 times
