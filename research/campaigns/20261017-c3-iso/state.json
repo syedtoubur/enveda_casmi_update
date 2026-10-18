@@ -79,11 +79,15 @@
  ],
  "calls": {
   "sonnet": 1,
-  "claude:sonnet": 1
+  "claude:sonnet": 1,
+  "claude:opus": 1
  },
- "stalls": {},
+ "stalls": {
+  "replan": 1
+ },
  "ideation_rounds": 0,
  "submitted": 1,
  "i3": "superseded by research/c3/20261018-iso-rank (RRF pool + parent-anchored insert)",
- "report_pending": null
+ "report_pending": null,
+ "ideate": null
 }

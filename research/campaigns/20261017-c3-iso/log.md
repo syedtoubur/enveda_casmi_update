@@ -12,3 +12,7 @@
 - 2026-10-18 20:37 report (router) brief 7792 chars  OVER 6000
 - 2026-10-18 20:38 report -> claude:sonnet: done
 - 2026-10-18 20:42 replan (router) brief 8523 chars  OVER 6000
+- 2026-10-18 20:45 replan: STOP (scope). Pool dry in charter: S1/I1/R1(LB 0.446)/iso-rank dead, I1b superseded, signal audit ALL DEAD (R11); 20261017-candidates hold only C2 ideas or detector-gated C3 slot-fill (out of scope). Pre-registered next step K2 v1 detector is out of charter -> human: re-grill detector campaign or close c3 (questions.md Q1). EV of any in-scope C3 trigger <= +0.0004 (tail-only, MEASURED signal-audit result.md).
+- 2026-10-18 20:43 replan -> claude:opus: done
+- 2026-10-18 20:43 replan: no progress (STATUS still ), attempt 1/2
+- 2026-10-18 20:47 replan (router) brief 8523 chars  OVER 6000
