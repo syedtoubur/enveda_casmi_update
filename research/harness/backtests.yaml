@@ -8,7 +8,7 @@
 # sweeps:   evidence = true -> the harness argmax must sit within one grid step of `lb_opt` on every dump.
 
 families:
-  e006_overlay: [METRIC_FUSION, FUSION_WINDOW, E180_DROP, E180_KEYS]   # E180_*: 2026-10-14 e180-drop P1 (human-approved)
+  e006_overlay: [METRIC_FUSION, FUSION_WINDOW, E180_DROP, E180_KEYS, DREAMS_FILL]   # E180_*: 2026-10-14 e180-drop P1 (human-approved); DREAMS_FILL: DreamsNP top-25 backfill companion of E180_DROP (same overlay, 2026-10-17)
   ice_fallback: [ICE_FALLBACK]
   tail: [FINAL_PASS]
   reranker: [CELL19_ICE, BASE_ICE, FUSED_GL, PC_SIM_RERANK, ICE_LAM, GL_LAM]

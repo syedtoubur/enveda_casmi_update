@@ -1,0 +1,40 @@
+You are acting as an independent, rigorous scientific auditor and referee (Claude Opus) for the Enveda CASMI 2026 research campaign on Class 3 compounds.
+
+The agent pair-programming with the user has analyzed two directories:
+1. E:\ENVEDA_casmi\research\campaigns\20261017-c3-iso
+2. E:\ENVEDA_casmi\research\c3\20261018-iso-rank
+along with the related ideas (20261017-c3-slot-curve, 20261017-isomer-mut-sim, 20261017-gen-rank1-keep, 20261017-isomer-mut-ice).
+
+YOUR TASK:
+Independently cross-validate all findings, audit the underlying code/data files, test for bugs or flaws in reasoning, and provide a clear, definitive referee report.
+
+KEY FINDINGS TO AUDIT AND VERIFY:
+
+1. POST-MORTEM OF THE 5 APPROACHES:
+   - c3-slot-curve: Instrument showed no fixed slot pays (optimal s*=7, expected delta -0.0009 at pi=0.25). Why?
+   - isomer-mut-sim: reach_all was 16.7% (100/600), but reach_20 after CPU fragment pre-screen dropped to 7.3% (44/600, bar >=10%). Was the bottleneck indeed MetFrag-lite's blindness to constitutional regio-isomers?
+   - gen-rank1-keep: Offline pseudo_c3 delta +0.0100, but live Kaggle LB was 0.446 (< keep bar 0.451 vs V22 0.447). Did the offline gain come solely from FPNet spectrum-leakage on pseudo_c3?
+   - isomer-mut-ice: reach_150 was 14.0%, reach_20 by ICEBERG was 10.17% (marginal pass). But why did the I3 trigger (best child > best parent) fire in 74% of all molecules vs 72% of hits (non-discriminating)?
+   - iso-rank: Stage A on Scaffold Half B showed delta +0.0015 (fire-only delta -0.0003). All C1/C2 cohorts suffered negative deltas (composite -0.0084). Why did parent-anchored insertion below parent (pos(p)+1) fail to yield gain from firing?
+
+2. THE "PUSH ABOVE PARENT" (OR RANK 1) EXPERIMENT:
+   - The user asked: "What happens if instead of pushing below the parent (pos(p)+1), we push above the parent (pos(p)), or push directly to Rank 1?"
+   - The agent derived that on C1/C2, where the true parent is at Rank 1 in 55%-93% of queries, pushing above the parent will cause the mutant decoy (which beats the parent on fragment matching in 64%-84% of queries) to usurp Rank 1, pushing the true answer to Rank 2 (penalty -0.500 MRR per molecule).
+   - The agent calculated that this would cause a catastrophic ~ -0.205 drop on the overall Leaderboard (dropping from 0.447 to ~0.242).
+   - VERIFY: Is this mathematical derivation and empirical projection sound, or is there any flaw?
+
+3. THE SIX SIGNALS & THE CLEAN VETO RULE:
+   - The agent audited the 6 candidate signals:
+     1. nl (Diagnostic neutral loss & 6-ring RDA from build/iso_nl.py)
+     2. mult (Multiplicity: count of distinct (parent, operator) pairs reaching child)
+     3. parent_rank (V22 fused rank of parent)
+     4. frag (CPU MetFrag-lite)
+     5. ice (ICEBERG neural cosine)
+     6. gl (GLACIER transformer cosine)
+   - The agent identified `nl` and `mult` as having the lowest false-alarm rate on C1/C2 (~4%-8%), whereas `frag` and raw `ice` have ~64%-84% false alarms.
+   - The agent proposed a dual-veto conjunction:
+     Rule: (Delta S_nl > 0) AND (S_mult >= 2) AND (pos(p) > 1)
+   - VERIFY: Inspect the actual files in E:\ENVEDA_casmi\research\c3\20261018-iso-rank\ (stage_a_result.json, stage_a_frozen.json, spec.md, build/iso_rank.py if accessible).
+   - Are there any bugs in the agent's calculations, numbers, or assumptions?
+
+Please run whatever file reads or test scripts needed, check the numbers directly, and output your comprehensive referee report.

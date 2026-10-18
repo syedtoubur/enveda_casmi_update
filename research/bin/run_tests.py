@@ -25,7 +25,9 @@ from _common import REPO, idea_dir, load_config, log_gate
 TEST_LINE = re.compile(r"^\s*(?:run|soft|python)\s+((?:build|scratch_pkg|research)/\S+\.py)([^|#\n]*)", re.M)
 MISSING = re.compile(r"FileNotFoundError|ModuleNotFoundError|No such file or directory|cannot find the (?:file|path)")
 REPO_TESTS = ["research/harness/test_harness.py", "research/harness/test_suite.py", "research/harness/test_metrics.py",
-              "research/bin/test_campaign.py"]
+              "research/bin/test_campaign.py", "research/bin/test_providers.py",
+              "research/bin/test_conductor.py", "research/bin/test_autosubmit.py", "research/bin/test_desk.py",
+              "research/bin/test_necropsy.py", "research/bin/test_campaign_status.py"]
 
 
 def tests_of(script: str) -> list[list[str]]:
@@ -69,7 +71,7 @@ def legacy(wt: Path, run=subprocess.run):
 
 def main(argv=None, run=subprocess.run) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("line", choices=["exploit", "explore"])
+    ap.add_argument("line", choices=sorted(load_config()["lines"]))
     ap.add_argument("--idea", default=None)
     ap.add_argument("--legacy", action="store_true")
     a = ap.parse_args(argv)

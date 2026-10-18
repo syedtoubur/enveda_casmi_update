@@ -1,0 +1,7 @@
+# Measured-dead signals. Rule R12 flags a revival that names one without the word MEASURED on the same line.
+# Every entry cites a file in this repo. Append only with a citation.
+- {signal: S_nl, src: research/c3/20261018-signal-audit/result.md, why: "C1/C2 fire 0.47"}
+- {signal: S_mult, src: research/c3/20261018-signal-audit/result.md, why: "C1/C2 fire 0.53"}
+- {signal: S_frag, src: research/c3/20261018-signal-audit/result.md, why: "C1/C2 fire 0.71"}
+- {signal: knapsack depth 3, src: research/rules/R10_truth_reference_spectrum.py, why: "gain was a truth-fragment leak"}
+- {signal: ice margin route, src: research/exploit/20261014-ice-margin-route/STATUS, why: "fused margin is not a class signal (C1_npx delta -0.0007)"}

@@ -1,0 +1,1 @@
+- 2026-10-18 campaign created by the conductor migration (Phase 7); starts with a necropsy round

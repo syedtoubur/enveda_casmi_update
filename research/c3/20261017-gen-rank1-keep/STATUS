@@ -1,4 +1,4 @@
-needs-human
+dead
 mode: supervised
 line: c3
 branch: c3-gen1
@@ -14,3 +14,5 @@ kernel_version: 1
 docker_image: gcr.io/kaggle-private-byod/python@sha256:37c64f7dd9c54116ecd1bcc88817c5469b88387388fade02bfa8bf3fc647d461
 extra_sources: syedtoubur/casmi26-e180-keys
 g4_fixes: 1
+lb: 0.446 (ref 57325719, 2026-10-18; < keep bar 0.451 vs V22 0.447 unpaired) -> DEAD; harness gain was leak-hit only
+lb_refs: 57325719

@@ -1,0 +1,25 @@
+# Search queries per desk (research/bin/desk.py run search:<desk>). Each term is run against arXiv (restricted to
+# the categories) and OpenAlex. Keep 6-10 terms: broad enough to catch new work, narrow enough to stay on topic.
+chem:
+  arxiv_categories: [physics.chem-ph, q-bio.BM, q-bio.QM]
+  queries:
+    - tandem mass spectrometry fragmentation mechanism
+    - collision-induced dissociation bond dissociation energy
+    - electrospray adduct formation in-source fragmentation
+    - isomer differentiation MS/MS
+    - tautomer mass spectrometry
+    - natural product biosynthesis scaffold mass spectrometry
+    - fragmentation rules small molecule metabolomics
+    - ion mobility collision cross section timsTOF
+ml:
+  arxiv_categories: [cs.LG, q-bio.QM, physics.chem-ph]
+  queries:
+    - MS/MS spectrum to molecular structure prediction
+    - de novo molecule generation from mass spectra
+    - molecular fingerprint prediction from tandem mass spectra
+    - contrastive learning mass spectra retrieval
+    - MassSpecGym benchmark
+    - mass spectrum foundation model self-supervised
+    - SELFIES generative model molecule
+    - forward spectrum simulation fragmentation graph neural network
+    - reranking candidate structures mass spectrometry

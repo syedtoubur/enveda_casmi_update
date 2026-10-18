@@ -7,3 +7,12 @@ queue/
 **/__pycache__/
 **/colab/
 **/kaggle_watch/
+# conductor runtime (2026-10-18): locks, logs, per-call ledger, backups
+provider_ledger.json
+conductor/conductor.lock
+conductor/conductor.log
+conductor/state.json
+**/desk_run.jsonl
+**/*.bak-*
+**/campaign_driver.log
+**/ko2/

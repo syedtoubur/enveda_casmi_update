@@ -123,6 +123,24 @@ STEPS = {
                "with link, licence, whether weights are public, training data and its overlap risk with MassSpecGym/"
                "NIST/our val cohorts), every claim with its source link, then `status: answered` (or `status: "
                "not-found` with what you searched). Never edit anything else."),
+    "necropsy": dict(
+        goal="Explain why one dead idea died (cause code + evidence) and which change or combination could revive it.",
+        tags=["measurement"],
+        reads=["{idea}/STATUS", "{idea}/necropsy.md (skeleton: `python research/bin/necropsy.py --skeleton {idea}`)",
+               "{idea}/spec.md", "{idea}/attack.md", "{idea}/gates.md", "{idea}/harness_result.json",
+               "{idea}/result.md or {idea}/card.md", ".claude/skills/necropsy/SKILL.md"],
+        output="{idea}/necropsy.md filled per the necropsy skill: confirmed `cause:` (drop the `# guess` mark), evidence "
+               "as file:line, what_was_learned, revival_paths, combine_with. Never edit STATUS."),
+    "necropsy-synth": dict(
+        goal="Turn every necropsy into ranked revival and combination candidates that R12 accepts.",
+        tags=["spec", "premise", "decision"],
+        reads=["every research/*/*/necropsy.md (`python research/bin/necropsy.py --json`)",
+               "research/necropsy/dead_signals.yaml", "research/harness/gate_report.md (headers)",
+               "{campaign}/charter.md", "{campaign}/state.json", ".claude/skills/necropsy-synth/SKILL.md"],
+        output="research/ideas/{date}-revivals.md: >= 3 ranked candidates, each with `revives:`, `cause:`, `fix:` (a "
+               "mechanism, data or stratum change, never a re-tune), `combines:` with the cohorts/strata when it combines, "
+               "falsifier, cheapest harness measurement, expected delta vs the 0.004 noise floor, line {line}. Then set "
+               "{campaign}/state.json `ideate` to null."),
 }
 
 
@@ -148,7 +166,7 @@ def line_fmt(cfg: dict, line: str) -> dict:
 
 
 def section(md: str, title: str) -> str:
-    m = re.search(rf"^## {re.escape(title)}\s*\n(.*?)(?=^## |\Z)", md, re.S | re.M)
+    m = re.search(rf"^## {re.escape(title)}\s*\n(.*?)(?=^## |\Z)", md, re.S | re.M | re.I)
     return m.group(1).strip() if m else ""
 
 

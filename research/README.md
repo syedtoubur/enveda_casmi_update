@@ -8,6 +8,9 @@ Decisions live in code (`gate.py`, `poll_lb.decide()`, `preflight.py`, the G4 wa
 2026-10-13 (`~/.claude/plans/read-scratch-handoffs-loop-audit-md-the-ancient-cerf.md`); audit:
 `research/audit/20261013-loop-audit.md`. Portable bootstrap for any agent or model: `.scratch/prompt.md`.
 
+## Conductor (2026-10-18)
+`python research/bin/conductor.py start|status|pause|resume|yield-claude` drives every campaign in `research/conductor/conductor.yaml` through `campaign.py --once --router` (multi-provider routing, `providers.py`), plus research desks (`desk.py`), auto-submit (`autosubmit.py`), necropsy campaigns (`Mode: necropsy`), the daily digest and the `research/inbox/` decisions written by `/campaign-brief`. Specs: `research/conductor/specs/`.
+
 ## Roles
 | Role | Who | Writes |
 |---|---|---|
@@ -87,7 +90,7 @@ A new push supersedes a running watcher through STATUS `push_id`.
 2. Never read raw `.ipynb`; use `python .agents/skills/analyze-notebook/scripts/compare.py`.
 3. Code changes happen only in the line worktree (`config.yaml` -> `lines.<line>.worktree`).
 4. Only the Reporter edits `EXPERIMENTS.md`; KEEP/REVERT comes from `poll_lb.decide()` only.
-5. Nobody runs `kaggle competitions submit`. The human submits.
+5. Only `research/bin/autosubmit.py` (conductor, when `autosubmit.enabled`) or the human runs `kaggle competitions submit`; agents never do. The human picks the final submissions.
 
 ## Colab login (Drive scope)
 `colab drivemount` needs the CLI token to hold the **full** Drive scope (`https://www.googleapis.com/auth/drive`). With only

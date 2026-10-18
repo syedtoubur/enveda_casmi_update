@@ -38,5 +38,45 @@
   "kernel": "syedtoubur/casmi26-e006-b2-nl-sim",
   "kind": "probe",
   "hours": 0.31
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-16 12:06",
+  "idea": "research/exploit/20261015-isdb-cfm-fallback",
+  "kernel": "syedtoubur/casmi26-e006-isdb-cfm-fallback",
+  "kind": "probe",
+  "hours": 0.324
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-17 15:17",
+  "idea": "research/antigravity-exploit/e180-drop-dreamsnp-pclite",
+  "kernel": "syedtoubur/casmi-e180-drop-dreamsnp-pclite",
+  "kind": "probe",
+  "hours": 0.346
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-17 15:39",
+  "idea": "research/antigravity-exploit/e180-drop-dreamsnp-pclite",
+  "kernel": "syedtoubur/casmi-e180-drop-dreamsnp-pclite",
+  "kind": "probe",
+  "hours": 0.285
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-17 20:23",
+  "idea": "research/c3/20261017-control-v22",
+  "kernel": "syedtoubur/casmi26-control-v22-replicate",
+  "kind": "control",
+  "hours": 0.302
+ },
+ {
+  "week": "2026-W42",
+  "date": "2026-10-18 02:46",
+  "idea": "research/c3/20261017-gen-rank1-keep",
+  "kernel": "syedtoubur/casmi26-gen-rank1-keep",
+  "kind": "replay",
+  "hours": 0.297
  }
 ]

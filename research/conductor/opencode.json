@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "_conductor": true,
+  "permission": {
+    "edit": "allow",
+    "external_directory": "deny",
+    "webfetch": "allow",
+    "bash": {
+      "*": "deny",
+      "python research/*": "allow",
+      "python -m pytest*": "allow",
+      "python build/*": "allow",
+      "kaggle kernels*": "allow",
+      "kaggle datasets*": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "ls*": "allow"
+    }
+  }
+}

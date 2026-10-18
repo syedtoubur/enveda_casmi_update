@@ -55,10 +55,13 @@ import call_claude  # noqa: E402
 import dossier  # noqa: E402
 import gate  # noqa: E402
 import preflight  # noqa: E402
+import providers  # noqa: E402
 
 DEFAULTS = dict(max_cycles=5, max_lb_probes=4, dead_streak=2, quota_pause_h=12)
 MODELS = dict(replan="opus", spec="opus", attack="opus", build="sonnet",
-              scout="haiku", fetch="haiku", diagnose="sonnet", ideate="opus", report="sonnet")
+              scout="haiku", fetch="haiku", diagnose="sonnet", ideate="opus", report="sonnet",
+              necropsy="sonnet", **{"necropsy-synth": "opus"})
+NECROPSY_PER_ROUND = 5                # dead ideas autopsied per ideation round in a `Mode: necropsy` campaign
 WEB_STEPS = {"scout", "fetch"}        # run with claude.web_settings (WebSearch / WebFetch allowed)
 TERMINAL = {"dead", "g4-pushed", "g4-failed", "g4-fix", "needs-human", "ready-to-submit", "instrument-ready",
             "scored", "scored-unpaired", "keep-pending", "keep", "revert", "submitted"}
@@ -77,8 +80,10 @@ class Busy(Exception):
 
 
 class Campaign:
-    def __init__(self, path: Path, runner=None, sleep=time.sleep, readonly: bool = False):
+    def __init__(self, path: Path, runner=None, sleep=time.sleep, readonly: bool = False,
+                 router=None):
         self.dir = path.resolve()
+        self.router = router            # providers.Router: per-step multi-provider routing (--router)
         self.cfg = load_config()
         self.runner = runner or self._claude
         self.sleep = sleep
@@ -96,7 +101,7 @@ class Campaign:
             m = re.search(rf"^\s*-?\s*{k}\s*:\s*(\d+)", brief_mod.section(charter, "Stop rules"), re.M)
             if m:
                 self.limits[k] = int(m.group(1))
-        m = re.search(r"^\s*-?\s*Line\s*:\s*(\w+)", charter, re.M | re.I)
+        m = re.search(r"^\s*-?\s*Line\s*:\s*([\w-]+)", charter, re.M | re.I)
         self.line = m.group(1).lower() if m and m.group(1).lower() in self.cfg["lines"] else "exploit"
         self.retries = int(ccfg.get("step_retries", 2))
         self.caps = dict(ccfg.get("call_caps") or {})
@@ -142,6 +147,8 @@ class Campaign:
     def call(self, step: str, prompt: str, idea: Path | None) -> str:
         """Brief + one model step; a usage-limit pause is retried until quota_pause_h, then the campaign stops."""
         bstep = step if step in brief_mod.STEPS else step.split()[0]
+        if self.router is not None:
+            return self.call_routed(bstep, prompt, idea)
         model = self.models.get(bstep) or self.models[bstep.split("-")[0]]
         cap = self.caps.get(model)
         if cap is not None and self.state["calls"].get(model, 0) >= int(cap):
@@ -167,6 +174,40 @@ class Campaign:
                 self.save()
                 return "stopped"
             self.log("usage limit: retry in 30 min")
+            self.sleep(1800)
+
+    def call_routed(self, bstep: str, prompt: str, idea: Path | None) -> str:
+        """call() through providers.Router: first available route of the step's tier; attack is cross-family."""
+        routes = self.router.routes(bstep)
+        capped = {r for r in routes if self.caps.get(r) is not None
+                  and self.state["calls"].get(r, 0) >= int(self.caps[r])}
+        if routes and len(capped) == len(routes):
+            self.state["stop"] = f"call cap: every route of {bstep} is at its cap (raise campaign.call_caps, then --resume)"
+            self.save()
+            return "stopped"
+        exclude = None
+        if bstep == "attack" and idea is not None and (idea / "STATUS").exists():
+            exclude = read_status(idea)[1].get("spec_by") or None
+        path, n = brief_mod.brief(self.dir, bstep, idea)
+        self.log(f"{bstep} (router) brief {n} chars{'  OVER 6000' if n > 6000 else ''}")
+        t0 = time.time()
+        while True:
+            out, route = self.router.run(bstep, f"{prompt} --brief {path.relative_to(REPO).as_posix()}",
+                                         (idea or self.dir) / "claude_run.jsonl", self.worktree(idea),
+                                         exclude_family=exclude, skip=capped)
+            if route is not None:
+                self.state["calls"][route] = self.state["calls"].get(route, 0) + 1
+                self.save()
+                self.log(f"{bstep} -> {route}: {out}")
+            if out == "done" and bstep == "spec" and idea is not None and route is not None:
+                write_status(idea, None, spec_by=self.router.family(route))   # attack must come from another family
+            if out != "paused":
+                return out
+            if time.time() - t0 > self.limits["quota_pause_h"] * 3600:
+                self.state["stop"] = f"no model route available for > {self.limits['quota_pause_h']} h"
+                self.save()
+                return "stopped"
+            self.log("every route paused: retry in 30 min")
             self.sleep(1800)
 
     def progressed(self, key: str, before: str, after: str, out: str) -> bool:
@@ -273,6 +314,10 @@ class Campaign:
         return True
 
     # ---------------------------------------------------------------- ideation engine (grill 2026-10-13)
+    def web_allowed(self) -> bool:
+        """Web steps: a router sends them to browsing-capable routes; otherwise Claude's web settings must exist."""
+        return self.router is not None or self.web_ok() or self.runner != self._claude
+
     def web_ok(self) -> bool:
         return bool(self.web_settings) and (REPO / self.web_settings).exists()
 
@@ -308,8 +353,10 @@ class Campaign:
         self.state["ideation_rounds"] += 1
         self.save()
         rel = self.dir.relative_to(REPO).as_posix()
+        if self.necropsy_mode():
+            return self.ideate_necropsy(rel)
         if self.newest_age_days("research/scout", "*.md") > self.scout_max_age_d:
-            if self.web_ok() or self.runner != self._claude:
+            if self.web_allowed():
                 if self.call("scout", f"/scout {rel}", None) == "stopped":
                     return False
             else:
@@ -323,10 +370,30 @@ class Campaign:
         self.log(f"ideation round {self.state['ideation_rounds']} done; back to /replan")
         return True
 
+    def necropsy_mode(self) -> bool:
+        charter = (self.dir / "charter.md").read_text(encoding="utf-8")
+        return bool(re.search(r"^\s*-?\s*Mode\s*:\s*necropsy\b", charter, re.M | re.I))
+
+    def ideate_necropsy(self, rel: str) -> bool:
+        """Necropsy campaigns ideate from dead ideas: autopsy up to NECROPSY_PER_ROUND, then /necropsy-synth."""
+        import necropsy
+        todo = [REPO / d["path"] for d in necropsy.inventory() if not necropsy.is_filled(REPO / d["path"])]
+        for idea in todo[:NECROPSY_PER_ROUND]:
+            necropsy.skeleton(idea)
+            if self.call("necropsy", f"/necropsy {idea.relative_to(REPO).as_posix()}", idea) == "stopped":
+                return False
+        if self.call("necropsy-synth", f"/necropsy-synth {rel}", None) == "stopped":
+            return False
+        self.state["ideate"] = None
+        self.save()
+        self.log(f"necropsy round {self.state['ideation_rounds']}: {min(len(todo), NECROPSY_PER_ROUND)} autopsied, "
+                 f"{max(len(todo) - NECROPSY_PER_ROUND, 0)} left; back to /replan")
+        return True
+
     def step(self) -> bool:
         """Advance one transition. False = nothing more to do (stopped or waiting)."""
         self.refresh_history()
-        if self.open_requests() and (self.web_ok() or self.runner != self._claude):
+        if self.open_requests() and self.web_allowed():
             return self.fetch()
         if self.state.get("report_pending"):     # learn from the closed cycle once; drafts only (promote.py)
             idea = REPO / self.state["report_pending"]
@@ -438,6 +505,8 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the next transition; read-only")
     ap.add_argument("--override", metavar="IDEA", help="pass a dead harness gate for this idea (needs --reason)")
     ap.add_argument("--reason", default="")
+    ap.add_argument("--router", action="store_true",
+                    help="route each step across claude/agy/qoder/opencode (config routing:) instead of claude only")
     ap.add_argument("--resume", action="store_true", help="clear state.json `stop` (after raising a cap)")
     a = ap.parse_args(argv)
     path = Path(a.campaign) if Path(a.campaign).is_absolute() else REPO / a.campaign
@@ -460,12 +529,13 @@ def main(argv=None) -> int:
     if a.detach:
         flags = 0x08000000 | 0x00000200 if sys.platform == "win32" else 0   # NO_WINDOW | NEW_PROCESS_GROUP
         log = open(path / "campaign_driver.log", "a")
-        subprocess.Popen([sys.executable, __file__, str(path)], cwd=REPO, stdout=log, stderr=log,
+        subprocess.Popen([sys.executable, __file__, str(path)] + (["--router"] if a.router else []), cwd=REPO, stdout=log, stderr=log,
                          stdin=subprocess.DEVNULL, creationflags=flags, close_fds=True)
         print(f"[campaign] detached; log {path / 'campaign_driver.log'}")
         return 0
     try:
-        Campaign(path).run(once=a.once)
+        router = providers.Router(load_config(), REPO / "research" / "provider_ledger.json") if a.router else None
+        Campaign(path, router=router).run(once=a.once)
     except Busy as e:
         print(f"[campaign] refused: {e}")
         return 6

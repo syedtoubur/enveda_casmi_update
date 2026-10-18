@@ -20,6 +20,22 @@ lines:
       - 'engine lists \d+'
       - 'ICE meta \{"status": "ok".*"device": "cuda"'
       - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
+  antigravity-exploit:
+    worktree: E:/casmi/lines/antigravity-exploit
+    branch: line/antigravity-exploit
+    base_notebook: scratch/baseline/casmi26-v22-rel150-e2r2-clean.ipynb
+    base_export: scratch/baseline/casmi26_baseline.py
+    post_module: build/casmi_post.py
+    harness_base_cfg: 'METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40,REL_PROMOTE=150.0,FRAG_GAP=true,E2R2=true'
+    kaggle_preset: sota_0433_inference_preset
+    code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (base .ipynb -> probe .ipynb)"
+    keep_bar: 0.451
+    control: research/exploit/20261012-control-e006
+    control_draft: research/exploit/20261013-control-draft/kaggle_output/submission.csv
+    g4_required:
+      - 'engine lists \d+'
+      - 'ICE meta \{"status": "ok".*"device": "cuda"'
+      - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
   c3:                       # grill 2026-10-17 (campaign 20261017-c3-iso): Class-3 targeting on the V22 base
     worktree: E:/casmi/lines/c3           # branch line/c3 = idea/20261015-c3-gen-slot2 (faeedf0) + V22 parity (merge 38a42a4)
     branch: line/c3
@@ -31,6 +47,22 @@ lines:
     code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (V22 base .ipynb -> probe .ipynb); novel generators as build/<module>.py"
     keep_bar: 0.451         # paired own-account V22 replicate LB + 0.004 (replicate pending; 0.447 + 0.004)
     control: research/c3/20261017-control-v22   # own-account V22 replicate syedtoubur/casmi26-control-v22-replicate (G4 PASS 2026-10-17)
+    control_draft: research/c3/20261017-control-v22/kaggle_output/submission.csv
+    g4_required:
+      - 'engine lists \d+'
+      - 'ICE meta \{"status": "ok".*"device": "cuda"'
+      - 'CLAW STAGE SCORED \| ice=[1-9]\d* gl=[1-9]'
+  necropsy:                 # conductor plan 2026-10-18 Phase 7: revivals/combinations of dead ideas on the V22 base
+    worktree: E:/casmi/lines/necropsy
+    branch: line/necropsy             # from line/antigravity-exploit (38a42a4, V22 parity)
+    base_notebook: scratch/baseline/casmi26-v22-rel150-e2r2-clean.ipynb
+    base_export: scratch/baseline/casmi26_baseline.py
+    post_module: build/casmi_post.py
+    harness_base_cfg: 'METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40,REL_PROMOTE=150.0,FRAG_GAP=true,E2R2=true'
+    kaggle_preset: sota_0433_inference_preset
+    code_form: "build/patch_<idea>.py + build/test_patch_<idea>.py (V22 base .ipynb -> probe .ipynb)"
+    keep_bar: 0.451
+    control: research/c3/20261017-control-v22
     control_draft: research/c3/20261017-control-v22/kaggle_output/submission.csv
     g4_required:
       - 'engine lists \d+'
@@ -138,3 +170,56 @@ claude:
   lock_file: research/queue/claude.lock
   queue_file: research/queue/claude_queue.txt
   settings: .claude/settings.headless.json
+
+routing:
+  timeout_s: 2400
+  bin: {agy: C:/Users/h/AppData/Local/agy/bin/agy.exe, qoder: C:/Users/h/.qoder/bin/qodercli/qodercli}
+  slots: {claude: 1, agy: 1, qoder: 2, opencode: 2}
+  families:      # provider:model -> family (cross-family review)
+    claude: anthropic
+    agy:claude-opus-4-6-thinking: anthropic
+    agy:claude-sonnet-4-6: anthropic
+    agy:gemini-3.8-flash-high: google
+    agy:gemini-3.8-flash-medium: google
+    opencode:openrouter/nvidia/nemotron-3-ultra-550b-a55b:free: nvidia
+    opencode:openrouter/nvidia/nemotron-3-super-120b-a12b:free: nvidia
+    opencode:openrouter/openrouter/free: openrouter
+    qoder: qwen
+    qoder:DeepSeek-V4-Pro: deepseek
+    qoder:DeepSeek-Flash: deepseek
+    qoder:GLM-5.3: zhipu
+    qoder:GLM-5.3-Flash: zhipu
+    qoder:MiniMax-M3: minimax
+  tiers:
+    H: [claude:opus, agy:claude-opus-4-6-thinking, qoder:DeepSeek-V4-Pro, opencode:openrouter/nvidia/nemotron-3-ultra-550b-a55b:free, qoder:GLM-5.3, qoder:Qwen3.8-Max]
+    M: [claude:sonnet, agy:claude-sonnet-4-6, qoder:Qwen3.7-Plus, qoder:DeepSeek-Flash, opencode:openrouter/nvidia/nemotron-3-super-120b-a12b:free, qoder:GLM-5.3-Flash, qoder:Qwen3.8-Flash]
+    L: [qoder:Qwen3.8-Flash, agy:gemini-3.8-flash-medium, qoder:DeepSeek-Flash, opencode:openrouter/openrouter/free]
+  # Qoder credits measured 2026-10-18 (1-question call / 2-turn tool step): Qwen3.8-Flash 0/0, Qwen3.7-Plus 0.02/0.11,
+  # DeepSeek-Flash 0.01/0.25, GLM-5.3-Flash 0.03/0.35, MiniMax-M3 0.10, DeepSeek-V4-Pro 0.18/1.16, GLM-5.3 0.19/1.84,
+  # Qwen3.7-Max 0.43, Kimi-K3 0.91, Qwen3.8-Max ~2.1. A full agent step costs ~10-30x a 2-turn step. agy free quota resets weekly.
+  credits_day: {qoder: 90}          # daily Qoder credit budget (100 free/day, 10 kept for the human's IDE use)
+  credit_free: [Qwen3.8-Flash]      # models that cost 0 credits keep running after the budget is spent
+  paid_last_resort: {route: "opencode:openrouter/~deepseek/deepseek-pro-latest", tiers: [H], usd_per_call_est: 0.02, usd_day: 0.25, usd_total: 2.0}
+  steps: {replan: H, spec: H, attack: H, ideate: H, build: M, diagnose: M, report: M, scout: L, fetch: L, necropsy: M, necropsy-synth: H}
+  web_steps: [scout, fetch]
+  caps_day: {"claude:opus": 12, "claude:sonnet": 20, "qoder:Qwen3.8-Max": 5, "qoder:GLM-5.3": 10, "qoder:DeepSeek-V4-Pro": 10}
+
+conductor:                  # research/bin/conductor.py (plan 2026-10-18, Phase 2)
+  tick_s: 300               # main loop period
+  max_workers: 2            # concurrent campaign.py --once workers (7.7 GB RAM PC; each agent CLI ~0.3-1 GB)
+  commit_state: false       # true only after specs-scratch-r0 is merged into main (state branch); human flips it
+  state_branch: main
+  digest_hour: 7            # local hour for research/daily/<date>.md
+  campaigns_file: research/conductor/conductor.yaml
+
+autosubmit:                 # research/bin/autosubmit.py (Phase 3)
+  enabled: true             # human 2026-10-18: limit 5, conductor may use 4, 1 reserved for the human
+  daily_submissions: 5      # the competition's daily limit (human, 2026-10-18)
+  reserve_for_human: 1
+  max_auto_per_day: null    # optional extra cap; null = daily_submissions - reserve_for_human
+
+desks:                      # research/bin/desk.py (Phase 5)
+  library: research/library
+  triage_per_day: 40        # abstracts screened per desk per day (Qwen Flash, 0 credits)
+  cards_per_day: 4          # full-text cards per desk per day
+  synth_every_days: 7       # H-tier desk-synth -> research/ideas/<date>-desk-candidates.md

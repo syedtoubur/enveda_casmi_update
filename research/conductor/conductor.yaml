@@ -1,0 +1,8 @@
+campaigns:
+- research/campaigns/20261017-c3-iso
+- research/campaigns/20261017-antigravity-sota-exploit
+- research/campaigns/20261018-necropsy
+desks:
+- chem
+- ml
+paused: false

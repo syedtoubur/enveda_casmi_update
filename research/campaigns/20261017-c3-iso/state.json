@@ -1,12 +1,12 @@
 {
  "cycle": 2,
- "lb_probes": 0,
+ "lb_probes": 1,
  "branch_streak": {
   "c3-route": 0,
   "c3-iso": 1
  },
  "closed_branches": [],
- "current": "research/c3/20261017-isomer-mut-ice",
+ "current": "research/c3/20261018-iso-rank",
  "stop": null,
  "history": [
   {
@@ -33,14 +33,14 @@
   },
   {
    "idea": "research/c3/20261017-gen-rank1-keep",
-   "status": "submitted",
+   "status": "dead",
    "branch": "c3-route",
    "reason": "G4 waived changed=0 (gen1_checked 12, kept 0); submitted ref 57325719 PENDING; KEEP iff LB>=0.451 and hidden gen1_kept>0",
    "override": "g4_min_changed waived by orchestrator",
    "t": "2026-10-18T03:02:00+06:00",
-   "now": "submitted",
-   "lb": "",
-   "decision": ""
+   "now": "dead",
+   "lb": "0.446",
+   "decision": "DEAD: 0.446 < 0.451 keep bar"
   },
   {
    "idea": "research/c3/20261017-isomer-mut-ice",
@@ -52,6 +52,17 @@
    "now": "needs-human",
    "lb": "",
    "decision": ""
+  },
+  {
+   "idea": "research/c3/20261018-iso-rank",
+   "status": "spec",
+   "branch": "c3-iso",
+   "reason": "human grill 2026-10-18: rank isomer children properly; fast-ship in parallel with Stage A",
+   "override": "",
+   "t": "2026-10-18T08:30:00+06:00",
+   "now": "spec",
+   "lb": "",
+   "decision": ""
   }
  ],
  "calls": {
@@ -60,5 +71,5 @@
  "stalls": {},
  "ideation_rounds": 0,
  "submitted": 1,
- "i3": "pending: needs pre-registered margin/rank rule on scaffold half split + C2/C1_npx fire check"
+ "i3": "superseded by research/c3/20261018-iso-rank (RRF pool + parent-anchored insert)"
 }
