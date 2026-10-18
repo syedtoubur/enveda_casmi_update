@@ -1,1 +1,14 @@
-{"cycle": 0, "lb_probes": 0, "branch_streak": {}, "closed_branches": [], "current": null, "stop": null, "history": [], "calls": {}, "stalls": {}, "ideation_rounds": 0, "ideate": "necropsy campaign start: no revivals yet"}
+{
+ "cycle": 0,
+ "lb_probes": 0,
+ "branch_streak": {},
+ "closed_branches": [],
+ "current": null,
+ "stop": null,
+ "history": [],
+ "calls": {},
+ "stalls": {},
+ "ideation_rounds": 1,
+ "ideate": "necropsy campaign start: no revivals yet",
+ "submitted": 0
+}

@@ -8,7 +8,7 @@
  },
  "closed_branches": [],
  "current": null,
- "stop": null,
+ "stop": "replan picked no idea 2 times",
  "history": [
   {
    "idea": "research/c3/20261017-c3-slot-curve",
@@ -80,10 +80,10 @@
  "calls": {
   "sonnet": 1,
   "claude:sonnet": 1,
-  "claude:opus": 1
+  "claude:opus": 2
  },
  "stalls": {
-  "replan": 1
+  "replan": 2
  },
  "ideation_rounds": 0,
  "submitted": 1,

@@ -16,3 +16,7 @@
 - 2026-10-18 20:43 replan -> claude:opus: done
 - 2026-10-18 20:43 replan: no progress (STATUS still ), attempt 1/2
 - 2026-10-18 20:47 replan (router) brief 8523 chars  OVER 6000
+- 2026-10-18 20:50 replan (retry): STOP written to state.json (the 20:45 pass logged STOP but left state.stop null). Re-checked: pool still dry in scope; 20261017-candidates hold only C2 ideas (jestr-contrast-channel lead) or detector-gated C3 slot-fill, both outside this charter. EV of any in-scope C3 trigger <= +0.0004 (tail-only, MEASURED research/c3/20261018-signal-audit/result.md). Human: questions.md Q1.
+- 2026-10-18 20:48 replan -> claude:opus: done
+- 2026-10-18 20:48 replan: no progress (STATUS still ), attempt 2/2
+- 2026-10-18 20:48 stopped: replan picked no idea 2 times
