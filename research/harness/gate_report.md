@@ -727,3 +727,13 @@ placement above the parent? (Referee audit §3: the "nl/mult 4–8 %" figure has
 - **Next by verdict:** all DEAD → K2 v1 detector spec (no holdout draw, no GPU). Any ALIVE → freeze that rule, pre-register a
   pseudo_c3_v2 draw (new seed, v1 scaffolds and val excluded) with its own bar before the draw. Alive only with ICE plausible →
   ask the human for the ICE-on-C1/C2 T4 run.
+
+### 2026-10-18: c3 signal audit MEASURED (under the 2026-10-18 pre-registration)
+- **ALL DEAD; sanity PASS** (frag-only half-B fire 0.839 / 0.753 / 0.643 / 0.670 vs Stage A 0.84 / 0.75 / 0.64 / 0.67).
+- Pooled C1/C2 FPR (n 1,145) vs pseudo_c3 half-A TPR (n 298): S_nl 0.473 / 0.000; S_mult 0.528 / 0.017; S_frag 0.707 / 0.003;
+  Rule A 0.222 / 0.000; Rule B 0.214 / 0.003. Every net (0.25·TPR − 0.275·FPR) ≤ −0.058. No signal fires more on C3 than C1/C2.
+- nl tie rate (dnl = 0) 46 % C1/C2, 48 % pseudo_c3 A. c* = truth on 2.0 % of half A (CPU lists): even a perfect veto is capped at +0.005.
+- Half B frozen config: 66 fires, 0 true (explains `delta_fire_only == delta_wc`). Tail-only 21–25: C1/C2 Δ ≥ −0.0002 (all),
+  pseudo_c3 +0.0029 (A); composite ≈ +0.0004 at π 0.25, under the LB noise floor.
+- New rule **R11** (`research/rules/R11_above_parent_needs_measured_fpr.py` + fixture). Next: K2 v1 detector spec; no holdout, no GPU.
+- `research/c3/20261018-signal-audit/result.md`, kernel `syedtoubur/c3iso-signal-audit` v1, code 1a09587 (worktree c3-signal-audit).

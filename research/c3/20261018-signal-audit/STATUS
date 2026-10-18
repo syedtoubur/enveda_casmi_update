@@ -1,0 +1,10 @@
+dead
+mode: supervised
+line: c3
+branch: idea/20261018-signal-audit
+kind: audit
+campaign: 20261017-c3-iso
+worktree: E:/casmi/lines/c3-signal-audit
+kernel: syedtoubur/c3iso-signal-audit
+kernel_version: 1
+result: ALL DEAD (sanity PASS); result.md

@@ -1,0 +1,17 @@
+dead
+mode: supervised
+line: c3
+branch: idea/20261018-iso-rank
+kind: probe
+campaign: 20261017-c3-iso
+g4_min_changed: 1
+docker_image: gcr.io/kaggle-private-byod/python@sha256:37c64f7dd9c54116ecd1bcc88817c5469b88387388fade02bfa8bf3fc647d461
+extra_sources: syedtoubur/casmi26-e180-keys
+kernel: syedtoubur/casmi26-iso-rank
+push_id: 1792291248.458699
+kernel_version: 1
+g4_fixes: 1
+
+kernel_version: 1
+note: draft G4 PASS; K=150 confirmed by runtime.md
+withdrawn: 2026-10-18 (signal-audit plan) - Stage A DEAD, composite pi 0.25 -0.0084; probe not submitted
