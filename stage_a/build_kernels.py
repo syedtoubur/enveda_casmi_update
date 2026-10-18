@@ -7,7 +7,7 @@ for f in ("casmi_post.py", "iso_rank.py", "iso_nl.py", "isomer_mut.py", "frag_re
     shutil.copy(f"{BUILD}/{f}", CODE)
 for f in ("common.py", "a3.py", "a4.py", "kit_setup.py"):
     shutil.copy(f"{SA}/{f}", CODE)
-shutil.copy("E:/ENVEDA_casmi/val_scripts/val.parquet", D)
+pass  # val.parquet: mounted from syedtoubur/validation-data-casmi-2026
 if os.path.exists(f"{SA}/../../../../ENVEDA_casmi/research/c3/20261018-iso-rank/stage_a_frozen.json"):
     pass
 fz = "E:/ENVEDA_casmi/research/c3/20261018-iso-rank/stage_a_frozen.json"
@@ -18,12 +18,13 @@ if os.path.exists(f"{W}/pseudo_spectra.pkl"):
 json.dump({"title": "casmi26-c3iso-stagea-in", "id": "syedtoubur/casmi26-c3iso-stagea-in", "licenses": [{"name": "CC0-1.0"}]},
           open(f"{D}/dataset-metadata.json", "w"))
 KIT, INP = "syedtoubur/casmi26-harness-kit", "syedtoubur/casmi26-c3iso-stagea-in"
+VAL = "syedtoubur/validation-data-casmi-2026"
 A3 = ["syedtoubur/c3iso-stagea-a3-s0", "syedtoubur/c3iso-stagea-a3-s1", "syedtoubur/c3iso-stagea-a3-pseudo"]
-specs = [("a3-s0", "a3_cohorts_kernel.py", dict(__SHARD__="0"), [KIT, INP], []),
-         ("a3-s1", "a3_cohorts_kernel.py", dict(__SHARD__="1"), [KIT, INP], []),
+specs = [("a3-s0", "a3_cohorts_kernel.py", dict(__SHARD__="0"), [KIT, INP, VAL], []),
+         ("a3-s1", "a3_cohorts_kernel.py", dict(__SHARD__="1"), [KIT, INP, VAL], []),
          ("a3-pseudo", "a3_pseudo_kernel.py", {}, [KIT, INP, "syedtoubur/casmi26-c3iso-i1b-measure", "syedtoubur/casmi26-c3iso-i1b1-ice-out"], []),
-         ("a4-freeze", "a4_kernel.py", dict(__MODE__="freeze"), [KIT, INP], A3),
-         ("a4-score", "a4_kernel.py", dict(__MODE__="score"), [KIT, INP], A3)]
+         ("a4-freeze", "a4_kernel.py", dict(__MODE__="freeze"), [KIT, INP, VAL], A3),
+         ("a4-score", "a4_kernel.py", dict(__MODE__="score"), [KIT, INP, VAL], A3)]
 for name, src, subs, ds, ks in specs:
     kd = f"{W}/kernels/{name}"; os.makedirs(kd, exist_ok=True)
     s = open(f"{SA}/{src}", encoding="utf-8").read()
