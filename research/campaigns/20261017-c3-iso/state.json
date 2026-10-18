@@ -78,7 +78,8 @@
   }
  ],
  "calls": {
-  "sonnet": 1
+  "sonnet": 1,
+  "claude:sonnet": 1
  },
  "stalls": {},
  "ideation_rounds": 0,
