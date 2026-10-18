@@ -10,3 +10,6 @@
 - 2026-10-18 20:55 necropsy (router) brief 7164 chars  OVER 6000
 - 2026-10-18 20:56 necropsy -> claude:sonnet: done
 - 2026-10-18 20:56 necropsy-synth (router) brief 4209 chars
+- 2026-10-18 20:58 necropsy-synth -> claude:opus: done
+- 2026-10-18 20:58 necropsy round 1: 5 autopsied, 18 left; back to /replan
+- 2026-10-18 21:02 replan (router) brief 4469 chars

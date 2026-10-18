@@ -7,10 +7,11 @@
  "stop": null,
  "history": [],
  "calls": {
-  "claude:sonnet": 5
+  "claude:sonnet": 5,
+  "claude:opus": 1
  },
  "stalls": {},
  "ideation_rounds": 1,
- "ideate": "necropsy campaign start: no revivals yet",
+ "ideate": null,
  "submitted": 0
 }
