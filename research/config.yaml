@@ -207,7 +207,7 @@ routing:
 conductor:                  # research/bin/conductor.py (plan 2026-10-18, Phase 2)
   tick_s: 300               # main loop period
   max_workers: 2            # concurrent campaign.py --once workers (7.7 GB RAM PC; each agent CLI ~0.3-1 GB)
-  commit_state: false       # true only after specs-scratch-r0 is merged into main (state branch); human flips it
+  commit_state: true        # human 2026-10-18: main is the state branch; the conductor commits research/ each tick
   state_branch: main
   digest_hour: 7            # local hour for research/daily/<date>.md
   campaigns_file: research/conductor/conductor.yaml
