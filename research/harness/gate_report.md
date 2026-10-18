@@ -562,6 +562,22 @@ C1/C2 dumps lack the Engine 2 analog export, so generator features on the negati
   on f·z (KS 0.07) while the "other" don't (KS 0.27): f·z separates FPNet-seen from unseen, not C3 from C1/C2. rel KS 0.43–0.51.
 - Next (checkpoint 2): v1 with generator features needs a human go on a costed plan; test fire rate still unmeasured.
 
+### 2026-10-17 14:11: back-test suite result (C2, C1_npx)
+| family | verdict | coupling | flips | knobs |
+|---|---|---|---|---|
+| e006_overlay | **ADVISORY** | 0.019 | e006 | METRIC_FUSION, FUSION_WINDOW, E180_DROP, E180_KEYS, DREAMS_FILL |
+| ice_fallback | **ADVISORY** | 0.014 | ice_fallback | ICE_FALLBACK |
+| tail | **ADVISORY** | 0.003 | final_pass_off | FINAL_PASS |
+| reranker | **BASE-COUPLED** | 0.323 | cell19_base_ice, fused_gl_off, cell19_ice | CELL19_ICE, BASE_ICE, FUSED_GL, PC_SIM_RERANK, ICE_LAM, GL_LAM |
+| fusion | **BASE-COUPLED** | 0.563 | use_eng_off | USE_ENG, ALPHA, KRR, FUSE_N |
+| promotion | **BASE-COUPLED** | 0.156 | promote_off | PROMOTE, S_TAU, POP_TAU, REL_PROMOTE |
+| merge_gate | **BASE-COUPLED** | 0.267 | - | LIB_TAU, REL_TH, SLOTS_AGG, SLOTS_GENTLE, ICE_PC, TOPN |
+| engine2_model | **ADVISORY** | not measured | - | ENGINE2_ROWS, ENGINE2_W_PV |
+
+Global: λ sweep FAIL, mechanical sanity PASS.
+
+Full tables: research/harness/capability_map.md
+
 ### 2026-10-17: c3-iso campaign, PRE-REGISTERED (grill 2026-10-17, plan `~/.claude/plans/scratch-handoffs-handoff-20261017-c3-ta-sleepy-kernighan.md`; written before any measurement under it; line `c3`, base V22 cfg `METRIC_FUSION=true,ICE_FALLBACK=true,FUSION_WINDOW=40,REL_PROMOTE=150.0,FRAG_GAP=true,E2R2=true`; the rank-only gate 2026-10-13 still applies)
 Target cohort pseudo_c3 (V22 MRR@25 0.0562, `research/campaigns/baseline_calibration.json`); C1/C2 are judged on the
 leak-free "other" Δ (L40). No separate C3 detector (K2 v0 dead): every trigger below is relative, within one molecule.
@@ -651,3 +667,63 @@ the children instead of the CPU frag score. Truth only reports reach (A1 of I1 a
 - **C1/C2 part UNTESTED this round** (C2 and C1_npx 100-molecule samples not run).
 - Kernels: ICE `syedtoubur/c3iso-i1b1-ice-run` v2, measure `syedtoubur/c3iso-i1b1-measure-run` v1; code 9c1ef2b in
   E:/casmi/lines/c3-isomer-mut-ice. `research/c3/20261017-isomer-mut-ice/i1b1_result.{json,md}`.
+
+### 2026-10-18: c3-iso iso-rank, PRE-REGISTERED (human grill 2026-10-18, plan `~/.claude/plans/scratch-handoffs-handoff-20261018-c3-ov-floating-zebra.md`; written before any iso-rank measurement; supersedes the I3 bullet of the c3-iso block)
+Idea `research/c3/20261018-iso-rank` (spec.md), knob `ISO_MUT` (default off), base V22 cfg. gen-rank1-keep: LB 0.446
+(ref 57325719) < keep bar 0.451 → DEAD (its harness gain was on leak-hit molecules only).
+- **Split:** scaffold half A/B by `int(md5(truth Murcko scaffold SMILES).hexdigest(), 16) % 2` (0 → A; acyclic truths
+  use the empty scaffold → all in A, so acyclic molecules are split by molecule_id parity instead). The truth's scaffold
+  only groups molecules; it never selects children.
+- **Fast-ship config (frozen now; never tuned on the LB):** RRF k = 10 over ICE, CPU frag, multiplicity, parent fused rank,
+  NL (`nl_stoich_rda.score_molecule`), GLACIER (`[M+H]+`/`[M+Na]+` only); fire iff ICE(c) − ICE(p) > 0 AND
+  frag(c) > frag(p); c directly below p; RRF tail fills ranks 21–25; K = 150 iff projected hidden runtime ≤ 8.5 h, else 50
+  (decided by runtime only). Control: V22 0.447 (ref 57306053, unpaired, flagged). **KEEP iff LB ≥ 0.451** AND hidden
+  counters in band: `iso_fired` in 2–30 % of molecules, `iso_children` > 0 on ≥ 90 %. If LB is in 0.445–0.453, push one
+  fresh V22 replicate before deciding.
+- **Stage A (CPU, full C1_npx/C1_xlib/C2/C2_hard + pseudo_c3 with the I1b.1 ICE):** on half A, forward-select lists
+  (keep iff within-pool MRR@20 rises) and pick a provisional m_ice ∈ {0, 0.01, 0.02, 0.05, 0.1}. On half B report
+  Δ_pseudo_c3 (acyclic/ring, timsTOF, truth ∈ MSG), the C1/C2 frag-only fire rate and worst-case parent-anchored cost
+  (child sure-wrong), and the composite bracket at π 0.15/0.25/0.35. **DEAD iff Δ_pseudo_c3 (half B) < 0.012.**
+- **Stage B (GPU after a go):** ICE on 100 C2 + 100 C1_npx (leak-free "other" first), GLACIER on pseudo_c3 + those;
+  re-select on half A, freeze m_ice. **PASS (half B) iff** E[Δ] at π 0.25 ≥ +0.003 with scaffold-bootstrap CI
+  lower bound > 0, AND C1 fire ≤ 1 %, AND C2 ∪ C2_hard rank-2–5 fire ≤ 2 %, AND the pseudo_c3 gain on non-MSG truths ≥ half
+  the pooled gain (else LEAK-DEPENDENT, no LB slot).
+- An LB-vs-offline disagreement is logged as a calibration datapoint; the tuned config waits for the human.
+
+### 2026-10-18: c3-iso iso-rank Stage A MEASURED (CPU, Kaggle; under the 2026-10-18 iso-rank pre-registration)
+- **Stage A: DEAD.** Δ_pseudo_c3 half B (n 302) **+0.0015** [+0.0005, +0.0024] < bar 0.012. Frozen on half A before half B
+  (edb521a): lists ice, mult, parent_rank, frag, nl (forward selection kept all five); m_ice 0.02 (half-A Δ 0.0050).
+- **The parent-anchored insert itself does not pay even on C3:** fire-only Δ −0.0003 (fire rate 21.9 %); the whole gain is the
+  21–25 tail ride-along (99.7 % of molecules). Fast-ship config (m_ice 0, no GLACIER): +0.0013, fire 32.1 %, fire-only −0.0005.
+- C1/C2 half B, frag-only (upper-bound fire rates, actual = worst case since children never match a C1/C2 truth): fire
+  C1_npx 0.84 / C1_xlib 0.75 / C2 0.64 / C2_hard 0.67; Δ −0.0045 / −0.0050 / −0.0209 / −0.0165. Composite at π 0.25 −0.0084.
+- Not measured: MSG split (msg_ik14.npy on Colab only), C1/C2 ICE conjunct, GLACIER. timsTOF n 6 only.
+- Kernels `syedtoubur/c3iso-stagea-{a3-s0,a3-s1,a3-pseudo}` v2, `a4-freeze` v1, `a4-score` v1; `research/c3/20261018-iso-rank/stage_a_result.{json,md}`.
+
+### 2026-10-18: c3 signal audit, PRE-REGISTERED (plan `~/.claude/plans/breezy-gathering-sloth.md`; human decisions 2026-10-18; written before any audit code or measurement)
+Idea `research/c3/20261018-signal-audit`. Inputs: the existing Stage A A3 tables (kernels `c3iso-stagea-a3-{s0,s1,pseudo}` v2);
+no new children, no GPU. Question: does any CPU child-vs-parent signal have a C1/C2 false-alarm rate low enough for a
+placement above the parent? (Referee audit §3: the "nl/mult 4–8 %" figure has no source.)
+- **Unit and child.** One molecule. c\* = the RRF-best child not in the V22 row, chosen exactly as `iso_rank.apply` does,
+  with the CPU lists **mult, parent_rank, frag, nl** (RRF k 10; the frozen half-A lists minus ice, because C1/C2 have no ICE).
+  p = c\*'s best-ranked parent, pos(p) its 1-based row rank. No c\*, or p not in the row → the molecule does not fire.
+- **Signals:** dnl = nl(c\*) − nl(p) (parent nl recomputed with `iso_nl.nl_scores` on the same spectra A3 used: val.parquet
+  first 16 spectra / `pseudo_spectra.pkl`); mult = c\*'s multiplicity; dfrag = frag(c\*) − frag(p).
+  Fire rules: S_nl dnl > 0; S_mult mult ≥ 2; S_frag dfrag > 0; **Rule A** dnl > 0 ∧ mult ≥ 2; **Rule B** mult ≥ 3 ∧ dfrag > 0.
+  Curves (reported, not verdicts): dnl > t for t ∈ {0, 0.01, 0.02, 0.05, 0.1, 0.2}; mult ≥ k, k ∈ 1..6; dfrag > t, t ∈ {0, 0.01, 0.02, 0.05, 0.1}.
+- **FPR** = fires / all molecules of C1_npx ∪ C1_xlib ∪ C2 ∪ C2_hard (pooled, every val_key molecule, both halves; no C3 there).
+  Also per cohort, and on the leak-free "other" subset (BASE #1 ≠ truth). Also: tie rate (dnl = 0; nl(c\*) = nl(p) = 0),
+  and P(pos(p) = 1 | fire).
+- **TPR** = P(fire ∧ c\* is the truth (tautomer IK14)) on **pseudo_c3 half A only** (n 298). Half B (spent) enters no verdict.
+  Also reported: h_top = P(c\* is the truth) on half A.
+- **Verdict per rule, for any above-parent placement: ALIVE iff FPR ≤ 0.045 AND 0.25·TPR − 0.75·0.367·FPR ≥ +0.004**
+  (π 0.25; 0.367 = the LB-scaled rank-1 cost of the referee audit §2; +0.004 = LB noise floor). Else DEAD. If S_nl, S_mult,
+  S_frag, Rule A and Rule B are all DEAD, above-parent placement of a per-child trigger is closed (new rule in `research/rules/`).
+- **Sanity (void unless it passes):** the audit's `a4.replay_one(frag_only=True)` with the Stage A frozen frag-only cfg reproduces
+  the half-B fire rates of `stage_a_result.json` (C1_npx 0.84, C1_xlib 0.75, C2 0.64, C2_hard 0.67) to ±0.005.
+- **Diagnostics (no verdict):** (1) half B and half A, frozen cfg (`stage_a_frozen.json`, ICE): fires whose inserted child is the
+  truth (settles `delta_fire_only == delta_wc`); (2) tail-only replay (fire disabled, ISO_TAIL on, frozen frag-only lists) Δ MRR@25
+  on each C1/C2 cohort (all, and "other") and on pseudo_c3 half A: the real C1/C2 cost of the 21–25 ride-along.
+- **Next by verdict:** all DEAD → K2 v1 detector spec (no holdout draw, no GPU). Any ALIVE → freeze that rule, pre-register a
+  pseudo_c3_v2 draw (new seed, v1 scaffolds and val excluded) with its own bar before the draw. Alive only with ICE plausible →
+  ask the human for the ICE-on-C1/C2 T4 run.
