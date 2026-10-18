@@ -71,7 +71,10 @@
    "branch": "idea/20261018-iso-rank",
    "reason": "",
    "override": "",
-   "t": "2026-10-18 20:31"
+   "t": "2026-10-18 20:31",
+   "now": "dead",
+   "lb": "",
+   "decision": ""
   }
  ],
  "calls": {
@@ -81,5 +84,5 @@
  "ideation_rounds": 0,
  "submitted": 1,
  "i3": "superseded by research/c3/20261018-iso-rank (RRF pool + parent-anchored insert)",
- "report_pending": "research/c3/20261018-iso-rank"
+ "report_pending": null
 }

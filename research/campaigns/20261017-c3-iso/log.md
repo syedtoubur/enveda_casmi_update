@@ -9,3 +9,4 @@
 - 2026-10-18 morning: gen-rank1-keep LB **0.446** (ref 57325719) < keep bar 0.451 -> DEAD (harness gain leak-hit only). Human grill -> new idea research/c3/20261018-iso-rank (RRF pool ranking + parent-anchored insert; fast-ship LB probe in parallel with Stage A CPU validation; plan ~/.claude/plans/scratch-handoffs-handoff-20261018-c3-ov-floating-zebra.md).
 - 2026-10-18 10:17 iso-rank Stage A DEAD: Δ_pseudo_c3 half B +0.0015 (bar 0.012); fire-only insert −0.0003 (gain is the tail only); C1/C2 frag-only composite −0.0084 at π 0.25. Fast-ship probe casmi26-iso-rank v1 G4 PASS, NOT yet submitted (human decides).
 - 2026-10-18 20:31 cycle 3 closed: 20261018-iso-rank -> dead
+- 2026-10-18 20:37 report (router) brief 7792 chars  OVER 6000
