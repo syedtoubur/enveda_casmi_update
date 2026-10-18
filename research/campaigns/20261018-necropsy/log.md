@@ -1,2 +1,12 @@
 - 2026-10-18 campaign created by the conductor migration (Phase 7); starts with a necropsy round
 - 2026-10-18 20:52 necropsy (router) brief 4526 chars
+- 2026-10-18 20:52 necropsy -> claude:sonnet: done
+- 2026-10-18 20:52 necropsy (router) brief 8286 chars  OVER 6000
+- 2026-10-18 20:53 necropsy -> claude:sonnet: done
+- 2026-10-18 20:53 necropsy (router) brief 7587 chars  OVER 6000
+- 2026-10-18 20:54 necropsy -> claude:sonnet: done
+- 2026-10-18 20:54 necropsy (router) brief 5953 chars
+- 2026-10-18 20:55 necropsy -> claude:sonnet: done
+- 2026-10-18 20:55 necropsy (router) brief 7164 chars  OVER 6000
+- 2026-10-18 20:56 necropsy -> claude:sonnet: done
+- 2026-10-18 20:56 necropsy-synth (router) brief 4209 chars

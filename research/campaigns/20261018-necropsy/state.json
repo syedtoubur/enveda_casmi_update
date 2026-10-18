@@ -6,7 +6,9 @@
  "current": null,
  "stop": null,
  "history": [],
- "calls": {},
+ "calls": {
+  "claude:sonnet": 5
+ },
  "stalls": {},
  "ideation_rounds": 1,
  "ideate": "necropsy campaign start: no revivals yet",
