@@ -1,12 +1,13 @@
 {
- "cycle": 2,
+ "cycle": 3,
  "lb_probes": 1,
  "branch_streak": {
   "c3-route": 0,
-  "c3-iso": 1
+  "c3-iso": 1,
+  "idea/20261018-iso-rank": 1
  },
  "closed_branches": [],
- "current": "research/c3/20261018-iso-rank",
+ "current": null,
  "stop": null,
  "history": [
   {
@@ -27,7 +28,7 @@
    "reason": "I1 reach_20 0.073 < 0.10 (reach_all 0.167; A5 pre-screen loses it)",
    "override": "",
    "t": "2026-10-17T19:54:06+06:00",
-   "now": "attacked",
+   "now": "dead",
    "lb": "",
    "decision": ""
   },
@@ -39,8 +40,8 @@
    "override": "g4_min_changed waived by orchestrator",
    "t": "2026-10-18T03:02:00+06:00",
    "now": "dead",
-   "lb": "0.446",
-   "decision": "DEAD: 0.446 < 0.451 keep bar"
+   "lb": "0.446 (ref 57325719, 2026-10-18; < keep bar 0.451 vs V22 0.447 unpaired) -> DEAD; harness gain was leak-hit only",
+   "decision": ""
   },
   {
    "idea": "research/c3/20261017-isomer-mut-ice",
@@ -60,9 +61,17 @@
    "reason": "human grill 2026-10-18: rank isomer children properly; fast-ship in parallel with Stage A",
    "override": "",
    "t": "2026-10-18T08:30:00+06:00",
-   "now": "spec",
+   "now": "dead",
    "lb": "",
    "decision": ""
+  },
+  {
+   "idea": "research/c3/20261018-iso-rank",
+   "status": "dead",
+   "branch": "idea/20261018-iso-rank",
+   "reason": "",
+   "override": "",
+   "t": "2026-10-18 20:31"
   }
  ],
  "calls": {
@@ -71,5 +80,6 @@
  "stalls": {},
  "ideation_rounds": 0,
  "submitted": 1,
- "i3": "superseded by research/c3/20261018-iso-rank (RRF pool + parent-anchored insert)"
+ "i3": "superseded by research/c3/20261018-iso-rank (RRF pool + parent-anchored insert)",
+ "report_pending": "research/c3/20261018-iso-rank"
 }
