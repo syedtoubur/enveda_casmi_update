@@ -5,4 +5,4 @@ campaigns:
 desks:
 - chem
 - ml
-paused: true
+paused: false
