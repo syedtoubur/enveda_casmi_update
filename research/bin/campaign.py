@@ -196,6 +196,7 @@ class Campaign:
                                          (idea or self.dir) / "claude_run.jsonl", self.worktree(idea),
                                          exclude_family=exclude, skip=capped)
             if route is not None:
+                self.absorb_model_writes()     # else this save clobbers replan's current/stop/ideate
                 self.state["calls"][route] = self.state["calls"].get(route, 0) + 1
                 self.save()
                 self.log(f"{bstep} -> {route}: {out}")
@@ -209,6 +210,16 @@ class Campaign:
                 return "stopped"
             self.log("every route paused: retry in 30 min")
             self.sleep(1800)
+
+    def absorb_model_writes(self) -> None:
+        """Take the keys a model step (replan, ideate) writes into state.json before saving over it."""
+        try:
+            disk = json.loads((self.dir / "state.json").read_text())
+        except (OSError, ValueError):
+            return
+        for k in ("current", "stop", "ideate"):
+            if k in disk:
+                self.state[k] = disk[k]
 
     def progressed(self, key: str, before: str, after: str, out: str) -> bool:
         """Count a model step that changed nothing (or failed); True while it may still be retried."""

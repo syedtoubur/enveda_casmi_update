@@ -185,6 +185,29 @@ def safety(cdir: Path) -> None:
     print("safety ok")
 
 
+def routed_replan(cdir: Path) -> None:
+    """--router: the call counter save must not clobber the current/stop that /replan wrote into state.json."""
+    class Router:
+        def routes(self, step):
+            return ["claude:opus"]
+
+        def family(self, route):
+            return "claude"
+
+        def run(self, step, prompt, log, wt, exclude_family=None, skip=None):
+            st = json.loads((cdir / "state.json").read_text())
+            st["stop"] = "pool dry"
+            (cdir / "state.json").write_text(json.dumps(st))
+            return "done", "claude:opus"
+
+    (cdir / "state.json").unlink(missing_ok=True)
+    c = campaign.Campaign(cdir, runner=lambda *a: "done", sleep=lambda s: None, router=Router())
+    assert c.step() is False and c.state["stop"] == "pool dry", c.state["stop"]
+    assert c.state["calls"] == {"claude:opus": 1}, c.state["calls"]
+    assert not c.state.get("stalls", {}).get("replan"), c.state["stalls"]
+    print("routed replan ok")
+
+
 def main() -> int:
     cdir = RESEARCH / "campaigns" / TAG
     try:
@@ -209,6 +232,7 @@ def main() -> int:
         rank_only_gate(c, cdir)
         safety(cdir)
         ideation(cdir)
+        routed_replan(cdir)
         return 0
     finally:
         shutil.rmtree(cdir, ignore_errors=True)
