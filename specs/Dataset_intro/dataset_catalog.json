@@ -3,7 +3,7 @@
   "title": "Enveda CASMI 2026 Dataset & Model Catalog",
   "description": "Authoritative machine-readable registry of Kaggle dataset slugs, mount locations, purposes, and notebook presets for autonomous agents and kernel-metadata.json generation.",
   "version": "1.0.0",
-  "last_updated": "2026-10-10",
+  "last_updated": "2026-10-17",
   "competition": {
     "name": "enveda-CASMI26-molecule-id-mass-spectra",
     "competition_source": "enveda-CASMI26-molecule-id-mass-spectra",
@@ -273,6 +273,18 @@
           "Track 4b",
           "candidate_expansion",
           "taxonomic_reranking"
+        ]
+      },
+      "e180_only_key_list": {
+        "slug": "syedtoubur/casmi26-e180-keys",
+        "url": "https://www.kaggle.com/datasets/syedtoubur/casmi26-e180-keys",
+        "mount_pattern": "/kaggle/input/**/e180_only_ik14.txt",
+        "description": "181,542 enveda-180-only synthetic combinatorial decoy InChIKey14s. Used by the e180-drop-dreamsnp-pclite post-scoring patch to prune e180-only decoys after simulator rerank and backfill top-25 slots from DreamsNP natural products.",
+        "key_files": [
+          "e180_only_ik14.txt"
+        ],
+        "used_in": [
+          "e180-drop-dreamsnp-pclite"
         ]
       }
     },

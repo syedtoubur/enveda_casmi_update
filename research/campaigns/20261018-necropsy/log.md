@@ -26,3 +26,6 @@
 - 2026-10-19 06:36 replan -> claude:opus: error
 - 2026-10-19 06:36 replan: no progress (exit error), attempt 1/2
 - 2026-10-19 06:41 replan (router) brief 4469 chars
+- 2026-10-19 06:41 replan -> claude:opus: error
+- 2026-10-19 06:41 replan: no progress (exit error), attempt 2/2
+- 2026-10-19 06:41 stopped: replan picked no idea 2 times

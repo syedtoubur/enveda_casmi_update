@@ -1,73 +1,38 @@
-# Session Handoff Dossier: ISDB CFM-ID Fallback Campaign (G1 & G2 Test Fix Ready)
-**Generated:** 2026-10-15 23:13:00
-**Source Conversation ID:** 6ed2e47d-50b6-40c2-9685-4ccf56e2448d
-**Context Size:** ~151k tokens (Smart Zone Exit)
+# Handoff Dossier: Qoder CLI Login Complete & Multi-Provider Autonomous Conductor State
+
+## 1. Accomplished in this Session
+
+1. **Qoder CLI Headless Authentication**:
+   - Successfully executed `qodercli login` and browser authorization.
+   - Result: `Login successful! Welcome, Syed Toubur Rahman.`
+   - Qoder's 100 daily claimable credits are now accessible from CLI (`qodercli -p -m qwen-flash -o json`).
+
+2. **OpenRouter Integration Verified**:
+   - Discovered OpenRouter is **already authenticated and active** in `~/.local/share/opencode/auth.json`.
+   - Verified live zero-cost models (`openrouter/nvidia/nemotron-3.5-lightning:free`, `openrouter/google/gemma-4-31b-it:free`, `openrouter/cohere/north-mini-code:free`, `openrouter/openrouter/free`).
+   - Evaluated `opencode run` headless vs. direct Python adapter: **Direct Python `OpenRouterDirectRunner`** in `research/bin/providers.py` is selected for the autonomous conductor because it uses 0 extra background processes, consumes <15 MB RAM, and cleanly handles HTTP 429 status codes.
+   - Clarified OpenRouter free limits: 20 RPM, 50 RPD default (scales to 1,000 RPD if ≥$10 lifetime credit purchase).
+
+3. **Analysis of `awesome-free-llm-apis`**:
+   - Verified that `awesome-free-llm-apis` is a **curated directory of direct provider endpoints**, not a unified aggregator.
+   - Identified Google AI Studio (1,500 RPD, 1M context) as the ideal high-volume Tier L engine.
+
+4. **Updated `work_state` Trackers**:
+   - `conductor-build`: `qodercli login` is **DONE**. Remaining Phase 0 items: add scoped `permissions.allow` in agy `config.json`, and merge `specs-scratch-r0` into `main`.
 
 ---
 
-## 1. High-Level Mission & Active Objective
-- **Competition**: Enveda CASMI 2026 (Molecular Structure Identification from LC-MS/MS).
-- **Core Objective**: Implement an orthogonal **CFM-ID 4.0 in-silico spectral database (ISDB)** fallback to fix negative-mode (`[M-H]-`) and evidence gap blindness in baseline notebook ([`casmi26-e006-window-40-ice-fallback-true.ipynb`](file:///E:/casmi/lines/exploit/casmi26-e006-window-40-ice-fallback-true.ipynb), LB 0.440).
-- **Campaign Line**: `exploit` line (`E:/casmi/lines/exploit`), tracked under [`research/exploit/20261015-isdb-cfm-fallback/`](file:///e:/ENVEDA_casmi/research/exploit/20261015-isdb-cfm-fallback/).
-- **Current Milestone**: Gate G2 Unit Testing & Verification (`test_patch_isdb_cfm_fallback.py`).
+## 2. Status of Phase 0 Human Setup
+
+- [x] **qodercli login**: **DONE** (Signed in as Syed Toubur Rahman).
+- [ ] **agy permissions.allow**: Add scoped rules in `C:/Users/h/.gemini/config/config.json` (`python research/...`, `kaggle kernels ...`, `git -C E:/casmi/lines/...`).
+- [ ] **Merge specs-scratch-r0 -> main**: Single state branch merge (commit pending `research/` changes first).
 
 ---
 
-## 2. Settled Decisions (Do NOT Re-Litigate)
-- **Decision 1: Dynamic Cell Lookup in G1**:
-  - *Rationale:* Hardcoding cell indices broke when markdown cells were present in the base notebook (32 cells total, 30 code cells).
-  - *Impact:* `test_g1_notebook_delta_and_compilation` now dynamically locates the loader cell and `_factorial_entry` cell, passing cleanly.
-- **Decision 2: Chemically Valid SMILES in G2 Replay Tests**:
-  - *Rationale:* `casmi_post.metric_identity` calls RDKit canonicalization `canonicalize_smiles_to_ik14`. Dummy strings like `"A"` are rejected as invalid SMILES.
-  - *Impact:* Replaced with valid aliphatic chains (`"CC"`, `"CCC"`, `"CCCC"`, `"CCCCC"`), ensuring all replay engine tests (`test_g2_metric_overlay_*`) run against real RDKit normalization.
-- **Decision 3: Scope Invariants for Factorial Rerank**:
-  - *Rationale:* `rerank_row` checks `mid in scope["active"]`. If `"active"` is omitted from the mock scope, `rerank_row` returns `branch: "placeholder"`.
-  - *Impact:* Adding `'active': {'m1', 'm2'}` to mock scope in `test_g2_factorial_entry_rerank_row` ensures proper routing to `"glacier"`, `"isdb_fallback"`, and `"unrescored"`.
-
----
-
-## 3. Modified & Created Files
-- [`E:/casmi/lines/exploit/build/test_patch_isdb_cfm_fallback.py`](file:///E:/casmi/lines/exploit/build/test_patch_isdb_cfm_fallback.py) - G1 & G2 test suite (AST compilation, spectral cosine math, loader mock, replay engine K3 invariance & K2 activation, and Cell 32 execution).
-- [`e:/ENVEDA_casmi/.scratch/test_patch_isdb_cfm_fallback.py`](file:///e:/ENVEDA_casmi/.scratch/test_patch_isdb_cfm_fallback.py) - Scratch version for staging and editing.
-- [`E:/casmi/lines/exploit/build/patch_isdb_cfm_fallback.py`](file:///E:/casmi/lines/exploit/build/patch_isdb_cfm_fallback.py) - Notebook patcher script.
-- [`E:/casmi/lines/exploit/casmi26-e006-isdb-cfm-fallback.ipynb`](file:///E:/casmi/lines/exploit/casmi26-e006-isdb-cfm-fallback.ipynb) - Patched probe notebook.
-- [`E:/casmi/lines/exploit/build/casmi_post.py`](file:///E:/casmi/lines/exploit/build/casmi_post.py) - Updated with `ISDB_FALLBACK=False`, `ISDB_LAM=0.20`, and `_metric_overlay` branch.
-- [`specs/Dataset_intro/dataset_catalog.json`](file:///e:/ENVEDA_casmi/specs/Dataset_intro/dataset_catalog.json) - Registered ISDB predicted index and spectra datasets.
-
----
-
-## 4. Current Work in Flight
-- `test_g1_notebook_delta_and_compilation` is **PASS**.
-- `test_g2_spectral_cosine` is **PASS**.
-- `test_g2_load_isdb_scores_mocked` is **PASS**.
-- `test_g2_metric_overlay_invariance_k3` is **PASS**.
-- `test_g2_metric_overlay_activation_k2` is **PASS**.
-- `test_g2_metric_overlay_graceful_degradation` is **PASS**.
-- In `test_g2_factorial_entry_rerank_row`: need to add `'active': {'m1', 'm2'}` into the `scope` dictionary so `rerank_row` processes candidates rather than returning the `"placeholder"` branch.
-
----
-
-## 5. The Immediate Frontier (Next Steps)
-1. **Fix mock scope in `test_patch_isdb_cfm_fallback.py`**:
-   Add `'active': {'m1', 'm2'}` to `scope = MockScope({...})` in `test_g2_factorial_entry_rerank_row`.
-2. **Execute G2 Verification**:
-   Run:
-   ```powershell
-   Copy-Item -Path "e:\ENVEDA_casmi\.scratch\test_patch_isdb_cfm_fallback.py" -Destination "E:\casmi\lines\exploit\build\test_patch_isdb_cfm_fallback.py" -Force
-   python E:/casmi/lines/exploit/build/test_patch_isdb_cfm_fallback.py
-   ```
-   Confirm all G1 & G2 tests pass.
-3. **Run Gate G3a Smoke Test & G4 Kaggle Push**:
-   - Check local execution on 12-20 sample molecules.
-   - Push probe to Kaggle:
-     ```powershell
-     python research/bin/kaggle_push.py research/exploit/20261015-isdb-cfm-fallback E:/casmi/lines/exploit/casmi26-e006-isdb-cfm-fallback.ipynb --counter "ISDB_FALLBACK" --source n10705013/casmi26-isdb-predicted-index
-     ```
-
----
-
-## 6. Recommended Skills & Boot Command
-- **Primary Skill**: [smart-zone-handoff](file:///e:/ENVEDA_casmi/.agents/skills/smart-zone-handoff/SKILL.md) / [tdd](file:///C:/Users/h/.gemini/config/plugins/mattpocock-skills/skills/tdd/SKILL.md)
-
-### Copy-Paste Boot Prompt for New Session:
-> `@.scratch/handoffs/latest.md continue`
+## 3. Resume Instructions for Fresh Chat
+- **Smart Zone boundary reached (~240k tokens)**.
+- Start a fresh chat session and resume via:
+  ```text
+  @.scratch/handoffs/latest.md continue
+  ```

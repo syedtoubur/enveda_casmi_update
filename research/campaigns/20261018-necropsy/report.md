@@ -1,8 +1,8 @@
 # Campaign report: 20261018-necropsy
 
-Stopped 2026-10-18 21:08: replan picked no idea 2 times
+Stopped 2026-10-19 06:41: replan picked no idea 2 times
 
-Cycles 0, probes pushed 0, submitted 0, model calls {'claude:sonnet': 5, 'claude:opus': 3}, closed branches none.
+Cycles 0, probes pushed 0, submitted 0, model calls {'claude:sonnet': 5, 'claude:opus': 5}, closed branches none.
 
 | idea | closed as | now | LB | branch | reason | override |
 |---|---|---|---|---|---|---|

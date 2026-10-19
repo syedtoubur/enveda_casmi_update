@@ -91,13 +91,31 @@ Rules of engagement:
 | v29 lineage (author 0.411/0.415 with **private** popularity arrays; **0.393** from our account) | — | imported, not reproducible |
 | sovereign zenith (ICE off on [M+H]+, dual rank-1 PubChem promotion, worker fix) | 0.425 | bundled changes |
 | **0.433 base** (obstacledeveloper V1.1: Ahmed v4n engine + prvsiyan two-ranker Engine 2, RRF, GLACIER rerank, gated PubChem merge) — own-account control | **0.433** | imported, reproduced |
-| **E006** = 0.433 + metric-identity RRF overlay (one vote per IK14 per engine) + ICEBERG fallback where GLACIER is empty | **0.440** (+0.007 vs paired control, one run each, keep-pending) | current SOTA |
-| Every probe on top of E006 since | 0.429, 0.429, 0.437 (and two unbound) | all reverted (§A7) |
+| **E006** = 0.433 + metric-identity RRF overlay (one vote per IK14 per engine) + ICEBERG fallback where GLACIER is empty | **0.440** (+0.007 vs paired control, one run each, keep-pending) | prior base |
+| ISDB-CFM fallback probe (Glacier→ICBM→Iceberg→CFM-ID 4.0) | 0.435 (-0.005) | Hierarchical fallback gate failed (-0.005); uncalibrated CFM-ID scores degraded higher-confidence outputs. Open for architectural refinement (e.g. separate RRF rank fusion / confidence weighting) |
+| **Apex Synthesis SOTA** (Saddam Aditya LB 0.451 / `easonyanyan/casmi26-v22-rel150-e2r2-clean` LB 0.447+) | **0.447+** (+0.007–0.011) | **NEW BASELINE**: E006 + PubChem promo `rel > 150` + Metric-Keyed E2R2 + Clean DB |
 
 The separate **explore line** (`specs/specs_scratch`, own package `scratch_pkg/`, built rung by rung from the 0.296
 simple-sim notebook) reached **0.346** (R3: unified NP pool minus enveda-180 + GLACIER + NPClassifier class vote +
 Ahmed's `fpnet_full1` FPNet as an RRF channel). R4 (second FPNet family) 0.345 neutral; R5 (spectral-analogue PSSM /
 Tanimoto channel) 0.317–0.323, all below base. The explore line is frozen; it serves as a knowledge base.
+
+### A2.1 2026-10-17 SOTA Addendum: New Baseline & Dual-Track Operations
+
+1. **New Baseline Notebook**: `easonyanyan/casmi26-v22-rel150-e2r2-clean` (LB 0.447–0.451).
+   - Replaces `casmi26-e006` as the operational exploit baseline.
+   - Incorporates tuned PubChem outlier promotion (`rel > 150.0`, $S \ge 6.0$, $\text{pop} \ge 5$), metric-keyed E2R2 rank-2 insertion deduplicated by tautomer-canonical InChIKey14, and curated structure databases.
+2. **Diagnosis & Learning from Prior CFM-ID / ISDB Integration (LB 0.435 Post-Mortem)**:
+   - Introducing CFM-ID 4.0 as a hard hierarchical fallback gate (`Glacier → ICBM → Iceberg → CFM-ID`) dropped LB from 0.440 to 0.435.
+   - Diagnosis: The failure was caused by the gating integration—uncalibrated CFM-ID fragmentation likelihoods were allowed to override higher-confidence simulators, injecting noise when discriminating subtle isomers on Bruker timsTOF.
+   - Strategic Principle: Do not discard CFM-ID or other physical signals outright. Instead, learn from the integration flaw. Analyze whether alternative architectures (e.g. separate low-weight RRF rank fusion, adduct-conditioned routing, or confidence-calibrated score margins) can preserve physical predictive power without risking rank degradation. Validate all architectural refinements empirically on the multi-cohort battery.
+3. **K1/K2 Generation Milestones**:
+   - K1 generator gate passed with 7.7% rank-1 accuracy on 600 blind-spot `pseudo_c3` molecules (3% threshold). Mutator alone hit 12.0%.
+   - Claude Code agent is assigned exclusively to Track 1 (K2 detector) in `E:/casmi/lines/c3-commit` on branch `idea/20261015-c3-gen-slot2`.
+4. **Antigravity Track 2 Autonomous Loop**:
+   - Runs in dedicated worktree `E:/casmi/lines/antigravity-exploit`.
+   - Starts from `casmi26-v22-rel150-e2r2-clean`, exploring high-conviction ideas from `research/ideas/innovative_ideas.md` (e180-drop, tautomer key unification, cross-formula reranking, BPI S/N weighting, DreamsFP/xenc union scoring) evaluated on offline multi-cohort battery with `pseudo_c3` monitoring.
+
 
 ---
 
